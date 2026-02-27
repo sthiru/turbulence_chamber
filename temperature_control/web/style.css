@@ -1,0 +1,159 @@
+.sensor-card {
+    transition: all 0.3s ease;
+}
+
+.sensor-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.status-online { 
+    color: #28a745; 
+}
+
+.status-offline { 
+    color: #dc3545; 
+}
+
+.status-error { 
+    color: #ffc107; 
+}
+
+.fan-control { 
+    width: 100%; 
+}
+
+.temp-display { 
+    font-size: 2rem; 
+    font-weight: bold; 
+}
+
+.control-panel { 
+    background: #f8f9fa; 
+    border-radius: 10px; 
+}
+
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.btn {
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.form-range::-webkit-slider-thumb {
+    background: #0d6efd;
+}
+
+.form-range::-moz-range-thumb {
+    background: #0d6efd;
+}
+
+.alert {
+    border-radius: 8px;
+}
+
+.badge {
+    font-size: 0.9em;
+}
+
+header {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+@media (max-width: 768px) {
+    .temp-display {
+        font-size: 1.5rem;
+    }
+    
+    .container-fluid {
+        padding: 0.5rem;
+    }
+    
+    .card {
+        margin-bottom: 1rem;
+    }
+}
+
+/* Loading animation */
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255,255,255,.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Temperature color coding */
+.temp-normal { color: #0d6efd; }
+.temp-warning { color: #ffc107; }
+.temp-danger { color: #dc3545; }
+.temp-error { color: #6c757d; }
+
+/* Control button states */
+.btn-control-on {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+.btn-control-off {
+    background-color: #198754;
+    border-color: #198754;
+}
+
+/* Chart container */
+.chart-container {
+    position: relative;
+    height: 300px;
+}
+
+/* Responsive grid adjustments */
+@media (max-width: 992px) {
+    .col-lg-6 {
+        margin-bottom: 2rem;
+    }
+}
+
+/* Status indicators */
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.status-indicator.online {
+    background-color: #28a745;
+    animation: pulse 2s infinite;
+}
+
+.status-indicator.offline {
+    background-color: #dc3545;
+}
+
+.status-indicator.error {
+    background-color: #ffc107;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
