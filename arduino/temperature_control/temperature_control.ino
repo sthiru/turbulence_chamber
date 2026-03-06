@@ -38,10 +38,10 @@
 #define STATUS_LED 13
 
 // System Constants
-#define NUM_SENSORS 6
+#define NUM_SENSORS 5
 #define NUM_FANS 4
 #define NUM_HOT_PLATES 2
-#define MAX_TEMP 80.0
+#define MAX_TEMP 120.0
 #define MIN_TEMP 0.0
 #define UPDATE_INTERVAL 2000  // 2 seconds
 
@@ -52,9 +52,11 @@ DeviceAddress tempDeviceAddresses[NUM_SENSORS];
 
 // System State
 float currentTemperatures[NUM_SENSORS];
-float targetTemperatures[NUM_HOT_PLATES] = {25.0, 25.0};
+float targetTemperatures[NUM_HOT_PLATES] = {80.0, 80.0};
 int fanSpeeds[NUM_FANS] = {0, 0, 0, 0};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
+bool manualControlHotPlates[NUM_HOT_PLATES] = {false, false};
+bool manualControlFans[NUM_FANS] = {false, false};
 unsigned long lastUpdateTime = 0;
 bool systemReady = false;
 
@@ -148,7 +150,7 @@ void updateTemperatures() {
       Serial.print("Sensor ");
       Serial.print(i);
       Serial.println(" disconnected!");
-      currentTemperatures[i] = -999.0; // Error value
+      currentTemperatures[i] = 0.0; // Error value
     } else {
       currentTemperatures[i] = temp;
     }
@@ -157,36 +159,28 @@ void updateTemperatures() {
 
 void updateControl() {
   // Simple PID control for hot plates
-  for (int i = 0; i < NUM_HOT_PLATES; i++) {
-    if (hotPlateStates[i]) {
-      // Use sensor i*3 as control sensor for hot plate i
-      int controlSensor = i * 3;
-      if (controlSensor < NUM_SENSORS && currentTemperatures[controlSensor] > -100) {
-        
-        float error = targetTemperatures[i] - currentTemperatures[controlSensor];
-        integral[i] += error * (UPDATE_INTERVAL / 1000.0);
-        float derivative = (error - previousError[i]) / (UPDATE_INTERVAL / 1000.0);
-        
-        // PID calculation
-        float output = kp * error + ki * integral[i] + kd * derivative;
-        
-        // Apply safety limits
-        if (currentTemperatures[controlSensor] > MAX_TEMP) {
-          digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2, LOW);
-          Serial.print("SAFETY: Hot plate ");
-          Serial.print(i + 1);
-          Serial.println(" turned off due to over-temperature");
-        } else {
-          // Simple on/off control based on PID output
-          digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2, output > 0 ? HIGH : LOW);
-        }
-        
-        previousError[i] = error;
-      }
-    } else {
+  // With 5 sensors, use sensor 0 for hot plate 0 and sensor 4 for hot plate 1
+
+  for (int i = 0; i < NUM_HOT_PLATES; i++) {      
+    int controlSensor = i == 0 ? 0 : 4;      
+    float error = targetTemperatures[i] - currentTemperatures[controlSensor];
+    // Apply safety limits
+    if (currentTemperatures[controlSensor] > MAX_TEMP) {
       digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2, LOW);
-      integral[i] = 0; // Reset integral when off
+      Serial.print("SAFETY: Hot plate ");
+      Serial.print(i + 1);
+      Serial.println(" turned off due to over-temperature");
+    } 
+    else {
+      // Simple on/off control based on PID output
+      if (currentTemperatures[controlSensor] > targetTemperatures[i]) {
+        digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2,  LOW );
+      }
+      else{
+        digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2,  HIGH );
+      }
     }
+    previousError[i] = error;
   }
 }
 
@@ -202,10 +196,13 @@ void processSerialCommands() {
 }
 
 void processCommand(String command) {
-  DynamicJsonDocument doc(256);
+  // Increased JSON buffer size
+  DynamicJsonDocument doc(512);
   DeserializationError error = deserializeJson(doc, command);
   
   if (error) {
+    Serial.print("JSON parsing error: ");
+    Serial.println(error.c_str());
     sendErrorResponse("Invalid JSON format");
     return;
   }
@@ -214,9 +211,12 @@ void processCommand(String command) {
   
   if (cmd == "get_status") {
     sendStatusResponse();
+  } else if (cmd == "ping") {
+    // Simple ping response for connectivity test
+    Serial.println("{\"status\":\"ok\",\"msg\":\"pong\"}");
   } else if (cmd == "set_temp") {
     int sensor = doc["sensor"] | -1;
-    float temp = doc["target"] | -999.0;
+    float temp = doc["target"] | -0.0;
     
     if (sensor >= 0 && sensor < NUM_HOT_PLATES && temp >= MIN_TEMP && temp <= MAX_TEMP) {
       targetTemperatures[sensor] = temp;
@@ -244,6 +244,26 @@ void processCommand(String command) {
       sendStatusResponse();
     } else {
       sendErrorResponse("Invalid hot plate parameters");
+    }
+  } else if (cmd == "set_manual_hotplate") {
+    int plate = doc["plate"] | -1;
+    bool manual = doc["manual"] | false;
+    
+    if (plate >= 0 && plate < NUM_HOT_PLATES) {
+      manualControlHotPlates[plate] = manual;
+      sendStatusResponse();
+    } else {
+      sendErrorResponse("Invalid hot plate manual parameters");
+    }
+  } else if (cmd == "set_manual_fan") {
+    int fan = doc["fan"] | -1;
+    bool manual = doc["manual"] | false;
+    
+    if (fan >= 0 && fan < NUM_FANS) {
+      manualControlFans[fan] = manual;
+      sendStatusResponse();
+    } else {
+      sendErrorResponse("Invalid fan manual parameters");
     }
   } else {
     sendErrorResponse("Unknown command");
@@ -274,7 +294,7 @@ void sendStatusResponse() {
   for (int i = 0; i < NUM_HOT_PLATES; i++) {
     targets.add(targetTemperatures[i]);
   }
-  
+
   JsonArray fans = data.createNestedArray("fan_speeds");
   for (int i = 0; i < NUM_FANS; i++) {
     fans.add(fanSpeeds[i]);
@@ -285,8 +305,19 @@ void sendStatusResponse() {
     plates.add(hotPlateStates[i]);
   }
   
+  JsonArray manualPlates = data.createNestedArray("manual_hotplate_states");
+  for (int i = 0; i < NUM_HOT_PLATES; i++) {
+    manualPlates.add(manualControlHotPlates[i]);
+  }
+  
+  JsonArray manualFans = data.createNestedArray("manual_fan_states");
+  for (int i = 0; i < NUM_FANS; i++) {
+    manualFans.add(manualControlFans[i]);
+  }
+  
   data["system_ready"] = systemReady;
   
+  // Send JSON response
   serializeJson(doc, Serial);
   Serial.println();
 }
