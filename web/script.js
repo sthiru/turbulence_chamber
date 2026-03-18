@@ -45,6 +45,13 @@ function initWebSocket() {
             try {
                 const data = JSON.parse(event.data);
                 console.log('WebSocket data received:', data);
+                
+                // Ignore ping messages
+                if (data.type === 'ping') {
+                    console.log('Ping message received, ignoring');
+                    return;
+                }
+                
                 updateDisplay(data);
             } catch (error) {
                 console.error('Error parsing WebSocket data:', error);
@@ -179,28 +186,36 @@ function updateSystemStatus(data) {
 
 // Update temperature sensor display
 function updateTemperatureSensors(temperatures) {
-    const container = document.getElementById('temperature-sensors');
-    container.innerHTML = '';
-    
     temperatures.forEach((temp, index) => {
-        const tempClass = getTemperatureClass(temp);
-        const tempValue = temp < -100 ? 'Error' : `${temp.toFixed(1)}°C`;
-        const icon = getTemperatureIcon(temp);
+        const tempElement = document.getElementById(`temp-${index + 1}`);
+        const statusElement = document.getElementById(`temp-status-${index + 1}`);
+        const cardElement = tempElement.closest('.sensor-card');
         
-        const sensorHtml = `
-            <div class="col-md-6 mb-3">
-                <div class="card sensor-card h-100">
-                    <div class="card-body text-center">
-                        <h6 class="card-title">
-                            <i class="fas ${icon}"></i> Sensor ${index + 1}
-                        </h6>
-                        <div class="temp-display ${tempClass}">${tempValue}</div>
-                        ${temp >= 0 && temp < 100 ? `<small class="text-muted">${getTemperatureStatus(temp)}</small>` : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-        container.innerHTML += sensorHtml;
+        if (tempElement) {
+            const tempClass = getTemperatureClass(temp);
+            const tempValue = temp < -100 ? 'Error' : `${temp.toFixed(1)}°C`;
+            const icon = getTemperatureIcon(temp);
+            
+            // Update temperature value
+            tempElement.textContent = tempValue;
+            tempElement.className = `temp-display ${tempClass}`;
+            
+            // Update icon
+            const iconElement = cardElement.querySelector('.card-title i');
+            if (iconElement) {
+                iconElement.className = `fas ${icon}`;
+            }
+            
+            // Update status text
+            if (statusElement) {
+                if (temp >= 0 && temp < 100) {
+                    statusElement.textContent = getTemperatureStatus(temp);
+                    statusElement.style.display = 'block';
+                } else {
+                    statusElement.style.display = 'none';
+                }
+            }
+        }
     });
 }
 
@@ -229,73 +244,44 @@ function getTemperatureStatus(temp) {
 
 // Update hot plate controls
 function updateHotPlateControls(targetTemps, states) {
-    const container = document.getElementById('hot-plate-controls');
-    container.innerHTML = '';
-    
     targetTemps.forEach((target, index) => {
-        const plateHtml = `
-            <div class="row align-items-center mb-3 p-2 border rounded">
-                <div class="col-md-3">
-                    <label class="form-label fw-bold">
-                        <i class="fas fa-fire"></i> Hot Plate ${index + 1}
-                    </label>
-                </div>
-                <div class="col-md-3">
-                    <div class="input-group">
-                        <input type="number" class="form-control" id="target-temp-${index}" 
-                               value="${target}" min="0" max="${CONFIG.MAX_TEMP}" step="0.5">
-                        <span class="input-group-text">°C</span>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-${states[index] ? 'danger' : 'success'} w-100" 
-                            onclick="toggleHotPlate(${index})"
-                            id="hotplate-btn-${index}">
-                        <i class="fas fa-power-off"></i> ${states[index] ? 'TURN OFF' : 'TURN ON'}
-                    </button>
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-primary w-100" onclick="setTemperature(${index})">
-                        <i class="fas fa-thermometer-half"></i> SET TEMP
-                    </button>
-                </div>
-            </div>
-        `;
-        container.innerHTML += plateHtml;
+        // Update temperature input
+        const tempInput = document.getElementById(`target-temp-${index}`);
+        if (tempInput) {
+            tempInput.value = target;
+        }
+        
+        // Update button state
+        const button = document.getElementById(`hotplate-btn-${index}`);
+        if (button) {
+            button.className = `btn btn-${states[index] ? 'danger' : 'success'} w-100`;
+            button.innerHTML = `<i class="fas fa-power-off"></i> ${states[index] ? 'TURN OFF' : 'TURN ON'}`;
+        }
     });
 }
 
-// Update fan controls
 function updateFanControls(speeds) {
-    const container = document.getElementById('fan-controls');
-    container.innerHTML = '';
-    
     speeds.forEach((speed, index) => {
         const percentage = Math.round((speed / 255) * 100);
-        const fanHtml = `
-            <div class="row align-items-center mb-3 p-2 border rounded">
-                <div class="col-md-3">
-                    <label class="form-label fw-bold">
-                        <i class="fas fa-fan"></i> Fan ${index + 1}
-                    </label>
-                </div>
-                <div class="col-md-6">
-                    <input type="range" class="form-range fan-control" id="fan-speed-${index}" 
-                           min="0" max="255" value="${speed}" 
-                           oninput="updateFanDisplay(${index}, this.value)">
-                    <div class="d-flex justify-content-between">
-                        <small class="text-muted">Speed: <span id="fan-display-${index}">${speed}</span>/255</small>
-                        <small class="text-muted">${percentage}%</small>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-primary w-100" onclick="setFanSpeed(${index})">
-                        <i class="fas fa-fan"></i> APPLY
-                    </button>
-                </div>
-            </div>
-        `;
-        container.innerHTML += fanHtml;
+        
+        // Update progress bar
+        const progressBar = document.getElementById(`fan-progress-${index}`);
+        if (progressBar) {
+            progressBar.style.width = `${percentage}%`;
+            progressBar.textContent = `${percentage}%`;
+        }
+        
+        // Update range slider
+        const rangeSlider = document.getElementById(`fan-speed-${index}`);
+        if (rangeSlider) {
+            rangeSlider.value = speed;
+        }
+        
+        // Update speed value display
+        const speedValue = document.getElementById(`fan-speed-value-${index}`);
+        if (speedValue) {
+            speedValue.textContent = speed;
+        }
     });
 }
 
@@ -560,6 +546,46 @@ document.addEventListener('DOMContentLoaded', function() {
                 event.target.value = min;
             } else if (!isNaN(value) && value > max) {
                 event.target.value = max;
+            }
+        }
+    });
+    
+    // Add automatic temperature input updates
+    document.addEventListener('change', function(event) {
+        if (event.target.id && event.target.id.startsWith('target-temp-')) {
+            const plateId = parseInt(event.target.id.split('-')[2]);
+            const targetTemp = parseFloat(event.target.value);
+            
+            if (!isNaN(targetTemp) && targetTemp >= 0 && targetTemp <= 120) {
+                console.log(`Auto-setting temperature for hot plate ${plateId + 1} to ${targetTemp}°C`);
+                setTemperature(plateId);
+            }
+        }
+    });
+    
+    // Add automatic fan speed updates
+    document.addEventListener('input', function(event) {
+        if (event.target.id && event.target.id.startsWith('fan-speed-')) {
+            const fanId = parseInt(event.target.id.split('-')[2]);
+            const speed = parseInt(event.target.value);
+            
+            if (!isNaN(speed) && speed >= 0 && speed <= 255) {
+                // Update the speed value display
+                const speedValueElement = document.getElementById(`fan-speed-value-${fanId}`);
+                if (speedValueElement) {
+                    speedValueElement.textContent = speed;
+                }
+                
+                // Update progress bar
+                const percentage = Math.round((speed / 255) * 100);
+                const progressBar = document.getElementById(`fan-progress-${fanId}`);
+                if (progressBar) {
+                    progressBar.style.width = `${percentage}%`;
+                    progressBar.textContent = `${percentage}%`;
+                }
+                
+                console.log(`Auto-setting fan ${fanId + 1} speed to ${speed}`);
+                setFanSpeed(fanId);
             }
         }
     });

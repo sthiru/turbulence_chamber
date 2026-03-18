@@ -1,3 +1,11 @@
+import sys
+import os
+
+# Add current directory to Python path for module imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -8,7 +16,6 @@ import json
 import logging
 from typing import List
 import uvicorn
-import os
 
 from models import (
     TemperatureCommand, FanCommand, HotPlateCommand, 

@@ -33,24 +33,85 @@
                     </div>
                     <div class="card-body">
                         <div class="row" id="temperature-sensors">
-                            <!-- Sensors will be populated here -->
+                            <!-- Sensor 1 -->
+                            <div class="col-md-6 mb-3">
+                                <div class="card sensor-card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-temperature-low"></i> Sensor 1
+                                        </h6>
+                                        <div class="temp-display temp-normal" id="temp-1">--°C</div>
+                                        <small class="text-muted" id="temp-status-1">Waiting for data...</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Sensor 2 -->
+                            <div class="col-md-6 mb-3">
+                                <div class="card sensor-card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-temperature-low"></i> Sensor 2
+                                        </h6>
+                                        <div class="temp-display temp-normal" id="temp-2">--°C</div>
+                                        <small class="text-muted" id="temp-status-2">Waiting for data...</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Sensor 3 -->
+                            <div class="col-md-6 mb-3">
+                                <div class="card sensor-card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-temperature-low"></i> Sensor 3
+                                        </h6>
+                                        <div class="temp-display temp-normal" id="temp-3">--°C</div>
+                                        <small class="text-muted" id="temp-status-3">Waiting for data...</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Sensor 4 -->
+                            <div class="col-md-6 mb-3">
+                                <div class="card sensor-card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-temperature-low"></i> Sensor 4
+                                        </h6>
+                                        <div class="temp-display temp-normal" id="temp-4">--°C</div>
+                                        <small class="text-muted" id="temp-status-4">Waiting for data...</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Sensor 5 -->
+                            <div class="col-md-6 mb-3">
+                                <div class="card sensor-card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-temperature-low"></i> Sensor 5
+                                        </h6>
+                                        <div class="temp-display temp-normal" id="temp-5">--°C</div>
+                                        <small class="text-muted" id="temp-status-5">Waiting for data...</small>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Temperature Chart -->
-                <div class="card">
+            </div>
+            <div class="col-lg-6">
+                 <!-- Temperature Chart -->
+                <div class="card mb-4">
                     <div class="card-header">
                         <h5><i class="fas fa-chart-line"></i> Temperature Trends</h5>
                     </div>
                     <div class="card-body">
-                        <canvas id="tempChart" width="400" height="200"></canvas>
+                        <canvas id="tempChart" width="400" height="300"></canvas>
                     </div>
                 </div>
             </div>
 
-            <!-- Control Panel -->
-            <div class="col-lg-6">
+        <!-- Control Panel (Second Row - Full Width) -->
+        <div class="row">
+            <div class="col-12">
                 <div class="card mb-4">
                     <div class="card-header">
                         <h5><i class="fas fa-sliders-h"></i> Control Panel</h5>
@@ -60,197 +121,144 @@
                         <div class="mb-4">
                             <h6><i class="fas fa-fire"></i> Hot Plates</h6>
                             <div id="hot-plate-controls">
-                                <!-- Hot plate controls will be populated here -->
+                            <!-- Hot Plate 1 -->
+                            <div class="row align-items-center mb-3 p-2 border rounded">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-fire"></i> Hot Plate 1
+                                    </label>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="target-temp-0" 
+                                               value="80" min="0" max="120" step="0.5">
+                                        <span class="input-group-text">°C</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <button class="btn btn-success w-100" 
+                                            onclick="toggleHotPlate(0)"
+                                            id="hotplate-btn-0">
+                                        <i class="fas fa-power-off"></i> TURN ON
+                                    </button>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">Auto-applied when changed</small>
+                                </div>
                             </div>
+                            <!-- Hot Plate 2 -->
+                            <div class="row align-items-center mb-3 p-2 border rounded">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-fire"></i> Hot Plate 2
+                                    </label>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="target-temp-1" 
+                                               value="80" min="0" max="120" step="0.5">
+                                        <span class="input-group-text">°C</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <button class="btn btn-success w-100" 
+                                            onclick="toggleHotPlate(1)"
+                                            id="hotplate-btn-1">
+                                        <i class="fas fa-power-off"></i> TURN ON
+                                    </button>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">Auto-applied when changed</small>
+                                </div>
+                            </div>
+                        </div>
                         </div>
 
                         <!-- Fan Controls -->
                         <div class="mb-4">
                             <h6><i class="fas fa-fan"></i> Fan Controls</h6>
                             <div id="fan-controls">
-                                <!-- Fan controls will be populated here -->
+                            <!-- Fan 1 -->
+                            <div class="row align-items-center mb-3 p-2 border rounded">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-fan"></i> Fan 1
+                                    </label>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="progress">
+                                        <div class="progress-bar" id="fan-progress-0" style="width: 0%">0%</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="range" class="form-range" id="fan-speed-0" min="0" max="255" value="0">
+                                    <small class="text-muted">Speed: <span id="fan-speed-value-0">0</span></small>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">Auto-applied when changed</small>
+                                </div>
+                            </div>
+                            <!-- Fan 2 -->
+                            <div class="row align-items-center mb-3 p-2 border rounded">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-fan"></i> Fan 2
+                                    </label>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="progress">
+                                        <div class="progress-bar" id="fan-progress-1" style="width: 0%">0%</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="range" class="form-range" id="fan-speed-1" min="0" max="255" value="0">
+                                    <small class="text-muted">Speed: <span id="fan-speed-value-1">0</span></small>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">Auto-applied when changed</small>
+                                </div>
+                            </div>
+                            <!-- Fan 3 -->
+                            <div class="row align-items-center mb-3 p-2 border rounded">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-fan"></i> Fan 3
+                                    </label>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="progress">
+                                        <div class="progress-bar" id="fan-progress-2" style="width: 0%">0%</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="range" class="form-range" id="fan-speed-2" min="0" max="255" value="0">
+                                    <small class="text-muted">Speed: <span id="fan-speed-value-2">0</span></small>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">Auto-applied when changed</small>
+                                </div>
+                            </div>
+                            <!-- Fan 4 -->
+                            <div class="row align-items-center mb-3 p-2 border rounded">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-fan"></i> Fan 4
+                                    </label>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="progress">
+                                        <div class="progress-bar" id="fan-progress-3" style="width: 0%">0%</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="range" class="form-range" id="fan-speed-3" min="0" max="255" value="0">
+                                    <small class="text-muted">Speed: <span id="fan-speed-value-3">0</span></small>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">Auto-applied when changed</small>
+                                </div>
                             </div>
                         </div>
-
-                        <!-- Manual Controls -->
-                        <div class="mb-4">
-                            <h6><i class="fas fa-hand-paper"></i> Manual Controls</h6>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <small>Hot Plate 1</small>
-                                        </div>
-                                        <div class="card-body p-2">
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-hotplate-0">
-                                                <label class="form-check-label" for="manual-hotplate-0">
-                                                    Manual Control
-                                                </label>
-                                            </div>
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-hotplate-0-state">
-                                                <label class="form-check-label" for="manual-hotplate-0-state">
-                                                    <span id="hotplate-0-state-text">OFF</span>
-                                                </label>
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="manual-hotplate-0-temp" class="form-label small">Target Temp (°C)</label>
-                                                <input type="number" class="form-control form-control-sm" id="manual-hotplate-0-temp" min="0" max="80" value="25">
-                                            </div>
-                                            <div class="mt-2">
-                                                <small class="text-muted">Status: <span id="hotplate-0-device-status">Checking...</span></small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <small>Hot Plate 2</small>
-                                        </div>
-                                        <div class="card-body p-2">
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-hotplate-1">
-                                                <label class="form-check-label" for="manual-hotplate-1">
-                                                    Manual Control
-                                                </label>
-                                            </div>
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-hotplate-1-state">
-                                                <label class="form-check-label" for="manual-hotplate-1-state">
-                                                    <span id="hotplate-1-state-text">OFF</span>
-                                                </label>
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="manual-hotplate-1-temp" class="form-label small">Target Temp (°C)</label>
-                                                <input type="number" class="form-control form-control-sm" id="manual-hotplate-1-temp" min="0" max="80" value="25">
-                                            </div>
-                                            <div class="mt-2">
-                                                <small class="text-muted">Status: <span id="hotplate-1-device-status">Checking...</span></small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row mt-3">
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <small>Fan 1</small>
-                                        </div>
-                                        <div class="card-body p-2">
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-fan-0">
-                                                <label class="form-check-label" for="manual-fan-0">
-                                                    Manual Control
-                                                </label>
-                                            </div>
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-fan-0-state">
-                                                <label class="form-check-label" for="manual-fan-0-state">
-                                                    <span id="fan-0-state-text">OFF</span>
-                                                </label>
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="manual-fan-0-speed" class="form-label small">Speed (0-255)</label>
-                                                <input type="range" class="form-range" id="manual-fan-0-speed" min="0" max="255" value="0">
-                                                <small class="text-muted">Speed: <span id="fan-0-speed-value">0</span></small>
-                                            </div>
-                                            <div class="mt-2">
-                                                <small class="text-muted">Status: <span id="fan-0-device-status">Checking...</span></small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <small>Fan 2</small>
-                                        </div>
-                                        <div class="card-body p-2">
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-fan-1">
-                                                <label class="form-check-label" for="manual-fan-1">
-                                                    Manual Control
-                                                </label>
-                                            </div>
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-fan-1-state">
-                                                <label class="form-check-label" for="manual-fan-1-state">
-                                                    <span id="fan-1-state-text">OFF</span>
-                                                </label>
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="manual-fan-1-speed" class="form-label small">Speed (0-255)</label>
-                                                <input type="range" class="form-range" id="manual-fan-1-speed" min="0" max="255" value="0">
-                                                <small class="text-muted">Speed: <span id="fan-1-speed-value">0</span></small>
-                                            </div>
-                                            <div class="mt-2">
-                                                <small class="text-muted">Status: <span id="fan-1-device-status">Checking...</span></small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mt-3">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <small>Fan 3</small>
-                                        </div>
-                                        <div class="card-body p-2">
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-fan-2">
-                                                <label class="form-check-label" for="manual-fan-2">
-                                                    Manual Control
-                                                </label>
-                                            </div>
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-fan-2-state">
-                                                <label class="form-check-label" for="manual-fan-2-state">
-                                                    <span id="fan-2-state-text">OFF</span>
-                                                </label>
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="manual-fan-2-speed" class="form-label small">Speed (0-255)</label>
-                                                <input type="range" class="form-range" id="manual-fan-2-speed" min="0" max="255" value="0">
-                                                <small class="text-muted">Speed: <span id="fan-2-speed-value">0</span></small>
-                                            </div>
-                                            <div class="mt-2">
-                                                <small class="text-muted">Status: <span id="fan-2-device-status">Checking...</span></small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mt-3">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <small>Fan 4</small>
-                                        </div>
-                                        <div class="card-body p-2">
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-fan-3">
-                                                <label class="form-check-label" for="manual-fan-3">
-                                                    Manual Control
-                                                </label>
-                                            </div>
-                                            <div class="form-check form-switch mb-2">
-                                                <input class="form-check-input" type="checkbox" id="manual-fan-3-state">
-                                                <label class="form-check-label" for="manual-fan-3-state">
-                                                    <span id="fan-3-state-text">OFF</span>
-                                                </label>
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="manual-fan-3-speed" class="form-label small">Speed (0-255)</label>
-                                                <input type="range" class="form-range" id="manual-fan-3-speed" min="0" max="255" value="0">
-                                                <small class="text-muted">Speed: <span id="fan-3-speed-value">0</span></small>
-                                            </div>
-                                            <div class="mt-2">
-                                                <small class="text-muted">Status: <span id="fan-3-device-status">Checking...</span></small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
