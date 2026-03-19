@@ -222,16 +222,6 @@ class ArduinoCommunicator:
         command = ArduinoCommand(cmd="toggle_hotplate", plate=plate, state=state)
         return await self.send_command(command)
     
-    async def set_manual_hotplate_control(self, plate: int, manual: bool) -> ArduinoResponse:
-        """Set manual control for hot plate"""
-        command = ArduinoCommand(cmd="set_manual_hotplate", plate=plate, manual=manual)
-        return await self.send_command(command)
-    
-    async def set_manual_fan_control(self, fan: int, manual: bool) -> ArduinoResponse:
-        """Set manual control for fan"""
-        command = ArduinoCommand(cmd="set_manual_fan", fan=fan, manual=manual)
-        return await self.send_command(command)
-    
     async def monitor_connection(self):
         """Monitor Arduino connection and reconnect if needed"""
         consecutive_failures = 0

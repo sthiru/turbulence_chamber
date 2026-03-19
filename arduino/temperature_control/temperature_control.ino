@@ -56,7 +56,7 @@
 #define BME_MOSI 51
 
 // System Constants
-#define NUM_SENSORS 4
+#define NUM_SENSORS 5
 #define NUM_FANS 4
 #define NUM_HOT_PLATES 2
 #define MAX_TEMP 120.0
@@ -77,8 +77,6 @@ float currentTemperatures[NUM_SENSORS];
 float targetTemperatures[NUM_HOT_PLATES] = {80.0, 80.0};
 int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
-bool manualControlHotPlates[NUM_HOT_PLATES] = {false, false};
-bool manualControlFans[NUM_FANS] = {false, false};
 
 // BME280 Data arrays
 float bmeTemperatures[NUM_BME280_SENSORS];
@@ -117,30 +115,45 @@ void setup() {
   // Initialize temperature sensors
   sensors.begin();
   
-  // Discover and address sensors
-  int deviceCount = sensors.getDeviceCount();
-  Serial.print("Found ");
-  Serial.print(deviceCount);
-  Serial.println(" temperature devices");
+  // Set hardcoded sensor addresses
+  // Sensor 1 address: 28616434892D9476
+  // Sensor 5 address: 28616434C20D6890  
+  // Sensor 3 address: 28616434C951B1A0
+  // Sensor 2 address: 286164348927DEA9
+  // Sensor 4 address: 28616434CDBEBB2D
   
-  if (deviceCount >= NUM_SENSORS) {
-    for (int i = 0; i < NUM_SENSORS; i++) {
-      if (sensors.getAddress(tempDeviceAddresses[i], i)) {
-        Serial.print("Sensor ");
-        Serial.print(i);
-        Serial.print(" address: ");
-        printAddress(tempDeviceAddresses[i]);
-        Serial.println();
-      } else {
-        Serial.print("Unable to find address for sensor ");
-        Serial.println(i);
-      }
-    }
-    systemReady = true;
-  } else {
-    Serial.println("Not enough sensors found!");
-    blinkError(5);
+  // Convert hex strings to DeviceAddress arrays
+  // Sensor 1: 28616434892D9476
+  tempDeviceAddresses[0][0] = 0x28; tempDeviceAddresses[0][1] = 0x61; tempDeviceAddresses[0][2] = 0x64; tempDeviceAddresses[0][3] = 0x34;
+  tempDeviceAddresses[0][4] = 0x89; tempDeviceAddresses[0][5] = 0x2D; tempDeviceAddresses[0][6] = 0x94; tempDeviceAddresses[0][7] = 0x76;
+  
+  // Sensor 2: 286164348927DEA9  
+  tempDeviceAddresses[1][0] = 0x28; tempDeviceAddresses[1][1] = 0x61; tempDeviceAddresses[1][2] = 0x64; tempDeviceAddresses[1][3] = 0x34;
+  tempDeviceAddresses[1][4] = 0x89; tempDeviceAddresses[1][5] = 0x27; tempDeviceAddresses[1][6] = 0xDE; tempDeviceAddresses[1][7] = 0xA9;
+  
+  // Sensor 3: 28616434C951B1A0
+  tempDeviceAddresses[2][0] = 0x28; tempDeviceAddresses[2][1] = 0x61; tempDeviceAddresses[2][2] = 0x64; tempDeviceAddresses[2][3] = 0x34;
+  tempDeviceAddresses[2][4] = 0xC9; tempDeviceAddresses[2][5] = 0x51; tempDeviceAddresses[2][6] = 0xB1; tempDeviceAddresses[2][7] = 0xA0;
+  
+  // Sensor 4: 28616434CDBEBB2D
+  tempDeviceAddresses[3][0] = 0x28; tempDeviceAddresses[3][1] = 0x61; tempDeviceAddresses[3][2] = 0x64; tempDeviceAddresses[3][3] = 0x34;
+  tempDeviceAddresses[3][4] = 0xCD; tempDeviceAddresses[3][5] = 0xBE; tempDeviceAddresses[3][6] = 0xBB; tempDeviceAddresses[3][7] = 0x2D;
+  
+  // Sensor 5: 28616434C20D6890
+  tempDeviceAddresses[4][0] = 0x28; tempDeviceAddresses[4][1] = 0x61; tempDeviceAddresses[4][2] = 0x64; tempDeviceAddresses[4][3] = 0x34;
+  tempDeviceAddresses[4][4] = 0xC2; tempDeviceAddresses[4][5] = 0x0D; tempDeviceAddresses[4][6] = 0x68; tempDeviceAddresses[4][7] = 0x90;
+  
+  // Print sensor addresses for verification
+  Serial.println("Using hardcoded sensor addresses:");
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    Serial.print("Sensor ");
+    Serial.print(i + 1);
+    Serial.print(" address: ");
+    printAddress(tempDeviceAddresses[i]);
+    Serial.println();
   }
+  
+  systemReady = true;
   
   // Set resolution
   sensors.setResolution(12);
@@ -375,26 +388,6 @@ void processCommand(String command) {
     } else {
       sendErrorResponse("Invalid hot plate parameters");
     }
-  } else if (cmd == "set_manual_hotplate") {
-    int plate = doc["plate"] | -1;
-    bool manual = doc["manual"] | false;
-    
-    if (plate >= 0 && plate < NUM_HOT_PLATES) {
-      manualControlHotPlates[plate] = manual;
-      sendStatusResponse();
-    } else {
-      sendErrorResponse("Invalid hot plate manual parameters");
-    }
-  } else if (cmd == "set_manual_fan") {
-    int fan = doc["fan"] | -1;
-    bool manual = doc["manual"] | false;
-    
-    if (fan >= 0 && fan < NUM_FANS) {
-      manualControlFans[fan] = manual;
-      sendStatusResponse();
-    } else {
-      sendErrorResponse("Invalid fan manual parameters");
-    }
   } else {
     sendErrorResponse("Unknown command");
   }
@@ -451,16 +444,6 @@ void sendStatusResponse() {
   JsonArray plates = data.createNestedArray("hot_plate_states");
   for (int i = 0; i < NUM_HOT_PLATES; i++) {
     plates.add(hotPlateStates[i]);
-  }
-  
-  JsonArray manualPlates = data.createNestedArray("manual_hotplate_states");
-  for (int i = 0; i < NUM_HOT_PLATES; i++) {
-    manualPlates.add(manualControlHotPlates[i]);
-  }
-  
-  JsonArray manualFans = data.createNestedArray("manual_fan_states");
-  for (int i = 0; i < NUM_FANS; i++) {
-    manualFans.add(manualControlFans[i]);
   }
   
   data["system_ready"] = systemReady;

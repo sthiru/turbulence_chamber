@@ -25,11 +25,11 @@ class HotPlateData(BaseModel):
 
 class SystemStatus(BaseModel):
     temperatures: List[float]
+    temperature_bme: List[float]
+    pressure: List[float]
     target_temperatures: List[float]
     fan_speeds: List[int]
     hot_plate_states: List[bool]
-    manual_hotplate_states: List[float] = []
-    manual_fan_states: List[bool] = []
     system_ready: bool
     device_status: Optional[DeviceStatus] = None
 
@@ -53,12 +53,6 @@ class ArduinoCommand(BaseModel):
     speed: Optional[int] = None
     plate: Optional[int] = None
     state: Optional[bool] = None
-    manual: Optional[bool] = None
-
-class ManualControlCommand(BaseModel):
-    device_type: str  # "hotplate" or "fan"
-    device_id: int
-    manual_control: bool
 
 class ArduinoResponse(BaseModel):
     status: str

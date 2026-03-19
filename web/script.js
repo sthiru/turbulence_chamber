@@ -22,7 +22,14 @@ const CONFIG = {
     UPDATE_INTERVAL: 2000,
     CHART_MAX_POINTS: 150, // 5 minutes at 2-second intervals
     CHART_DURATION: 300000, // 5 minutes in milliseconds
-    NUM_SENSORS: 5
+    NUM_SENSORS: 5,
+    SENSOR_COLORS: [
+        '#FF6384', // Red
+        '#36A2EB', // Blue  
+        '#FFCE56', // Yellow
+        '#4BC0C0', // Teal
+        '#9966FF'  // Purple
+    ]
 };
 
 // Initialize WebSocket connection
@@ -46,13 +53,49 @@ function initWebSocket() {
                 const data = JSON.parse(event.data);
                 console.log('WebSocket data received:', data);
                 
-                // Ignore ping messages
+                // Handle different message types
                 if (data.type === 'ping') {
                     console.log('Ping message received, ignoring');
                     return;
+                } else if (data.type === 'system_status') {
+                    // Update system status immediately for fast footer update
+                    console.log('System status message received');
+                    updateSystemStatus(data);
+                    updateConnectionStatus(data.device_status, 'Connected');
+                } else if (data.type === 'historical_data') {
+                    // Handle complete historical data (first time)
+                    console.log('Historical data message received, records:', data.count);
+                    
+                    // Update with latest data for all displays
+                    if (data.data && data.data.length > 0) {
+                        const latestData = data.data[data.data.length - 1];
+                        updateTemperatureSensors(latestData.temperatures || []);
+                        updateHotPlateControls(latestData.target_temperatures || [], latestData.hot_plate_states || []);
+                        updateFanControls(latestData.fan_speeds || []);
+                        updateDeviceStatus({}); // Empty since system status is in separate message
+                        updateChart(data.data.slice(-50)); // Update chart with last 50 records
+                        updateBMESensors(latestData); // Update BME280 sensors
+                        updateCN2Display(latestData.cn2 || 0.0); // Update CN² display
+                    }
+                } else if (data.type === 'current_data') {
+                    // Handle current data updates (subsequent messages)
+                    console.log('Current data message received, records:', data.count);
+                    
+                    // Update with latest data for all displays
+                    if (data.data && data.data.length > 0) {
+                        const latestData = data.data[data.data.length - 1];
+                        updateTemperatureSensors(latestData.temperatures || []);
+                        updateHotPlateControls(latestData.target_temperatures || [], latestData.hot_plate_states || []);
+                        updateFanControls(latestData.fan_speeds || []);
+                        updateDeviceStatus({}); // Empty since system status is in separate message
+                        updateChart(data.data); // Update chart with recent data only
+                        updateBMESensors(latestData); // Update BME280 sensors
+                        updateCN2Display(latestData.cn2 || 0.0); // Update CN² display
+                    }
+                } else {
+                    // Handle legacy single message format
+                    updateDisplay(data);
                 }
-                
-                updateDisplay(data);
             } catch (error) {
                 console.error('Error parsing WebSocket data:', error);
                 showErrorMessage('Invalid data received from server');
@@ -142,38 +185,45 @@ function updateSystemStatus(data) {
     const arduinoPortElement = document.getElementById('arduino-port');
     const pollingIntervalElement = document.getElementById('polling-interval-display');
     
-    systemReadyElement.textContent = data.system_ready ? 'Yes' : 'No';
-    systemReadyElement.className = data.system_ready ? 'text-success' : 'text-danger';
+    // Update main status badge
+    const isReady = data.system_ready || false;
+    const deviceStatus = data.device_status || 'unknown';
+    const arduinoPort = data.arduino_port || 'Unknown';
+    const pollingInterval = data.polling_interval || 3.0;
     
-    deviceStatusElement.textContent = data.device_status || 'Unknown';
+    // Update individual status elements with null checks
+    if (systemReadyElement) {
+        systemReadyElement.textContent = isReady ? 'Yes' : 'No';
+        systemReadyElement.className = isReady ? 'text-success' : 'text-danger';
+    }
     
-    // Update device status color
-    const statusClass = data.device_status === 'online' ? 'text-success' : 
-                       data.device_status === 'offline' ? 'text-danger' : 'text-warning';
-    deviceStatusElement.className = statusClass;
+    if (deviceStatusElement) {
+        deviceStatusElement.textContent = deviceStatus;
+        const deviceStatusClass = deviceStatus === 'online' ? 'text-success' : 
+                                  deviceStatus === 'offline' ? 'text-danger' : 'text-warning';
+        deviceStatusElement.className = deviceStatusClass;
+    }
     
     // Update Arduino port display
-    if (data.arduino_port) {
-        arduinoPortElement.textContent = data.arduino_port;
-        arduinoPortElement.className = 'text-success';
-        
-        // Update the select dropdown to match current port
-        const comPortSelect = document.getElementById('com-port-select');
-        if (comPortSelect) {
-            comPortSelect.value = data.arduino_port;
+    if (arduinoPortElement) {
+        if (arduinoPort && arduinoPort !== 'Unknown') {
+            arduinoPortElement.textContent = arduinoPort;
+            arduinoPortElement.className = 'text-success';
+        } else {
+            arduinoPortElement.textContent = 'Unknown';
+            arduinoPortElement.className = 'text-muted';
         }
-    } else {
-        arduinoPortElement.textContent = 'Not connected';
-        arduinoPortElement.className = 'text-danger';
     }
     
     // Update polling interval display
-    if (data.polling_interval) {
-        pollingIntervalElement.textContent = data.polling_interval + 's';
-        const pollingInput = document.getElementById('polling-interval');
-        if (pollingInput) {
-            pollingInput.value = data.polling_interval;
-        }
+    if (pollingIntervalElement) {
+        pollingIntervalElement.textContent = `${pollingInterval}s`;
+    }
+    
+    // Update polling interval input
+    const pollingInput = document.getElementById('polling-interval');
+    if (pollingInput && data.polling_interval) {
+        pollingInput.value = data.polling_interval;
     }
     
     // Show error message if present
@@ -344,27 +394,131 @@ function initChart() {
     });
 }
 
+// Update BME280 sensor displays
+function updateBMESensors(data) {
+    const bmeTemps = data.temperature_bme || [];
+    const bmeHumidity = data.humidity || [];
+    const bmePressure = data.pressure || [];
+    
+    // Update BME280 temperature displays
+    bmeTemps.forEach((temp, index) => {
+        const tempElement = document.getElementById(`bme-temp-${index + 1}`);
+        const statusElement = document.getElementById(`bme-temp-status-${index + 1}`);
+        const cardElement = tempElement?.closest('.sensor-card');
+        
+        if (tempElement) {
+            tempElement.textContent = temp.toFixed(1) + '°C';
+        }
+        
+        if (statusElement) {
+            if (temp < -100) {
+                statusElement.textContent = 'Error';
+                if (cardElement) cardElement.className = 'card sensor-card h-100 border-danger';
+            } else {
+                statusElement.textContent = 'Normal';
+                if (cardElement) {
+                    cardElement.className = 'card sensor-card h-100';
+                    if (temp >= CONFIG.DANGER_TEMP) {
+                        cardElement.classList.add('border-danger');
+                    } else if (temp >= CONFIG.WARNING_TEMP) {
+                        cardElement.classList.add('border-warning');
+                    } else {
+                        cardElement.classList.add('border-success');
+                    }
+                }
+            }
+        }
+    });
+    
+    // Update BME280 humidity displays
+    bmeHumidity.forEach((humidity, index) => {
+        const humidityElement = document.getElementById(`bme-humidity-${index + 1}`);
+        if (humidityElement) {
+            if (humidity < 0 || humidity > 100) {
+                humidityElement.textContent = '--%';
+            } else {
+                humidityElement.textContent = humidity.toFixed(1) + '%';
+            }
+        }
+    });
+    
+    // Update BME280 pressure displays
+    bmePressure.forEach((pressure, index) => {
+        const pressureElement = document.getElementById(`bme-pressure-${index + 1}`);
+        if (pressureElement) {
+            if (pressure < 0) {
+                pressureElement.textContent = '-- hPa';
+            } else {
+                pressureElement.textContent = pressure.toFixed(1) + ' hPa';
+            }
+        }
+    });
+}
+
+// Update CN² display
+function updateCN2Display(cn2Value) {
+    const cn2Element = document.getElementById('cn2-value');
+    if (cn2Element) {
+        // Format CN² value in scientific notation
+        if (cn2Value === 0) {
+            cn2Element.textContent = '0.00e+0';
+        } else {
+            cn2Element.textContent = cn2Value.toExponential(2);
+        }
+        
+        // Add color coding based on CN² value ranges
+        const cn2Container = cn2Element.closest('.cn2-container');
+        if (cn2Container) {
+            // Remove existing color classes
+            cn2Container.classList.remove('cn2-low', 'cn2-medium', 'cn2-high');
+            
+            // Add color class based on value
+            if (cn2Value < 1e-15) {
+                cn2Container.classList.add('cn2-low');      // Green - Low turbulence
+            } else if (cn2Value < 1e-13) {
+                cn2Container.classList.add('cn2-medium');   // Yellow - Medium turbulence
+            } else {
+                cn2Container.classList.add('cn2-high');     // Red - High turbulence
+            }
+        }
+        
+        console.log(`CN² updated: ${cn2Value.toExponential(2)}`);
+    }
+}
+
 // Update temperature chart with 5-minute history
-function updateChart(temperatures) {
+function updateChart(statusData) {
     if (!tempChart) return;
     
-    const now = new Date();
-    const timestamp = now.getTime();
-    const timeString = now.toLocaleTimeString();
+    // Handle both single status object and array of status objects
+    const statusArray = Array.isArray(statusData) ? statusData : [statusData];
     
-    // Store temperature data
-    temperatureHistory.timestamps.push(timestamp);
-    if (temperatureHistory.data.length === 0) {
-        // Initialize data arrays for each sensor
-        temperatures.forEach(() => temperatureHistory.data.push([]));
-    }
-    
-    temperatures.forEach((temp, index) => {
-        temperatureHistory.data[index].push(temp);
+    // Process each status record
+    statusArray.forEach(status => {
+        const now = status.timestamp ? new Date(status.timestamp) : new Date();
+        const timestamp = now.getTime();
+        const timeString = now.toLocaleTimeString();
+        
+        // Get temperatures from status data
+        const temperatures = status.temperatures || [];
+        
+        // Store temperature data
+        temperatureHistory.timestamps.push(timestamp);
+        if (temperatureHistory.data.length === 0) {
+            // Initialize data arrays for each sensor
+            temperatures.forEach(() => temperatureHistory.data.push([]));
+        }
+        
+        temperatures.forEach((temp, index) => {
+            if (temperatureHistory.data[index]) {
+                temperatureHistory.data[index].push(temp);
+            }
+        });
     });
     
     // Remove data older than 5 minutes
-    const cutoffTime = timestamp - CONFIG.CHART_DURATION;
+    const latestTimestamp = temperatureHistory.timestamps[temperatureHistory.timestamps.length - 1] || Date.now();
+    const cutoffTime = latestTimestamp - CONFIG.CHART_DURATION;
     const cutoffIndex = temperatureHistory.timestamps.findIndex(t => t >= cutoffTime);
     
     if (cutoffIndex > 0) {
@@ -379,21 +533,19 @@ function updateChart(temperatures) {
         new Date(t).toLocaleTimeString()
     );
     
-    temperatures.forEach((temp, index) => {
-        if (!tempData.datasets[index]) {
+    // Update each sensor dataset
+    CONFIG.SENSOR_COLORS.forEach((color, index) => {
+        if (index < temperatureHistory.data.length) {
             tempData.datasets[index] = {
                 label: `Sensor ${index + 1}`,
-                data: [],
-                borderColor: `hsl(${index * 60}, 70%, 50%)`,
-                backgroundColor: `hsla(${index * 60}, 70%, 50%, 0.1)`,
-                tension: 0.1,
+                data: temperatureHistory.data[index] || [],
+                borderColor: color,
+                backgroundColor: color + '20',
                 borderWidth: 2,
-                pointRadius: 2,
-                pointHoverRadius: 4
+                tension: 0.4,
+                fill: false
             };
         }
-        
-        tempData.datasets[index].data = temperatureHistory.data[index] || [];
     });
     
     tempChart.update('none'); // Update without animation for real-time performance
@@ -474,6 +626,12 @@ async function setTemperature(plateId) {
 
 async function setFanSpeed(fanId) {
     const speedInput = document.getElementById(`fan-speed-${fanId}`);
+    
+    if (!speedInput) {
+        console.error('Speed input element not found for fan:', fanId);
+        return;
+    }
+    
     const speed = parseInt(speedInput.value);
     
     if (isNaN(speed) || speed < 0 || speed > 255) {
@@ -487,10 +645,10 @@ async function setFanSpeed(fanId) {
             fan: fanId,
             speed: speed
         });
-        console.log(`Fan ${fanId + 1} speed set to ${speed}`);
         
     } catch (error) {
         console.error('Failed to set fan speed:', error);
+        showErrorMessage('Failed to set fan speed: ' + error.message);
     }
 }
 
@@ -522,6 +680,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize COM port controls
     initComPortControls();
+    
+    // Load saved settings
+    loadSavedSettings();
     
     // Add keyboard shortcuts
     document.addEventListener('keydown', function(event) {
@@ -584,7 +745,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     progressBar.textContent = `${percentage}%`;
                 }
                 
-                console.log(`Auto-setting fan ${fanId + 1} speed to ${speed}`);
                 setFanSpeed(fanId);
             }
         }
@@ -946,12 +1106,6 @@ async function setPollingInterval() {
         if (response.status === 'success') {
             showErrorMessage('Polling interval updated successfully!', 'success');
             console.log('Polling interval set to:', interval + 's');
-            
-            // Update display
-            const displayElement = document.getElementById('polling-interval-display');
-            if (displayElement) {
-                displayElement.textContent = interval + 's';
-            }
         } else {
             showErrorMessage('Failed to set polling interval: ' + response.message);
         }
@@ -963,5 +1117,339 @@ async function setPollingInterval() {
         // Restore button state
         setButton.innerHTML = originalText;
         setButton.disabled = false;
+    }
+}
+
+// Initialize COM port controls
+function initComPortControls() {
+    const reconnectButton = document.getElementById('reconnect-arduino');
+    const comPortSelect = document.getElementById('com-port-select');
+    const setPollingButton = document.getElementById('set-polling-interval');
+    const setHistorySizeButton = document.getElementById('set-history-size');
+    const saveSettingsButton = document.getElementById('save-settings');
+    
+    if (reconnectButton) {
+        reconnectButton.addEventListener('click', async function() {
+            try {
+                const originalText = reconnectButton.innerHTML;
+                reconnectButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reconnecting...';
+                reconnectButton.disabled = true;
+                
+                const response = await apiCall('/api/arduino/reconnect', 'POST');
+                
+                if (response.status === 'success') {
+                    showErrorMessage('Arduino reconnected successfully!', 'success');
+                } else {
+                    showErrorMessage('Failed to reconnect Arduino: ' + response.message);
+                }
+                
+            } catch (error) {
+                console.error('Failed to reconnect Arduino:', error);
+                showErrorMessage('Failed to reconnect Arduino: ' + error.message);
+            } finally {
+                reconnectButton.innerHTML = '<i class="fas fa-sync-alt"></i> Reconnect';
+                reconnectButton.disabled = false;
+            }
+        });
+    }
+    
+    if (comPortSelect) {
+        comPortSelect.addEventListener('change', async function() {
+            const selectedPort = this.value;
+            if (selectedPort) {
+                try {
+                    const response = await apiCall('/api/arduino/port', 'POST', { port: selectedPort });
+                    
+                    if (response.status === 'success') {
+                        showErrorMessage(`Port changed to ${selectedPort}. Reconnecting...`, 'success');
+                        // Trigger reconnect after a short delay
+                        setTimeout(() => {
+                            reconnectButton.click();
+                        }, 1000);
+                    } else {
+                        showErrorMessage('Failed to change port: ' + response.message);
+                    }
+                } catch (error) {
+                    console.error('Failed to change port:', error);
+                    showErrorMessage('Failed to change port: ' + error.message);
+                }
+            }
+        });
+    }
+    
+    if (setPollingButton) {
+        setPollingButton.addEventListener('click', setPollingInterval);
+    }
+    
+    if (setHistorySizeButton) {
+        setHistorySizeButton.addEventListener('click', async function() {
+            try {
+                const originalText = setHistorySizeButton.innerHTML;
+                setHistorySizeButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Setting...';
+                setHistorySizeButton.disabled = true;
+                
+                const historySize = parseInt(document.getElementById('history-size').value);
+                
+                if (historySize < 10 || historySize > 1000) {
+                    showErrorMessage('History size must be between 10 and 1000 records', 'error');
+                    return;
+                }
+                
+                const response = await apiCall('/api/history_size', 'POST', { size: historySize });
+                
+                if (response.status === 'success') {
+                    showErrorMessage(`History size set to ${historySize} records`, 'success');
+                    updateHistoryInfo();
+                } else {
+                    showErrorMessage('Failed to set history size: ' + response.message);
+                }
+                
+            } catch (error) {
+                console.error('Failed to set history size:', error);
+                showErrorMessage('Failed to set history size: ' + error.message);
+            } finally {
+                setHistorySizeButton.innerHTML = '<i class="fas fa-database"></i> Set';
+                setHistorySizeButton.disabled = false;
+            }
+        });
+    }
+    
+    if (saveSettingsButton) {
+        saveSettingsButton.addEventListener('click', async function() {
+            try {
+                const originalText = saveSettingsButton.innerHTML;
+                saveSettingsButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+                saveSettingsButton.disabled = true;
+                
+                // Get current values
+                const comPort = comPortSelect.value;
+                const pollingInterval = document.getElementById('polling-interval').value;
+                const historySize = document.getElementById('history-size').value;
+                
+                // Save settings to localStorage
+                localStorage.setItem('arduino_com_port', comPort);
+                localStorage.setItem('polling_interval', pollingInterval);
+                localStorage.setItem('history_size', historySize);
+                
+                // Apply settings
+                if (comPort) {
+                    const portResponse = await apiCall('/api/arduino/port', 'POST', { port: comPort });
+                    if (portResponse.status === 'success') {
+                        console.log('COM port saved:', comPort);
+                    }
+                }
+                
+                const intervalResponse = await apiCall('/api/polling_interval', 'POST', parseFloat(pollingInterval));
+                if (intervalResponse.status === 'success') {
+                    console.log('Polling interval saved:', pollingInterval);
+                }
+                
+                const historyResponse = await apiCall('/api/history_size', 'POST', { size: parseInt(historySize) });
+                if (historyResponse.status === 'success') {
+                    console.log('History size saved:', historySize);
+                }
+                
+                showErrorMessage('Settings saved successfully!', 'success');
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+                if (modal) {
+                    modal.hide();
+                }
+                
+            } catch (error) {
+                console.error('Failed to save settings:', error);
+                showErrorMessage('Failed to save settings: ' + error.message);
+            } finally {
+                saveSettingsButton.innerHTML = '<i class="fas fa-save"></i> Save Settings';
+                saveSettingsButton.disabled = false;
+            }
+        });
+    }
+}
+
+// Update history information display
+async function updateHistoryInfo() {
+    try {
+        const response = await apiCall('/api/history');
+        if (response.status === 'success') {
+            const currentSizeElement = document.getElementById('current-history-size');
+            const recordCountElement = document.getElementById('current-record-count');
+            
+            if (currentSizeElement) {
+                currentSizeElement.textContent = response.max_size || 100;
+            }
+            
+            if (recordCountElement) {
+                recordCountElement.textContent = response.count || 0;
+            }
+        }
+    } catch (error) {
+        console.error('Failed to get history info:', error);
+    }
+}
+
+// Load saved settings on page load
+function loadSavedSettings() {
+    const savedComPort = localStorage.getItem('arduino_com_port');
+    const savedPollingInterval = localStorage.getItem('polling_interval');
+    const savedHistorySize = localStorage.getItem('history_size');
+    
+    if (savedComPort) {
+        const comPortSelect = document.getElementById('com-port-select');
+        if (comPortSelect) {
+            comPortSelect.value = savedComPort;
+        }
+    }
+    
+    if (savedPollingInterval) {
+        const pollingInput = document.getElementById('polling-interval');
+        if (pollingInput) {
+            pollingInput.value = savedPollingInterval;
+        }
+    }
+    
+    if (savedHistorySize) {
+        const historySizeInput = document.getElementById('history-size');
+        if (historySizeInput) {
+            historySizeInput.value = savedHistorySize;
+        }
+    }
+    
+    // Update history information display
+    updateHistoryInfo();
+}
+
+// Download current data based on storage settings
+async function downloadCurrentData() {
+    try {
+        showErrorMessage('Preparing CSV download...', 'info');
+        
+        // Get current history size from settings or use default
+        const historySizeInput = document.getElementById('history-size');
+        const historySize = historySizeInput ? parseInt(historySizeInput.value) : 100;
+        
+        // Download all available data (up to the current storage limit)
+        const response = await fetch('/api/download/csv');
+        if (!response.ok) {
+            throw new Error(`Failed to download: ${response.statusText}`);
+        }
+        
+        // Get filename from response headers or create one
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `arduino_data_${historySize}_records_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+        
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+            if (filenameMatch) {
+                filename = filenameMatch[1];
+            }
+        }
+        
+        // Create blob and download
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+        
+        showErrorMessage(`Downloaded current data as CSV`, 'success');
+        
+    } catch (error) {
+        console.error('Download error:', error);
+        showErrorMessage(`Failed to download data: ${error.message}`, 'error');
+    }
+}
+
+// Download data functions
+async function downloadData(limit = 'all') {
+    try {
+        showErrorMessage('Preparing CSV download...', 'info');
+        
+        let url;
+        if (limit === 'all') {
+            url = '/api/download/csv';
+        } else {
+            url = `/api/download/csv/${parseInt(limit)}`;
+        }
+        
+        // Create download link
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to download: ${response.statusText}`);
+        }
+        
+        // Get filename from response headers or create one
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `arduino_data_${limit}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+        
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+            if (filenameMatch) {
+                filename = filenameMatch[1];
+            }
+        }
+        
+        // Create blob and download
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+        
+        showErrorMessage(`Downloaded ${limit === 'all' ? 'all records' : `last ${limit} records`} as CSV`, 'success');
+        
+    } catch (error) {
+        console.error('Download error:', error);
+        showErrorMessage(`Failed to download data: ${error.message}`, 'error');
+    }
+}
+
+async function downloadJSON(limit = 'all') {
+    try {
+        showErrorMessage('Preparing JSON download...', 'info');
+        
+        let url;
+        if (limit === 'all') {
+            url = '/api/history';
+        } else {
+            url = `/api/history/${parseInt(limit)}`;
+        }
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch data: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Create JSON blob
+        const jsonString = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        
+        // Create download
+        const filename = `arduino_data_${limit}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+        
+        showErrorMessage(`Downloaded ${limit === 'all' ? 'all records' : `last ${limit} records`} as JSON`, 'success');
+        
+    } catch (error) {
+        console.error('JSON download error:', error);
+        showErrorMessage(`Failed to download JSON: ${error.message}`, 'error');
     }
 }

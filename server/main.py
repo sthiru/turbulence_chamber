@@ -8,18 +8,22 @@ if current_dir not in sys.path:
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncio
 import json
+import time
 import logging
-from typing import List
-import uvicorn
+from datetime import datetime
+from collections import deque
+import csv
+import io
+import math
 
 from models import (
     TemperatureCommand, FanCommand, HotPlateCommand, 
-    SystemStatus, ArduinoResponse, DeviceStatus, ManualControlCommand
+    SystemStatus, ArduinoResponse, DeviceStatus
 )
 from arduino_comm import arduino_comm
 
@@ -86,45 +90,92 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# Global variables
-current_status: SystemStatus = None
-status_broadcast_task = None
-polling_interval = 10.0  # Default 10 seconds
+# Data storage for Arduino status records
+status_history = deque(maxlen=100)  # Store last 100 records
+MAX_HISTORY_SIZE = 100
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize Arduino connection and start status monitoring"""
-    logger.info("Starting Temperature Control System server...")
+# Global variables for background polling
+polling_interval = 3.0  # Default polling interval in seconds
+background_task = None
+last_broadcast_time = 0
+historical_data_sent = False  # Track if full historical data has been sent
+
+# CN² calculation function
+def calculate_cn2(temperatures, bme_temperatures, bme_pressure, r=0.5):
+    """
+    Calculate CN² (structure function parameter) for turbulence
     
-    # Connect to Arduino
-    logger.info(f"Attempting to connect to Arduino on {arduino_comm.port}...")
-    success = await arduino_comm.connect()
-    if success:
-        logger.info("Arduino connected successfully")
-        # Start connection monitoring
-        asyncio.create_task(arduino_comm.monitor_connection())
-        # Start status broadcasting
-        asyncio.create_task(broadcast_status())
-    else:
-        logger.warning("Failed to connect to Arduino - server will run without Arduino")
-        logger.info("Please check:")
-        logger.info("1. Arduino is connected via USB")
-        logger.info("2. Correct COM port is being used")
-        logger.info("3. Arduino sketch is uploaded and running")
-        logger.info("4. No other program is using the serial port")
+    Formula: (7.9*10^-5 * (P/T^2))*((dt^2)/r^(2/3))
+    
+    Args:
+        temperatures: List of temperature readings from DS18B20 sensors
+        bme_temperatures: List of temperature readings from BME280 sensors
+        pressure: Pressure in hPa (default 1010 hPa)
+        r: Radial distance (default 0.5)
+    
+    Returns:
+        CN² value
+    """
+    try:
+        # Get the minimum temperature from BME280 sensors (ambient temperature)
+        if(len(bme_temperatures) > 0):
+            ambient_temp = min(bme_temperatures)
+            ambient_temp = ambient_temp if ambient_temp > 0.0 else max(bme_temperatures)
+        else:
+            ambient_temp = 25.0  # Default to room temperature
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    await arduino_comm.disconnect()
+        # Get the minimum peressure from BME senesor
+        if(len(bme_pressure) > 0):
+            pressure = min(bme_pressure)
+            pressure = pressure if pressure > 0.0 else max(bme_pressure)
+        else:
+            pressure = 1010.0  # Default to standard pressure
+        
+        if ambient_temp <= 0:
+            logger.warning(f"Invalid ambient temperature for CN²: {ambient_temp}")
+            ambient_temp = 25.0  # Default to room temperature
+        
+        if pressure <= 0:
+            logger.warning(f"Invalid pressure for CN²: {pressure}")
+            pressure = 1010.0  # Default to standard pressure
 
-async def broadcast_status():
-    """Broadcast system status to all WebSocket clients"""
-    logger.info("Starting status broadcasting task...")
+        ambient_temp_kelvin = ambient_temp + 273.15
+        
+        # Calculate dt^2 (difference between min and max temperatures)
+        if not temperatures or len(temperatures) < 2:
+            return 0.0
+        
+        valid_temps = [temp for temp in temperatures if temp > -100]  # Filter out error values
+        if len(valid_temps) < 2:
+            return 0.0
+        
+        temp_min = min(valid_temps)
+        temp_max = max(valid_temps)
+        dt_squared = (temp_max - temp_min) ** 2
+        
+        # Calculate CN² using the formula
+        cn2 = (7.9e-5 * (pressure / (ambient_temp_kelvin ** 2)))**2 * (dt_squared / (r ** (2/3)))
+        
+        logger.debug(f"CN² calculation: P={pressure}hPa, T={ambient_temp}°C, dt²={dt_squared:.2f}, CN²={cn2:.2e}")
+        
+        return cn2
+        
+    except Exception as e:
+        logger.error(f"Error calculating CN²: {e}")
+        return 0.0
+
+# Background polling task
+async def background_status_polling():
+    """Continuously poll Arduino for status and store in cache"""
+    global last_broadcast_time, last_system_status, historical_data_sent
+    
+    logger.info(f"Starting background status polling with {polling_interval}s interval")
+    last_system_status = {}  # Track last system status to detect changes
+    historical_data_sent = False  # Reset for new connections
     
     while True:
         try:
-            logger.debug(f"Polling Arduino... Active connections: {len(manager.active_connections)}")
+            current_time = time.time()
             
             # Get status from Arduino
             response = await arduino_comm.get_status()
@@ -133,11 +184,99 @@ async def broadcast_status():
                 status_data = response.data.dict()
                 status_data["device_status"] = "online"
                 status_data["arduino_port"] = arduino_comm.port if arduino_comm.is_connected else None
+                status_data["timestamp"] = datetime.now().isoformat()
+                
+                # Calculate CN² and add to status data
+                temperatures = status_data.get("temperatures", [])
+                bme_temperatures = status_data.get("temperature_bme", [])
+                bme_pressure = status_data.get("pressure", [])
+                
+                cn2_value = calculate_cn2(temperatures, bme_temperatures, bme_pressure)
+                status_data["cn2"] = cn2_value
+                
+                # Store in history
+                status_history.append(status_data.copy())
                 
                 # Broadcast to all connected clients
                 if manager.active_connections:
-                    await manager.broadcast(json.dumps(status_data))
-                    logger.info(f"Broadcasted status to {len(manager.active_connections)} clients: {status_data.get('device_status', 'unknown')}")
+                    # Check if system status changed (for system_status messages)
+                    current_system_status = {
+                        "device_status": status_data.get("device_status", "unknown"),
+                        "system_ready": status_data.get("system_ready", False),
+                        "arduino_port": status_data.get("arduino_port"),
+                        "polling_interval": polling_interval,
+                        "timestamp": status_data.get("timestamp")
+                    }
+                    
+                    # Send system status only if it changed or first broadcast
+                    system_status_changed = (
+                        not last_system_status or
+                        current_system_status["device_status"] != last_system_status.get("device_status") or
+                        current_system_status["system_ready"] != last_system_status.get("system_ready") or
+                        current_system_status["arduino_port"] != last_system_status.get("arduino_port")
+                    )
+                    
+                    if system_status_changed or last_broadcast_time == 0:
+                        await manager.broadcast(json.dumps({
+                            "type": "system_status",
+                            **current_system_status
+                        }))
+                        last_system_status = current_system_status.copy()
+                        logger.info(f"System status changed: {current_system_status['device_status']} | Ready: {current_system_status['system_ready']}")
+                        
+                        # Reset historical data flag when system status changes (new connection)
+                        if system_status_changed:
+                            historical_data_sent = False
+                    
+                    # Send data based on whether historical data has been sent
+                    if not historical_data_sent:
+                        # Send complete historical data for first time (without system status fields)
+                        historical_data_message = {
+                            "type": "historical_data",
+                            "data": [
+                                {
+                                    "temperatures": record.get("temperatures", []),
+                                    "target_temperatures": record.get("target_temperatures", []),
+                                    "fan_speeds": record.get("fan_speeds", []),
+                                    "hot_plate_states": record.get("hot_plate_states", []),
+                                    "temperature_bme": record.get("temperature_bme", []),
+                                    "humidity": record.get("humidity", []),
+                                    "pressure": record.get("pressure", []),
+                                    "cn2": record.get("cn2", 0.0),
+                                    "timestamp": record.get("timestamp")
+                                } for record in status_history
+                            ],
+                            "count": len(status_history),
+                            "max_size": MAX_HISTORY_SIZE
+                        }
+                        await manager.broadcast(json.dumps(historical_data_message))
+                        historical_data_sent = True
+                        logger.info(f"Sent complete historical data: {len(status_history)} records")
+                    else:
+                        # Send only current data (last 10 records) for subsequent updates (without system status fields)
+                        recent_records = list(status_history)[-10:] if len(status_history) > 10 else list(status_history)
+                        current_data_message = {
+                            "type": "current_data",
+                            "data": [
+                                {
+                                    "temperatures": record.get("temperatures", []),
+                                    "target_temperatures": record.get("target_temperatures", []),
+                                    "fan_speeds": record.get("fan_speeds", []),
+                                    "hot_plate_states": record.get("hot_plate_states", []),
+                                    "temperature_bme": record.get("temperature_bme", []),
+                                    "humidity": record.get("humidity", []),
+                                    "pressure": record.get("pressure", []),
+                                    "cn2": record.get("cn2", 0.0),
+                                    "timestamp": record.get("timestamp")
+                                } for record in recent_records
+                            ],
+                            "count": len(recent_records),
+                            "latest_only": True
+                        }
+                        await manager.broadcast(json.dumps(current_data_message))
+                        logger.debug(f"Sent current data: {len(recent_records)} recent records")
+                    
+                    last_broadcast_time = current_time
                 else:
                     logger.debug("No WebSocket clients connected, skipping broadcast")
                 
@@ -151,31 +290,106 @@ async def broadcast_status():
                     "target_temperatures": [80.0, 80.0],
                     "fan_speeds": [0, 0, 0, 0],
                     "hot_plate_states": [False, False],
-                    "system_ready": False
+                    "system_ready": False,
+                    "timestamp": datetime.now().isoformat()
                 }
+                
+                # Store error in history
+                status_history.append(error_status.copy())
+                
                 if manager.active_connections:
-                    await manager.broadcast(json.dumps(error_status))
-                    logger.warning(f"Broadcasted error status: {error_status['error']}")
+                    # Check if error status changed
+                    current_error_status = {
+                        "device_status": "offline",
+                        "system_ready": False,
+                        "arduino_port": error_status.get("arduino_port"),
+                        "polling_interval": polling_interval,
+                        "timestamp": error_status.get("timestamp"),
+                        "error": error_status.get("error")
+                    }
+                    
+                    error_status_changed = (
+                        not last_system_status or
+                        current_error_status["device_status"] != last_system_status.get("device_status") or
+                        current_error_status["error"] != last_system_status.get("error", "")
+                    )
+                    
+                    if error_status_changed:
+                        await manager.broadcast(json.dumps({
+                            "type": "system_status",
+                            **current_error_status
+                        }))
+                        last_system_status = current_error_status.copy()
+                        logger.warning(f"Error status changed: {error_status['error']}")
+                        
+                        # Reset historical data flag when error status changes
+                        historical_data_sent = False
                 else:
                     logger.debug("No WebSocket clients connected, skipping error broadcast")
                 
         except Exception as e:
-            logger.error(f"Error broadcasting status: {e}")
+            logger.error(f"Error in background polling: {e}")
             error_status = {
+                "type": "system_status",
                 "device_status": "error",
                 "error": str(e),
                 "arduino_port": arduino_comm.port if arduino_comm.is_connected else None,
-                "temperatures": [0.0] * 5,  # 5 sensors
-                "target_temperatures": [80.0, 80.0],
-                "fan_speeds": [0, 0, 0, 0],
-                "hot_plate_states": [False, False],
-                "system_ready": False
+                "system_ready": False,
+                "timestamp": datetime.now().isoformat()
             }
+            
             if manager.active_connections:
                 await manager.broadcast(json.dumps(error_status))
         
-        logger.debug(f"Sleeping for {polling_interval} seconds...")
-        await asyncio.sleep(polling_interval)  # Use configurable polling interval
+        # Wait for next polling interval
+        await asyncio.sleep(polling_interval)
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize Arduino connection and start background polling"""
+    global background_task
+    
+    logger.info("Starting Temperature Control System server...")
+    
+    # Connect to Arduino
+    logger.info(f"Attempting to connect to Arduino on {arduino_comm.port}...")
+    success = await arduino_comm.connect()
+    if success:
+        logger.info("Arduino connected successfully")
+        
+        # Get initial status and store it
+        try:
+            response = await arduino_comm.get_status()
+            if response.status == "ok" and response.data:
+                status_data = response.data.dict()
+                status_data["device_status"] = "online"
+                status_data["arduino_port"] = arduino_comm.port
+                status_data["timestamp"] = datetime.now().isoformat()
+                status_history.append(status_data.copy())
+                logger.info("Initial Arduino status stored in history")
+            else:
+                logger.warning("Failed to get initial Arduino status")
+        except Exception as e:
+            logger.error(f"Error getting initial Arduino status: {e}")
+        
+        # Start background polling task
+        background_task = asyncio.create_task(background_status_polling())
+        
+    else:
+        logger.warning("Failed to connect to Arduino - server will run without Arduino")
+        logger.info("Please check:")
+        logger.info("1. Arduino is connected via USB")
+        logger.info("2. Correct COM port is being used")
+        logger.info("3. Arduino sketch is uploaded and running")
+        logger.info("4. No other program is using the serial port")
+        
+        # Start background polling anyway (will show offline status)
+        background_task = asyncio.create_task(background_status_polling())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    await arduino_comm.disconnect()
 
 # API Routes
 @app.get("/")
@@ -254,36 +468,6 @@ async def get_sensor_data():
             }
         else:
             raise HTTPException(status_code=500, detail=response.msg)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/manual/hotplate/{plate_id}")
-async def set_manual_hotplate_control(plate_id: int, manual: bool):
-    """Set manual control for hot plate"""
-    if plate_id < 0 or plate_id > 1:
-        raise HTTPException(status_code=400, detail="Invalid hot plate ID")
-    
-    try:
-        response = await arduino_comm.set_manual_hotplate_control(plate_id, manual)
-        if response.status == "ok":
-            return {"status": "success", "message": f"Hot plate {plate_id + 1} manual control {'enabled' if manual else 'disabled'}"}
-        else:
-            raise HTTPException(status_code=400, detail=response.msg)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/manual/fan/{fan_id}")
-async def set_manual_fan_control(fan_id: int, manual: bool):
-    """Set manual control for fan"""
-    if fan_id < 0 or fan_id > 3:
-        raise HTTPException(status_code=400, detail="Invalid fan ID")
-    
-    try:
-        response = await arduino_comm.set_manual_fan_control(fan_id, manual)
-        if response.status == "ok":
-            return {"status": "success", "message": f"Fan {fan_id + 1} manual control {'enabled' if manual else 'disabled'}"}
-        else:
-            raise HTTPException(status_code=400, detail=response.msg)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -377,12 +561,255 @@ async def force_reconnect_arduino():
             "message": f"Force reconnect failed: {str(e)}"
         }
 
+def generate_csv(data: list, filename_prefix: str = "arduino_status"):
+    """Generate CSV content from status data"""
+    output = io.StringIO()
+    
+    if not data:
+        # Create empty CSV with headers
+        writer = csv.writer(output)
+        writer.writerow([
+            "timestamp", "device_status", "arduino_port", "system_ready",
+            "temp_sensor_1", "temp_sensor_2", "temp_sensor_3", "temp_sensor_4", "temp_sensor_5",
+            "target_temp_1", "target_temp_2",
+            "fan_speed_1", "fan_speed_2", "fan_speed_3", "fan_speed_4",
+            "hot_plate_1", "hot_plate_2",
+            "bme_temp_1", "bme_temp_2", "bme_temp_3", "bme_temp_4",
+            "bme_humidity_1", "bme_humidity_2", "bme_humidity_3", "bme_humidity_4",
+            "bme_pressure_1", "bme_pressure_2", "bme_pressure_3", "bme_pressure_4",
+            "error"
+        ])
+        return output.getvalue(), filename_prefix
+    
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        "timestamp", "device_status", "arduino_port", "system_ready",
+        "temp_sensor_1", "temp_sensor_2", "temp_sensor_3", "temp_sensor_4", "temp_sensor_5",
+        "target_temp_1", "target_temp_2",
+        "fan_speed_1", "fan_speed_2", "fan_speed_3", "fan_speed_4",
+        "hot_plate_1", "hot_plate_2",
+        "bme_temp_1", "bme_temp_2", "bme_temp_3", "bme_temp_4",
+        "bme_humidity_1", "bme_humidity_2", "bme_humidity_3", "bme_humidity_4",
+        "bme_pressure_1", "bme_pressure_2", "bme_pressure_3", "bme_pressure_4",
+        "error"
+    ])
+    
+    # Write data rows
+    for record in data:
+        row = [
+            record.get("timestamp", ""),
+            record.get("device_status", ""),
+            record.get("arduino_port", ""),
+            record.get("system_ready", ""),
+        ]
+        
+        # Temperature sensors
+        temps = record.get("temperatures", [])
+        for i in range(5):
+            row.append(temps[i] if i < len(temps) else "")
+        
+        # Target temperatures
+        target_temps = record.get("target_temperatures", [])
+        for i in range(2):
+            row.append(target_temps[i] if i < len(target_temps) else "")
+        
+        # Fan speeds
+        fan_speeds = record.get("fan_speeds", [])
+        for i in range(4):
+            row.append(fan_speeds[i] if i < len(fan_speeds) else "")
+        
+        # Hot plate states
+        hot_plates = record.get("hot_plate_states", [])
+        for i in range(2):
+            row.append(hot_plates[i] if i < len(hot_plates) else "")
+        
+        # BME280 temperatures
+        bme_temps = record.get("temperature_bme", [])
+        for i in range(4):
+            row.append(bme_temps[i] if i < len(bme_temps) else "")
+        
+        # BME280 humidity
+        bme_humidity = record.get("humidity", [])
+        for i in range(4):
+            row.append(bme_humidity[i] if i < len(bme_humidity) else "")
+        
+        # BME280 pressure
+        bme_pressure = record.get("pressure", [])
+        for i in range(4):
+            row.append(bme_pressure[i] if i < len(bme_pressure) else "")
+        
+        # Error message
+        row.append(record.get("error", ""))
+        
+        writer.writerow(row)
+    
+    return output.getvalue(), filename_prefix
+
+@app.get("/api/download/csv")
+async def download_csv():
+    """Download all available historical data as CSV"""
+    try:
+        csv_content, filename = generate_csv(list(status_history))
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"arduino_status_{timestamp}.csv"
+        
+        # Create streaming response
+        return StreamingResponse(
+            io.StringIO(csv_content),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"Error generating CSV: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate CSV: {str(e)}")
+
+@app.get("/api/download/csv/{limit:int}")
+async def download_csv_limit(limit: int):
+    """Download limited number of recent records as CSV"""
+    try:
+        if limit <= 0:
+            raise HTTPException(status_code=400, detail="Limit must be greater than 0")
+        
+        # Get the most recent records
+        recent_data = list(status_history)[-limit:] if limit < len(status_history) else list(status_history)
+        
+        csv_content, filename = generate_csv(recent_data, f"arduino_status_recent_{limit}")
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"arduino_status_recent_{limit}_{timestamp}.csv"
+        
+        # Create streaming response
+        return StreamingResponse(
+            io.StringIO(csv_content),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating limited CSV: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate CSV: {str(e)}")
+
+@app.post("/api/history_size")
+async def set_history_size(request: dict = Body(...)):
+    """Set the maximum history size"""
+    try:
+        size = request.get("size")
+        if not isinstance(size, int) or size < 10 or size > 1000:
+            raise HTTPException(status_code=400, detail="History size must be between 10 and 1000")
+        
+        # Update the global max size
+        global status_history, MAX_HISTORY_SIZE
+        MAX_HISTORY_SIZE = size
+        
+        # Recreate deque with new max size
+        old_history = list(status_history)
+        status_history = deque(maxlen=MAX_HISTORY_SIZE)
+        
+        # Add back the most recent records (up to new limit)
+        for record in old_history[-MAX_HISTORY_SIZE:]:
+            status_history.append(record)
+        
+        logger.info(f"History size updated to {MAX_HISTORY_SIZE} records")
+        
+        return {
+            "status": "success",
+            "message": f"History size set to {MAX_HISTORY_SIZE} records",
+            "max_size": MAX_HISTORY_SIZE,
+            "current_count": len(status_history)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting history size: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to set history size: {str(e)}")
+
+@app.get("/api/history")
+async def get_history():
+    """Get historical data as JSON"""
+    try:
+        return {
+            "status": "success",
+            "data": list(status_history),
+            "count": len(status_history),
+            "max_size": MAX_HISTORY_SIZE
+        }
+    except Exception as e:
+        logger.error(f"Error getting history: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get history: {str(e)}")
+
+@app.get("/api/history/{limit:int}")
+async def get_history_limit(limit: int):
+    """Get limited number of recent records as JSON"""
+    try:
+        if limit <= 0:
+            raise HTTPException(status_code=400, detail="Limit must be greater than 0")
+        
+        # Get the most recent records
+        recent_data = list(status_history)[-limit:] if limit < len(status_history) else list(status_history)
+        
+        return {
+            "status": "success",
+            "data": recent_data,
+            "count": len(recent_data),
+            "limit": limit,
+            "max_size": MAX_HISTORY_SIZE
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting limited history: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get history: {str(e)}")
+
 @app.websocket("/ws/status")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time status updates"""
     logger.info("New WebSocket connection attempt...")
     await manager.connect(websocket)
+    
     try:
+        # Send system status immediately for fast footer update
+        current_status = {
+            "type": "system_status",
+            "device_status": "offline",
+            "system_ready": False,
+            "arduino_port": arduino_comm.port if arduino_comm.is_connected else None,
+            "polling_interval": polling_interval,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # If we have recent data, use that for system status
+        if status_history:
+            latest_data = status_history[-1]
+            current_status.update({
+                "device_status": latest_data.get("device_status", "unknown"),
+                "system_ready": latest_data.get("system_ready", False),
+                "arduino_port": latest_data.get("arduino_port"),
+                "timestamp": latest_data.get("timestamp")
+            })
+        
+        await websocket.send_text(json.dumps(current_status))
+        logger.info("Sent system status to new WebSocket client")
+        
+        # Send historical data separately (this can take longer)
+        if status_history:
+            logger.info(f"Sending {len(status_history)} historical records to new WebSocket client")
+            historical_data = {
+                "type": "historical_data",
+                "data": list(status_history),
+                "count": len(status_history),
+                "max_size": MAX_HISTORY_SIZE
+            }
+            await websocket.send_text(json.dumps(historical_data))
+            logger.info("Sent historical data to new WebSocket client")
+        else:
+            logger.info("No historical data available for new WebSocket client")
+        
         logger.info("WebSocket connection established, waiting for messages...")
         while True:
             # Keep connection alive and handle any incoming messages

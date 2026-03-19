@@ -7,7 +7,95 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Add padding to main content to avoid fixed footer overlap */
+        body {
+            padding-bottom: 120px; /* Height of footer + some extra space */
+        }
+        
+        /* Fixed footer styling */
+        .fixed-bottom {
+            z-index: 1020; /* Below modals (1050) but above content */
+        }
+        
+        /* Smaller text in footer for compact display */
+        footer .small {
+            font-size: 0.75rem;
+        }
+        
+        /* Alert styling in footer */
+        .alert-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            margin-bottom: 0;
+        }
+        
+        /* Dropdown menu styling for dark footer */
+        footer .dropdown-menu {
+            background-color: #343a40;
+            border: 1px solid #495057;
+        }
+        
+        footer .dropdown-item {
+            color: #fff;
+        }
+        
+        footer .dropdown-item:hover {
+            background-color: #495057;
+            color: #fff;
+        }
+        
+        footer .dropdown-header {
+            color: #adb5bd;
+        }
+        
+        footer .dropdown-divider {
+            border-color: #495057;
+        }
+        
+        /* CN² color coding styles */
+        .cn2-container {
+            display: flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            transition: all 0.3s ease;
+        }
+        
+        .cn2-low {
+            background-color: rgba(25, 135, 84, 0.1);
+            border: 1px solid #198754;
+        }
+        
+        .cn2-low .badge {
+            background-color: #198754 !important;
+        }
+        
+        .cn2-medium {
+            background-color: rgba(255, 193, 7, 0.1);
+            border: 1px solid #ffc107;
+        }
+        
+        .cn2-medium .badge {
+            background-color: #ffc107 !important;
+        }
+        
+        .cn2-high {
+            background-color: rgba(220, 53, 69, 0.1);
+            border: 1px solid #dc3545;
+        }
+        
+        .cn2-high .badge {
+            background-color: #dc3545 !important;
+        }
+        
+        #cn2-value {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+    </style>
 </head>
 <body>
     <div class="container-fluid">
@@ -100,8 +188,14 @@
             <div class="col-lg-6">
                  <!-- Temperature Chart -->
                 <div class="card mb-4">
-                    <div class="card-header">
+                    <div class="card-header d-flex justify-content-between align-items-center">
                         <h5><i class="fas fa-chart-line"></i> Temperature Trends</h5>
+                        <div class="cn2-container cn2-low">
+                            <span class="badge bg-secondary me-2">
+                                <i class="fas fa-wind"></i> Cn²
+                            </span>
+                            <span id="cn2-value" class="fw-bold">0.00e+0</span>
+                        </div>
                     </div>
                     <div class="card-body">
                         <canvas id="tempChart" width="400" height="300"></canvas>
@@ -123,52 +217,46 @@
                             <div id="hot-plate-controls">
                             <!-- Hot Plate 1 -->
                             <div class="row align-items-center mb-3 p-2 border rounded">
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-fire"></i> Hot Plate 1
                                     </label>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <div class="input-group">
                                         <input type="number" class="form-control" id="target-temp-0" 
                                                value="80" min="0" max="120" step="0.5">
                                         <span class="input-group-text">°C</span>
                                     </div>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <button class="btn btn-success w-100" 
                                             onclick="toggleHotPlate(0)"
                                             id="hotplate-btn-0">
                                         <i class="fas fa-power-off"></i> TURN ON
                                     </button>
                                 </div>
-                                <div class="col-md-3">
-                                    <small class="text-muted">Auto-applied when changed</small>
-                                </div>
                             </div>
                             <!-- Hot Plate 2 -->
                             <div class="row align-items-center mb-3 p-2 border rounded">
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-fire"></i> Hot Plate 2
                                     </label>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <div class="input-group">
                                         <input type="number" class="form-control" id="target-temp-1" 
                                                value="80" min="0" max="120" step="0.5">
                                         <span class="input-group-text">°C</span>
                                     </div>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <button class="btn btn-success w-100" 
                                             onclick="toggleHotPlate(1)"
                                             id="hotplate-btn-1">
                                         <i class="fas fa-power-off"></i> TURN ON
                                     </button>
-                                </div>
-                                <div class="col-md-3">
-                                    <small class="text-muted">Auto-applied when changed</small>
                                 </div>
                             </div>
                         </div>
@@ -180,134 +268,191 @@
                             <div id="fan-controls">
                             <!-- Fan 1 -->
                             <div class="row align-items-center mb-3 p-2 border rounded">
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-fan"></i> Fan 1
                                     </label>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <div class="progress">
                                         <div class="progress-bar" id="fan-progress-0" style="width: 0%">0%</div>
                                     </div>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <input type="range" class="form-range" id="fan-speed-0" min="0" max="255" value="0">
                                     <small class="text-muted">Speed: <span id="fan-speed-value-0">0</span></small>
-                                </div>
-                                <div class="col-md-3">
-                                    <small class="text-muted">Auto-applied when changed</small>
                                 </div>
                             </div>
                             <!-- Fan 2 -->
                             <div class="row align-items-center mb-3 p-2 border rounded">
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-fan"></i> Fan 2
                                     </label>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <div class="progress">
                                         <div class="progress-bar" id="fan-progress-1" style="width: 0%">0%</div>
                                     </div>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <input type="range" class="form-range" id="fan-speed-1" min="0" max="255" value="0">
                                     <small class="text-muted">Speed: <span id="fan-speed-value-1">0</span></small>
-                                </div>
-                                <div class="col-md-3">
-                                    <small class="text-muted">Auto-applied when changed</small>
                                 </div>
                             </div>
                             <!-- Fan 3 -->
                             <div class="row align-items-center mb-3 p-2 border rounded">
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-fan"></i> Fan 3
                                     </label>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <div class="progress">
                                         <div class="progress-bar" id="fan-progress-2" style="width: 0%">0%</div>
                                     </div>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <input type="range" class="form-range" id="fan-speed-2" min="0" max="255" value="0">
                                     <small class="text-muted">Speed: <span id="fan-speed-value-2">0</span></small>
-                                </div>
-                                <div class="col-md-3">
-                                    <small class="text-muted">Auto-applied when changed</small>
                                 </div>
                             </div>
                             <!-- Fan 4 -->
                             <div class="row align-items-center mb-3 p-2 border rounded">
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-fan"></i> Fan 4
                                     </label>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <div class="progress">
                                         <div class="progress-bar" id="fan-progress-3" style="width: 0%">0%</div>
                                     </div>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <input type="range" class="form-range" id="fan-speed-3" min="0" max="255" value="0">
                                     <small class="text-muted">Speed: <span id="fan-speed-value-3">0</span></small>
-                                </div>
-                                <div class="col-md-3">
-                                    <small class="text-muted">Auto-applied when changed</small>
                                 </div>
                             </div>
                         </div>
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
 
-                <!-- System Status -->
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-info-circle"></i> System Status</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="system-status">
-                            <p><strong>System Ready:</strong> <span id="system-ready">Unknown</span></p>
-                            <p><strong>Device Status:</strong> <span id="device-status">Unknown</span></p>
-                            <p><strong>Arduino Port:</strong> <span id="arduino-port">Unknown</span></p>
-                            <p><strong>Polling Interval:</strong> <span id="polling-interval-display">3.0s</span></p>
-                            <div class="mt-3">
-                                <div class="input-group mb-3">
-                                    <span class="input-group-text">COM Port:</span>
-                                    <select class="form-select" id="com-port-select">
-                                        <option value="">Auto-detect</option>
-                                        <option value="COM1">COM1</option>
-                                        <option value="COM2">COM2</option>
-                                        <option value="COM3">COM3</option>
-                                        <option value="COM4">COM4</option>
-                                        <option value="COM5">COM5</option>
-                                        <option value="COM6">COM6</option>
-                                        <option value="COM7">COM7</option>
-                                        <option value="COM8">COM8</option>
-                                        <option value="/dev/ttyUSB0">/dev/ttyUSB0 (Linux)</option>
-                                        <option value="/dev/ttyUSB1">/dev/ttyUSB1 (Linux)</option>
-                                        <option value="/dev/ttyACM0">/dev/ttyACM0 (Linux)</option>
-                                        <option value="/dev/ttyACM1">/dev/ttyACM1 (Linux)</option>
-                                    </select>
-                                    <button class="btn btn-primary" id="reconnect-arduino">
-                                        <i class="fas fa-sync-alt"></i> Reconnect
-                                    </button>
-                                </div>
-                                <div class="input-group">
-                                    <span class="input-group-text">Poll Interval:</span>
-                                    <input type="number" class="form-control" id="polling-interval" min="0.5" max="60" step="0.5" value="3">
-                                    <span class="input-group-text">seconds</span>
-                                    <button class="btn btn-secondary" id="set-polling-interval">
-                                        <i class="fas fa-clock"></i> Set
-                                    </button>
-                                </div>
-                            </div>
-                            <div id="error-message" class="alert alert-danger d-none mt-3"></div>
+    <!-- Fixed Footer with System Status -->
+    <footer class="fixed-bottom bg-dark text-white py-2">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <small class="text-light">
+                        <i class="fas fa-check-circle"></i> Ready: <span id="system-ready">Unknown</span>
+                    </small>
+                </div>
+                <div class="col-md-4">
+                    <small class="text-light">
+                        <i class="fas fa-microchip"></i> Device: <span id="device-status">Unknown</span>
+                    </small>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-light">
+                            <i class="fas fa-serial-port"></i> Port: <span id="arduino-port">Unknown</span> | <i class="fas fa-clock"></i> <span id="polling-interval-display">3.0s</span>
+                        </small>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-light" onclick="downloadCurrentData()">
+                                <i class="fas fa-download"></i> Download
+                            </button>
+                            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#settingsModal">
+                                <i class="fas fa-cog"></i> Settings
+                            </button>
                         </div>
                     </div>
+                </div>
+            </div>
+            <div id="error-message" class="alert alert-danger alert-sm d-none mt-2 mx-2"></div>
+        </div>
+    </footer>
+
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="settingsModalLabel">
+                        <i class="fas fa-cog"></i> System Settings
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-4">
+                        <h6><i class="fas fa-serial-port"></i> Arduino Connection</h6>
+                        <div class="input-group mb-3">
+                            <span class="input-group-text">COM Port:</span>
+                            <select class="form-select" id="com-port-select">
+                                <option value="">Auto-detect</option>
+                                <option value="COM1">COM1</option>
+                                <option value="COM2">COM2</option>
+                                <option value="COM3">COM3</option>
+                                <option value="COM4">COM4</option>
+                                <option value="COM5">COM5</option>
+                                <option value="COM6">COM6</option>
+                                <option value="COM7">COM7</option>
+                                <option value="COM8">COM8</option>
+                                <option value="/dev/ttyUSB0">/dev/ttyUSB0 (Linux)</option>
+                                <option value="/dev/ttyUSB1">/dev/ttyUSB1 (Linux)</option>
+                                <option value="/dev/ttyACM0">/dev/ttyACM0 (Linux)</option>
+                                <option value="/dev/ttyACM1">/dev/ttyACM1 (Linux)</option>
+                            </select>
+                            <button class="btn btn-primary" id="reconnect-arduino">
+                                <i class="fas fa-sync-alt"></i> Reconnect
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h6><i class="fas fa-clock"></i> Polling Settings</h6>
+                        <div class="input-group">
+                            <span class="input-group-text">Poll Interval:</span>
+                            <input type="number" class="form-control" id="polling-interval" min="0.5" max="60" step="0.5" value="3">
+                            <span class="input-group-text">seconds</span>
+                            <button class="btn btn-secondary" id="set-polling-interval">
+                                <i class="fas fa-clock"></i> Set
+                            </button>
+                        </div>
+                        <small class="text-muted mt-1 d-block">
+                            Set how often the system polls the Arduino for status updates (0.5-60 seconds)
+                        </small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h6><i class="fas fa-database"></i> Data Storage Settings</h6>
+                        <div class="input-group">
+                            <span class="input-group-text">History Size:</span>
+                            <input type="number" class="form-control" id="history-size" min="10" max="1000" step="10" value="100">
+                            <span class="input-group-text">records</span>
+                            <button class="btn btn-info" id="set-history-size">
+                                <i class="fas fa-database"></i> Set
+                            </button>
+                        </div>
+                        <small class="text-muted mt-1 d-block">
+                            Set how many status records to store in memory (10-1000 records). Higher values use more memory but provide more historical data.
+                        </small>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                Current storage: <span id="current-history-size">100</span> records | 
+                                Records in memory: <span id="current-record-count">0</span>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="save-settings">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
                 </div>
             </div>
         </div>
