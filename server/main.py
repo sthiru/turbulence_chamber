@@ -401,6 +401,15 @@ async def root():
     else:
         return {"message": "Temperature Control System API", "version": "1.0.0"}
 
+@app.get("/beta")
+async def beta():
+    """Serve the beta visualization interface"""
+    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "beta.html")
+    if os.path.exists(web_file):
+        return FileResponse(web_file)
+    else:
+        return {"message": "Beta interface not found", "version": "1.0.0"}
+
 @app.get("/api/status")
 async def get_system_status():
     """Get current system status"""
