@@ -26,6 +26,8 @@ from models import (
     SystemStatus, ArduinoResponse, DeviceStatus
 )
 from arduino_comm import arduino_comm
+from camera_acquisition import initialize_camera_system, capture_camera_image, get_camera_status, cleanup_camera_system
+from cn2_optical import calculate_cn2_optical, get_cn2_status
 
 # Pydantic model for reconnect request
 class ReconnectRequest(BaseModel):
@@ -50,6 +52,11 @@ app = FastAPI(
 static_dir = os.path.join(os.path.dirname(__file__), "..", "web")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Mount camera images directory
+camera_images_dir = os.path.join(os.path.dirname(__file__), "..", "camera_images")
+if os.path.exists(camera_images_dir):
+    app.mount("/camera_images", StaticFiles(directory=camera_images_dir), name="camera_images")
 
 # CORS middleware
 app.add_middleware(
@@ -194,6 +201,30 @@ async def background_status_polling():
                 cn2_value = calculate_cn2(temperatures, bme_temperatures, bme_pressure)
                 status_data["cn2"] = cn2_value
                 
+                # Capture camera image
+                try:
+                    camera_filename = capture_camera_image(camera_images_folder)
+                    status_data["camera_image"] = camera_filename if camera_filename else None
+                    status_data["camera_status"] = get_camera_status(camera_images_folder)
+                except Exception as e:
+                    logger.error(f"Error capturing camera image: {e}")
+                    status_data["camera_image"] = None
+                    status_data["camera_status"] = {"error": str(e)}
+                
+                # Calculate CN² optical if enough images are available
+                try:
+                    cn2_optical = calculate_cn2_optical(camera_images_folder)
+                    status_data["cn2_optical"] = cn2_optical
+                    status_data["cn2_status"] = get_cn2_status(camera_images_folder)
+                    
+                    if cn2_optical is not None:
+                        logger.info(f"CN² optical calculated: {cn2_optical:.2e} m^(-2/3)")
+                        
+                except Exception as e:
+                    logger.error(f"Error calculating CN² optical: {e}")
+                    status_data["cn2_optical"] = None
+                    status_data["cn2_status"] = {"error": str(e)}
+                
                 # Store in history
                 status_history.append(status_data.copy())
                 
@@ -243,6 +274,10 @@ async def background_status_polling():
                                     "humidity": record.get("humidity", []),
                                     "pressure": record.get("pressure", []),
                                     "cn2": record.get("cn2", 0.0),
+                                    "cn2_optical": record.get("cn2_optical"),
+                                    "cn2_status": record.get("cn2_status"),
+                                    "camera_image": record.get("camera_image"),
+                                    "camera_status": record.get("camera_status"),
                                     "timestamp": record.get("timestamp")
                                 } for record in status_history
                             ],
@@ -267,6 +302,10 @@ async def background_status_polling():
                                     "humidity": record.get("humidity", []),
                                     "pressure": record.get("pressure", []),
                                     "cn2": record.get("cn2", 0.0),
+                                    "cn2_optical": record.get("cn2_optical"),
+                                    "cn2_status": record.get("cn2_status"),
+                                    "camera_image": record.get("camera_image"),
+                                    "camera_status": record.get("camera_status"),
                                     "timestamp": record.get("timestamp")
                                 } for record in recent_records
                             ],
@@ -390,6 +429,7 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup on shutdown"""
     await arduino_comm.disconnect()
+    cleanup_camera_system()
 
 # API Routes
 @app.get("/")
@@ -487,9 +527,66 @@ async def test_endpoint():
         "status": "ok",
         "message": "Server is working",
         "arduino_port": arduino_comm.port,
-        "arduino_connected": arduino_comm.is_connected,
-        "polling_interval": polling_interval
+        "connected": arduino_comm.is_connected,
+        "camera_status": get_camera_status(camera_images_folder),
+        "cn2_optical_status": get_cn2_status(camera_images_folder)
     }
+
+@app.get("/api/camera/status")
+async def get_camera_status_endpoint():
+    """Get camera system status"""
+    try:
+        return get_camera_status(camera_images_folder)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/camera/capture")
+async def capture_camera_image_endpoint():
+    """Manually trigger camera image capture"""
+    try:
+        filename = capture_camera_image(camera_images_folder)
+        if filename:
+            return {
+                "status": "success",
+                "message": "Image captured successfully",
+                "filename": filename
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Failed to capture image"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/cn2/optical/status")
+async def get_cn2_optical_status():
+    """Get CN² optical calculation status"""
+    try:
+        return get_cn2_status(camera_images_folder)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/cn2/optical/calculate")
+async def calculate_cn2_optical_endpoint():
+    """Manually trigger CN² optical calculation"""
+    try:
+        cn2_value = calculate_cn2_optical(camera_images_folder)
+        if cn2_value is not None:
+            return {
+                "status": "success",
+                "message": "CN² optical calculated successfully",
+                "cn2_optical": cn2_value,
+                "cn2_optical_scientific": f"{cn2_value:.2e} m^(-2/3)"
+            }
+        else:
+            return {
+                "status": "info",
+                "message": "CN² optical calculation not ready - insufficient images",
+                "cn2_optical": None
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/polling_interval")
 async def set_polling_interval(interval: float):
@@ -835,6 +932,14 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
+
+# Initialize camera system
+camera_images_folder = os.path.join(os.path.dirname(__file__), "..", "camera_images")
+camera_initialized = initialize_camera_system(camera_images_folder)
+if camera_initialized:
+    logger.info(f"Camera system initialized successfully")
+else:
+    logger.warning("Camera system initialization failed - will run in simulation mode")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

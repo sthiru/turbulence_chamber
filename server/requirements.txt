@@ -6,3 +6,7 @@ python-multipart==0.0.6
 jinja2==3.1.2
 aiofiles==23.2.1
 aiohttp==3.9.1
+opencv-python==4.8.1.78
+numpy==1.24.3
+# Pylon SDK - needs to be installed separately from Basler website
+# pypylon is not available via pip, install Basler Pylon SDK first

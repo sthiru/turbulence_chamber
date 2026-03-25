@@ -6,178 +6,7 @@
     <title>Turbulence Controller - Beta</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        .container-fluid {
-            padding: 20px;
-        }
-        
-        .system-container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            padding: 30px;
-            margin-bottom: 30px;
-        }
-        
-        .header-title {
-            color: #2c3e50;
-            font-weight: 700;
-            margin-bottom: 30px;
-            text-align: center;
-            font-size: 2.5rem;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        
-        .svg-container {
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            background: #f8f9fa;
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .temperature-display {
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            font-size: 14px;
-            fill: #2c3e50;
-        }
-        
-        /* .fan-blade {
-            transform-origin: center center;
-        } */
-        
-        .fan-on {
-            animation: spin 2s infinite;
-        }
-        
-        .fan-off {
-            animation: none;
-        }
-        
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        
-        .hot-plate {
-            transition: fill 0.3s ease;
-        }
-        
-        .hot-plate-on {
-            fill: #ff6b6b;
-            filter: drop-shadow(0 0 10px rgba(255, 107, 107, 0.5));
-        }
-        
-        .hot-plate-off {
-            fill: #e9ecef;
-        }
-        
-        .sensor-circle {
-            transition: fill 0.3s ease;
-        }
-        
-        .sensor-normal {
-            fill: #51cf66;
-        }
-        
-        .sensor-warning {
-            fill: #ffd43b;
-        }
-        
-        .sensor-danger {
-            fill: #ff6b6b;
-        }
-        
-        .status-panel {
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 10px;
-            padding: 20px;
-            margin-top: 20px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        }
-        
-        .status-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        .status-item:last-child {
-            border-bottom: none;
-        }
-        
-        .status-label {
-            font-weight: 600;
-            color: #495057;
-        }
-        
-        .status-value {
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        
-        .cn2-display {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 10px;
-            text-align: center;
-            margin-top: 20px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        
-        .cn2-value {
-            font-size: 1.5rem;
-            font-weight: bold;
-            font-family: 'Courier New', monospace;
-        }
-        
-        .nav-link {
-            color: #2c3e50 !important;
-            font-weight: 600;
-            padding: 10px 20px;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-        }
-        
-        .nav-link:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
-        }
-        
-        .connection-status {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            border-radius: 25px;
-            font-weight: 600;
-            z-index: 1000;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        
-        .connected {
-            background: #51cf66;
-            color: white;
-        }
-        
-        .disconnected {
-            background: #ff6b6b;
-            color: white;
-        }
-    </style>
+    <link rel="stylesheet" href="/static/beta.css">
 </head>
 <body>
     <div class="container-fluid">
@@ -208,194 +37,9 @@
         <div class="system-container">
             <!-- SVG System Model -->
             <div class="svg-container">
-                <svg viewBox="0 0 1200 600" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Define gradients and patterns -->
-                    <defs>
-                        <linearGradient id="chamberGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" style="stop-color:#e3f2fd;stop-opacity:1" />
-                            <stop offset="100%" style="stop-color:#bbdefb;stop-opacity:1" />
-                        </linearGradient>
-                        
-                        <radialGradient id="fanGradient">
-                            <stop offset="0%" style="stop-color:#2196f3;stop-opacity:1" />
-                            <stop offset="100%" style="stop-color:#1976d2;stop-opacity:1" />
-                        </radialGradient>
-                        
-                        <filter id="glow">
-                            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                            <feMerge> 
-                                <feMergeNode in="coloredBlur"/>
-                                <feMergeNode in="SourceGraphic"/>
-                            </feMerge>
-                        </filter>
-                    </defs>
-                    
-                    <!-- Main Chamber -->
-                    <rect x="450" y="150" width="300" height="300" rx="20" 
-                          fill="url(#chamberGradient)" stroke="#1976d2" stroke-width="3"/>
-                    
-                    <!-- Air inlet holes in chamber (hexagonal - half inside, half outside) -->
-                    <polygon points="440,200 480,200 500,225 480,250 440,250 420,225" fill="#ffffff" stroke="#1976d2" stroke-width="2"/>
-                    <polygon points="440,360 480,360 500,385 480,410 440,410 420,385" fill="#ffffff" stroke="#1976d2" stroke-width="2"/>
-                    <polygon points="740,200 780,200 800,225 780,250 740,250 720,225" fill="#ffffff" stroke="#1976d2" stroke-width="2"/>
-                    <polygon points="740,360 780,360 800,385 780,410 740,410 720,385" fill="#ffffff" stroke="#1976d2" stroke-width="2"/>
-                    
-                    <!-- CN² Title Display -->
-                    <text x="600" y="80" text-anchor="middle" font-size="28" font-weight="bold" fill="#1976d2">
-                        C<tspan baseline-shift="sub" font-size="20">n</tspan><tspan baseline-shift="super" font-size="20">2</tspan> = <tspan id="cn2TitleValue">0.00e+0</tspan>
-                    </text>
-                    
-                    <!-- Fans and Hot Plates (outside chamber) -->
-                    <!-- Fan 1 (Top Left - Outside) -->
-                    <g id="fan1" transform="translate(300, 220)">
-                        <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
-                        <g class="fan-blade fan-off">
-                            <!-- Properly centered 4-point star -->
-                            <path d="M 0,-20 L 7,-7 L 20,0 L 7,7 L 0,20 L -7,7 L -20,0 L -7,-7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L -7,-7 L -20,0 L -7,7 L 0,20 L 7,7 L 20,0 L 7,-7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L 7,7 L 20,0 L 7,-7 L 0,20 L -7,-7 L -20,0 L -7,7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L -7,7 L -20,0 L -7,-7 L 0,20 L 7,-7 L 20,0 L 7,7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                        </g>
-                        <text x="0" y="50" text-anchor="middle" font-size="12" fill="#333">F1</text>
-                    </g>
-                    
-                    <!-- Hot Plate 1 (in front of F1 - Outside) -->
-                    <rect id="hotplate1" x="340" y="190" width="80" height="60" rx="5" 
-                          class="hot-plate hot-plate-off" stroke="#333" stroke-width="2"/>
-                    <text x="380" y="225" text-anchor="middle" font-size="14" fill="#333">H1</text>
-                    
-                    <!-- Fan 2 (Top Right - Outside) -->
-                    <g id="fan2" transform="translate(850, 220)">
-                        <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
-                        <g class="fan-blade fan-off">
-                            <!-- Properly centered 4-point star -->
-                            <path d="M 0,-20 L 7,-7 L 20,0 L 7,7 L 0,20 L -7,7 L -20,0 L -7,-7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L -7,-7 L -20,0 L -7,7 L 0,20 L 7,7 L 20,0 L 7,-7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L 7,7 L 20,0 L 7,-7 L 0,20 L -7,-7 L -20,0 L -7,7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L -7,7 L -20,0 L -7,-7 L 0,20 L 7,-7 L 20,0 L 7,7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                        </g>
-                        <text x="0" y="50" text-anchor="middle" font-size="12" fill="#333">F2</text>
-                    </g>
-                    
-                    <!-- Fan 3 (Bottom Left - Outside) -->
-                    <g id="fan3" transform="translate(300, 380)">
-                        <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
-                        <g class="fan-blade fan-off">
-                            <!-- Properly centered 4-point star -->
-                            <path d="M 0,-20 L 7,-7 L 20,0 L 7,7 L 0,20 L -7,7 L -20,0 L -7,-7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L -7,-7 L -20,0 L -7,7 L 0,20 L 7,7 L 20,0 L 7,-7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L 7,7 L 20,0 L 7,-7 L 0,20 L -7,-7 L -20,0 L -7,7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L -7,7 L -20,0 L -7,-7 L 0,20 L 7,-7 L 20,0 L 7,7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                        </g>
-                        <text x="0" y="50" text-anchor="middle" font-size="12" fill="#333">F3</text>
-                    </g>
-                    
-                    <!-- Hot Plate 2 (in front of F3 - Outside) -->
-                    <rect id="hotplate2" x="340" y="350" width="80" height="60" rx="5" 
-                          class="hot-plate hot-plate-off" stroke="#333" stroke-width="2"/>
-                    <text x="380" y="385" text-anchor="middle" font-size="14" fill="#333">H2</text>
-                    
-                    <!-- Fan 4 (Bottom Right - Outside) -->
-                    <g id="fan4" transform="translate(850, 380)">
-                        <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
-                        <g class="fan-blade fan-off">
-                            <!-- Properly centered 4-point star -->
-                            <path d="M 0,-20 L 7,-7 L 20,0 L 7,7 L 0,20 L -7,7 L -20,0 L -7,-7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L -7,-7 L -20,0 L -7,7 L 0,20 L 7,7 L 20,0 L 7,-7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L 7,7 L 20,0 L 7,-7 L 0,20 L -7,-7 L -20,0 L -7,7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                            <path d="M 0,-20 L -7,7 L -20,0 L -7,-7 L 0,20 L 7,-7 L 20,0 L 7,7 Z" 
-                                  fill="#fff" opacity="0.9"/>
-                        </g>
-                        <text x="0" y="50" text-anchor="middle" font-size="12" fill="#333">F4</text>
-                    </g>
-                    
-                    <!-- Temperature Sensors -->
-                    <!-- T1 (Top Left) -->
-                    <g id="sensor1" transform="translate(500, 225)">
-                        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-                        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T1</text>
-                        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp1">--°C</text>
-                    </g>
-                    
-                    <!-- T2 (Top Right) -->
-                    <g id="sensor2" transform="translate(720, 225)">
-                        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-                        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T2</text>
-                        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp2">--°C</text>
-                    </g>
-                    
-                    <!-- T3 (Center) -->
-                    <g id="sensor3" transform="translate(600, 300)">
-                        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-                        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T3</text>
-                        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp3">--°C</text>
-                    </g>
-                    
-                    <!-- T4 (Bottom Left) -->
-                    <g id="sensor4" transform="translate(500, 385)">
-                        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-                        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T4</text>
-                        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp4">--°C</text>
-                    </g>
-                    
-                    <!-- T5 (Bottom Right) -->
-                    <g id="sensor5" transform="translate(720, 385)">
-                        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-                        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T5</text>
-                        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp5">--°C</text>
-                    </g>
-                    
-                    <!-- Flow arrows (indicating air movement) -->
-                    <defs>
-                        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                            <polygon points="0 0, 10 3.5, 0 7" fill="#2196f3" opacity="0.6"/>
-                        </marker>
-                    </defs>
-                    
-                    <!-- Air flow indicators (5 arrows from each fan, different start points, center arrow longer) -->
-                    <!-- 5 arrows from Fan 1 -->
-                    <path d="M 320,210 L 450,220" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 325,225 L 460,240" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 330,220 L 580,300" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 325,215 L 460,200" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 320,230 L 470,180" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    
-                    <!-- 5 arrows from Fan 3 -->
-                    <path d="M 320,370 L 450,380" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 325,385 L 460,360" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 330,380 L 580,300" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 325,375 L 460,400" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 320,390 L 470,420" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    
-                    <!-- 5 arrows from Fan 2 -->
-                    <path d="M 880,210 L 750,220" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 875,225 L 740,240" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 870,220 L 620,300" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 875,215 L 740,200" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 880,230 L 730,180" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    
-                    <!-- 5 arrows from Fan 4 -->
-                    <path d="M 880,370 L 750,380" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 875,385 L 740,360" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 870,380 L 620,300" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 875,375 L 740,400" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                    <path d="M 880,390 L 730,420" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-                </svg>
+                <object data="/static/beta.svg" type="image/svg+xml" width="100%" height="100%">
+                    <img src="/static/beta.svg" alt="Turbulence System Diagram" />
+                </object>
             </div>
             
             <!-- Status Panel -->
@@ -442,206 +86,46 @@
                     </div>
                 </div>
                 
+                <!-- Camera Image Display -->
+                <div class="camera-display">
+                    <h6 class="mb-2">
+                        <i class="fas fa-camera"></i> Camera Feed
+                    </h6>
+                    <div class="camera-container">
+                        <img id="cameraImage" src="" alt="Camera Feed" class="camera-image" />
+                        <div id="cameraPlaceholder" class="camera-placeholder">
+                            <i class="fas fa-camera fa-3x text-muted"></i>
+                            <p class="text-muted mt-2">Waiting for camera feed...</p>
+                        </div>
+                    </div>
+                    <div class="camera-info mt-2">
+                        <small class="text-muted">
+                            <span id="cameraStatus">Camera Status: Initializing...</span>
+                        </small>
+                    </div>
+                </div>
+                
                 <!-- CN² Display -->
                 <div class="cn2-display">
                     <h6 class="mb-2">
                         <i class="fas fa-wind"></i> Cn² Turbulence Parameter
                     </h6>
-                    <div class="cn2-value" id="cn2Value">0.00e+0</div>
+                    <div class="row">
+                        <div class="col-6">
+                            <small class="text-muted">Thermal:</small>
+                            <div class="cn2-value" id="cn2Value">0.00e+0</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Optical:</small>
+                            <div class="cn2-value" id="cn2OpticalValue">--</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // WebSocket connection
-        let ws = null;
-        let reconnectInterval = null;
-        
-        // Configuration
-        const CONFIG = {
-            WS_URL: `ws://${window.location.host}/ws/status`,
-            RECONNECT_DELAY: 3000,
-            WARNING_TEMP: 60,
-            DANGER_TEMP: 80
-        };
-        
-        // Initialize WebSocket connection
-        function initWebSocket() {
-            try {
-                ws = new WebSocket(CONFIG.WS_URL);
-                
-                ws.onopen = function() {
-                    console.log('WebSocket connected');
-                    updateConnectionStatus(true);
-                    if (reconnectInterval) {
-                        clearInterval(reconnectInterval);
-                        reconnectInterval = null;
-                    }
-                };
-                
-                ws.onmessage = function(event) {
-                    try {
-                        const data = JSON.parse(event.data);
-                        handleWebSocketMessage(data);
-                    } catch (error) {
-                        console.error('Error parsing WebSocket data:', error);
-                    }
-                };
-                
-                ws.onclose = function() {
-                    console.log('WebSocket disconnected');
-                    updateConnectionStatus(false);
-                    scheduleReconnect();
-                };
-                
-                ws.onerror = function(error) {
-                    console.error('WebSocket error:', error);
-                    updateConnectionStatus(false);
-                };
-                
-            } catch (error) {
-                console.error('Error initializing WebSocket:', error);
-                updateConnectionStatus(false);
-                scheduleReconnect();
-            }
-        }
-        
-        // Schedule reconnection
-        function scheduleReconnect() {
-            if (!reconnectInterval) {
-                reconnectInterval = setInterval(() => {
-                    console.log('Attempting to reconnect...');
-                    initWebSocket();
-                }, CONFIG.RECONNECT_DELAY);
-            }
-        }
-        
-        // Update connection status
-        function updateConnectionStatus(connected) {
-            const statusElement = document.getElementById('connectionStatus');
-            if (connected) {
-                statusElement.className = 'connection-status connected';
-                statusElement.innerHTML = '<i class="fas fa-wifi"></i> Connected';
-            } else {
-                statusElement.className = 'connection-status disconnected';
-                statusElement.innerHTML = '<i class="fas fa-wifi"></i> Disconnected';
-            }
-        }
-        
-        // Handle WebSocket messages
-        function handleWebSocketMessage(data) {
-            if (data.type === 'system_status') {
-                updateSystemStatus(data);
-            } else if (data.type === 'historical_data' || data.type === 'current_data') {
-                updateSensorData(data.data[data.data.length - 1]);
-            }
-        }
-        
-        // Update system status
-        function updateSystemStatus(data) {
-            document.getElementById('systemReady').textContent = data.system_ready ? 'Yes' : 'No';
-            document.getElementById('arduinoPort').textContent = data.arduino_port || '--';
-        }
-        
-        // Update sensor data
-        function updateSensorData(data) {
-            // Update temperature sensors
-            const temperatures = data.temperatures || [];
-            temperatures.forEach((temp, index) => {
-                const tempElement = document.getElementById(`temp${index + 1}`);
-                const sensorElement = document.getElementById(`sensor${index + 1}`);
-                
-                if (tempElement) {
-                    if (temp < -100) {
-                        tempElement.textContent = '--°C';
-                    } else {
-                        tempElement.textContent = temp.toFixed(1) + '°C';
-                    }
-                }
-                
-                // Update sensor color based on temperature
-                if (sensorElement && temp >= -100) {
-                    const circle = sensorElement.querySelector('.sensor-circle');
-                    circle.classList.remove('sensor-normal', 'sensor-warning', 'sensor-danger');
-                    
-                    if (temp >= CONFIG.DANGER_TEMP) {
-                        circle.classList.add('sensor-danger');
-                    } else if (temp >= CONFIG.WARNING_TEMP) {
-                        circle.classList.add('sensor-warning');
-                    } else {
-                        circle.classList.add('sensor-normal');
-                    }
-                }
-            });
-            
-            // Update hot plates
-            const hotPlateStates = data.hot_plate_states || [];
-            hotPlateStates.forEach((state, index) => {
-                const hotplateElement = document.getElementById(`hotplate${index + 1}`);
-                const statusElement = document.getElementById(`hotplate${index + 1}Status`);
-                
-                if (hotplateElement) {
-                    hotplateElement.classList.remove('hot-plate-on', 'hot-plate-off');
-                    if (state) {
-                        hotplateElement.classList.add('hot-plate-on');
-                    } else {
-                        hotplateElement.classList.add('hot-plate-off');
-                    }
-                }
-                
-                if (statusElement) {
-                    statusElement.textContent = state ? 'ON' : 'OFF';
-                }
-            });
-            
-            // Update fans
-            const fanSpeeds = data.fan_speeds || [];
-            fanSpeeds.forEach((speed, index) => {
-                const fanElement = document.getElementById(`fan${index + 1}`);
-                const speedElement = document.getElementById(`fan${index + 1}Speed`);
-                const fanBlade = fanElement.querySelector('.fan-blade');
-                
-                if (fanBlade) {
-                    // Remove all animation classes first
-                    fanBlade.classList.remove('fan-on', 'fan-off');
-                    
-                    if (speed > 0) {
-                        // Calculate rotation duration based on PWM speed (0-255)
-                        // Higher speed = faster rotation = shorter duration
-                        // Map: 255 -> 0.5s (fastest), 1 -> 5s (slowest)
-                        const duration = 5.0 - (speed / 255) * 4.5; // 5s to 0.5s
-                        
-                        // Set animation duration before adding the class
-                        fanBlade.style.animationDuration = `${duration}s`;
-                        
-                        // Add the animation class
-                        fanBlade.classList.add('fan-on');
-                    } else {
-                        // Stop animation
-                        fanBlade.classList.add('fan-off');
-                        fanBlade.style.animationDuration = '';
-                    }
-                }
-                
-                if (speedElement) {
-                    speedElement.textContent = speed;
-                }
-            });
-            
-            // Update CN²
-            if (data.cn2 !== undefined) {
-                const cn2Value = data.cn2.toExponential(2);
-                document.getElementById('cn2Value').textContent = cn2Value;
-                document.getElementById('cn2TitleValue').textContent = cn2Value;
-            }
-        }
-        
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            initWebSocket();
-        });
-    </script>
+    <script src="/static/beta.js"></script>
 </body>
 </html>

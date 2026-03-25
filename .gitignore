@@ -1,1 +1,3 @@
 *.pyc
+camera_images/*
+__pycache__

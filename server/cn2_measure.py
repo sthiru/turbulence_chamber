@@ -12,7 +12,7 @@ import numpy as np
 import os
 
 
-image_folder= "E:\TURBULENCE CHAMBER\Turbulence_chamber_190326\With_turbulence\input_images"
+image_folder= ".\camera_images"
 
 images = sorted(
 [f for f in os.listdir(image_folder)
