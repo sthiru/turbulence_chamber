@@ -74,7 +74,7 @@ bool bmeFound[NUM_BME280_SENSORS] = {false, false, false, false};
 
 // System State
 float currentTemperatures[NUM_SENSORS];
-float targetTemperatures[NUM_HOT_PLATES] = {80.0, 80.0};
+float targetTemperatures[NUM_HOT_PLATES] = {35.0, 35.0};
 int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
 
