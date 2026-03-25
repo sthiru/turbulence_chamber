@@ -91,11 +91,27 @@ function updateSystemStatus(data) {
 
 // Update sensor data
 function updateSensorData(data) {
-    // Update temperature sensors
+    // Get the SVG document content
+    const svgObject = document.querySelector('object[data="/static/beta.svg"]');
+    let svgDoc = null;
+    
+    if (svgObject && svgObject.contentDocument) {
+        svgDoc = svgObject.contentDocument;
+    } else if (svgObject && svgObject.getSVGDocument) {
+        // Fallback for older browsers
+        svgDoc = svgObject.getSVGDocument();
+    }
+    
+    if (!svgDoc) {
+        console.error('SVG document not found');
+        return;
+    }
+    
+    // Update temperatures
     const temperatures = data.temperatures || [];
     temperatures.forEach((temp, index) => {
-        const tempElement = document.getElementById(`temp${index + 1}`);
-        const sensorElement = document.getElementById(`sensor${index + 1}`);
+        const tempElement = svgDoc.getElementById(`temp${index + 1}`);
+        const sensorElement = svgDoc.getElementById(`sensor${index + 1}`);
         
         if (tempElement) {
             if (temp < -100) {
@@ -105,17 +121,19 @@ function updateSensorData(data) {
             }
         }
         
-        // Update sensor color based on temperature
+        // Update sensor color based on temperature (SVG elements)
         if (sensorElement && temp >= -100) {
-            const circle = sensorElement.querySelector('.sensor-circle');
-            circle.classList.remove('sensor-normal', 'sensor-warning', 'sensor-danger');
-            
-            if (temp >= CONFIG.DANGER_TEMP) {
-                circle.classList.add('sensor-danger');
-            } else if (temp >= CONFIG.WARNING_TEMP) {
-                circle.classList.add('sensor-warning');
-            } else {
-                circle.classList.add('sensor-normal');
+            const circle = sensorElement.querySelector('circle');
+            if (circle) {
+                circle.classList.remove('sensor-normal', 'sensor-warning', 'sensor-danger');
+                
+                if (temp >= CONFIG.DANGER_TEMP) {
+                    circle.classList.add('sensor-danger');
+                } else if (temp >= CONFIG.WARNING_TEMP) {
+                    circle.classList.add('sensor-warning');
+                } else {
+                    circle.classList.add('sensor-normal');
+                }
             }
         }
     });
@@ -123,7 +141,7 @@ function updateSensorData(data) {
     // Update hot plates
     const hotPlateStates = data.hot_plate_states || [];
     hotPlateStates.forEach((state, index) => {
-        const hotplateElement = document.getElementById(`hotplate${index + 1}`);
+        const hotplateElement = svgDoc.getElementById(`hotplate${index + 1}`);
         const statusElement = document.getElementById(`hotplate${index + 1}Status`);
         
         if (hotplateElement) {
@@ -143,29 +161,33 @@ function updateSensorData(data) {
     // Update fans
     const fanSpeeds = data.fan_speeds || [];
     fanSpeeds.forEach((speed, index) => {
-        const fanElement = document.getElementById(`fan${index + 1}`);
+        const fanElement = svgDoc.getElementById(`fan${index + 1}`);
         const speedElement = document.getElementById(`fan${index + 1}Speed`);
-        const fanBlade = fanElement.querySelector('.fan-blade');
         
-        if (fanBlade) {
-            // Remove all animation classes first
-            fanBlade.classList.remove('fan-on', 'fan-off');
+        if (fanElement) {
+            // Find the fan blade group within the SVG fan element
+            const fanBlade = fanElement.querySelector('.fan-blade');
             
-            if (speed > 0) {
-                // Calculate rotation duration based on PWM speed (0-255)
-                // Higher speed = faster rotation = shorter duration
-                // Map: 255 -> 0.5s (fastest), 1 -> 5s (slowest)
-                const duration = 5.0 - (speed / 255) * 4.5; // 5s to 0.5s
+            if (fanBlade) {
+                // Remove all animation classes first
+                fanBlade.classList.remove('fan-on', 'fan-off');
                 
-                // Set animation duration before adding the class
-                fanBlade.style.animationDuration = `${duration}s`;
-                
-                // Add the animation class
-                fanBlade.classList.add('fan-on');
-            } else {
-                // Stop animation
-                fanBlade.classList.add('fan-off');
-                fanBlade.style.animationDuration = '';
+                if (speed > 0) {
+                    // Calculate rotation duration based on PWM speed (0-255)
+                    // Higher speed = faster rotation = shorter duration
+                    // Map: 255 -> 0.5s (fastest), 1 -> 5s (slowest)
+                    const duration = 5.0 - (speed / 255) * 4.5; // 5s to 0.5s
+                    
+                    // Set animation duration before adding the class
+                    fanBlade.style.animationDuration = `${duration}s`;
+                    
+                    // Add the animation class
+                    fanBlade.classList.add('fan-on');
+                } else {
+                    // Stop animation
+                    fanBlade.classList.add('fan-off');
+                    fanBlade.style.animationDuration = '';
+                }
             }
         }
         
@@ -176,60 +198,29 @@ function updateSensorData(data) {
     
     // Update camera image and status
     if (data.camera_image !== undefined) {
-        const cameraImageElement = document.getElementById('cameraImage');
-        const cameraPlaceholderElement = document.getElementById('cameraPlaceholder');
-        const cameraStatusElement = document.getElementById('cameraStatus');
+        const svgCameraImageElement = svgDoc.getElementById('svgCameraImage');
+        const svgCameraPlaceholderElement = svgDoc.getElementById('svgCameraPlaceholder');
+        
+        console.log('Camera image data:', data.camera_image);
+        console.log('SVG camera image element found:', !!svgCameraImageElement);
+        console.log('SVG camera placeholder element found:', !!svgCameraPlaceholderElement);
         
         if (data.camera_image) {
-            // Update image source
+            // Update SVG image source
             const imageUrl = `/camera_images/${data.camera_image}`;
-            cameraImageElement.src = imageUrl;
-            cameraImageElement.style.display = 'block';
-            cameraPlaceholderElement.style.display = 'none';
-            
-            // Update status
-            if (cameraStatusElement) {
-                cameraStatusElement.textContent = `Latest: ${data.camera_image}`;
-            }
+            console.log('Setting image URL:', imageUrl);
+            svgCameraImageElement.setAttribute('href', imageUrl);
+            svgCameraPlaceholderElement.style.display = 'none';
         } else {
             // Hide image, show placeholder
-            cameraImageElement.style.display = 'none';
-            cameraPlaceholderElement.style.display = 'flex';
-            
-            if (cameraStatusElement) {
-                cameraStatusElement.textContent = 'No camera image available';
-            }
-        }
-    }
-    
-    // Update camera status
-    if (data.camera_status !== undefined) {
-        const cameraStatusElement = document.getElementById('cameraStatus');
-        if (cameraStatusElement) {
-            let statusText = 'Camera: ';
-            let statusClass = '';
-            
-            if (data.camera_status.error) {
-                statusText += `Error - ${data.camera_status.error}`;
-                statusClass = 'camera-status-disconnected';
-            } else if (data.camera_status.connected) {
-                statusText += 'Connected';
-                statusClass = 'camera-status-connected';
-            } else if (data.camera_status.available) {
-                statusText += 'Available';
-                statusClass = 'camera-status-connected';
-            } else {
-                statusText += 'Simulation Mode';
-                statusClass = 'camera-status-simulation';
-            }
-            
-            cameraStatusElement.textContent = statusText;
-            cameraStatusElement.className = statusClass;
+            console.log('No camera image, showing placeholder');
+            svgCameraImageElement.setAttribute('href', '');
+            svgCameraPlaceholderElement.style.display = 'block';
         }
     }
     
     // Update CN² optical
-    if (data.cn2_optical !== undefined) {
+    if (data.cn2_optical !== undefined && data.cn2_optical !== null) {
         const cn2OpticalElement = document.getElementById('cn2OpticalValue');
         if (cn2OpticalElement) {
             const cn2OpticalValue = data.cn2_optical.toExponential(2);
@@ -238,10 +229,15 @@ function updateSensorData(data) {
     }
     
     // Update CN²
-    if (data.cn2 !== undefined) {
+    if (data.cn2 !== undefined && data.cn2 !== null) {
         const cn2Value = data.cn2.toExponential(2);
         document.getElementById('cn2Value').textContent = cn2Value;
-        document.getElementById('cn2TitleValue').textContent = cn2Value;
+        
+        // Update CN² title in SVG
+        const cn2TitleElement = svgDoc.getElementById('cn2TitleValue');
+        if (cn2TitleElement) {
+            cn2TitleElement.textContent = cn2Value;
+        }
     }
 }
 

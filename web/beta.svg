@@ -53,6 +53,11 @@
         <text x="-45" y="10" text-anchor="middle" font-size="12" fill="#333">F1</text>
     </g>
     
+    <!-- Hot Plate 1 (in front of F1 - Outside) -->
+    <rect id="hotplate1" x="390" y="80" width="80" height="60" rx="5" 
+          class="hot-plate hot-plate-off" stroke="#333" stroke-width="2"/>
+    <text x="430" y="115" text-anchor="middle" font-size="14" fill="#333">H1</text>
+    
     <!-- Fan 2 (Top Right - Outside) -->
     <g id="fan2" transform="translate(580, 40)">
         <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
@@ -86,7 +91,7 @@
         </g>
         <text x="50" y="10" text-anchor="middle" font-size="12" fill="#333">F3</text>
     </g>
-
+    
     <!-- Fan 4 (Bottom Right - Outside) -->
     <g id="fan4" transform="translate(580, 490)">
         <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
@@ -104,17 +109,10 @@
         <text x="0" y="50" text-anchor="middle" font-size="12" fill="#333">F4</text>
     </g>
     
-    <!-- Hot Plate 1 (in front of F1 - Outside) -->
-    <rect id="hotplate1" x="490" y="80" width="80" height="60" rx="5" 
+    <!-- Hot Plate 2 (in front of F2 - Outside) -->
+    <rect id="hotplate2" x="540" y="80" width="80" height="60" rx="5" 
           class="hot-plate hot-plate-off" stroke="#333" stroke-width="2"/>
-    <text x="530" y="115" text-anchor="middle" font-size="14" fill="#333">H1</text>
-    
-    <!-- Hot Plate 2 (in front of F3 - Outside) -->
-    <rect id="hotplate2" x="640" y="80" width="80" height="60" rx="5" 
-          class="hot-plate hot-plate-off" stroke="#333" stroke-width="2"/>
-    <text x="680" y="115" text-anchor="middle" font-size="14" fill="#333">H2</text>
-    
-    
+    <text x="590" y="115" text-anchor="middle" font-size="14" fill="#333">H2</text>   
     
     <!-- Temperature Sensors -->
     <!-- T1 (Top Left) -->
@@ -238,6 +236,18 @@
         <text x="25" y="0" text-anchor="middle" font-size="12" fill="#333" font-weight="bold">Camera</text>
         <!-- Lens reflection -->
         <ellipse cx="-2" cy="28" rx="3" ry="2" fill="#fff" opacity="0.3"/>
+        
+        <!-- Camera Image Display -->
+        <g id="cameraImageDisplay" transform="translate(60, -150)">
+            <!-- Image frame - positioned at y=400 -->
+            <rect x="0" y="0" width="400" height="400" rx="2" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
+            <!-- Camera image element -->
+            <image id="svgCameraImage" x="5" y="5" width="390" height="390" href="" preserveAspectRatio="xMidYMid meet"/>
+            <!-- Placeholder text when no image -->
+            <text id="svgCameraPlaceholder" x="200" y="200" text-anchor="middle" font-size="14" fill="#6c757d">Waiting...</text>
+            <!-- Image label -->
+            <text x="200" y="395" text-anchor="middle" font-size="12" fill="#6c757d">Live Feed</text>
+        </g>
     </g>
     
     <!-- Optical axis label -->

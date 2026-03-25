@@ -95,8 +95,12 @@ class BaslerCamera:
     def connect_camera(self) -> bool:
         """Connect to the camera"""
         try:
+            logger.info(f"Attempting to connect camera - Initialized: {self.is_initialized}")
+            
             if not self.is_initialized:
+                logger.info("Camera not initialized, attempting initialization...")
                 if not self.initialize_camera():
+                    logger.error("Failed to initialize camera during connection attempt")
                     return False
                     
             if not PYLON_AVAILABLE:
@@ -104,11 +108,18 @@ class BaslerCamera:
                 logger.info("Camera connected (simulation mode)")
                 return True
                 
+            logger.info(f"Camera object exists: {self.camera is not None}")
+            logger.info(f"Camera is open: {self.camera.IsOpen() if self.camera else 'N/A'}")
+            
             if self.camera and not self.camera.IsOpen():
+                logger.info("Opening camera...")
                 self.camera.Open()
+                logger.info("Camera opened successfully")
                 
             # Start grabbing
+            logger.info("Starting image grabbing...")
             self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+            logger.info("Image grabbing started successfully")
             
             self.is_connected = True
             logger.info("Camera connected and ready for acquisition")
@@ -116,6 +127,8 @@ class BaslerCamera:
             
         except Exception as e:
             logger.error(f"Failed to connect camera: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def disconnect_camera(self):
@@ -222,16 +235,22 @@ class BaslerCamera:
             str: Filename of saved image, or None if failed
         """
         try:
+            logger.info(f"Attempting to capture image - Initialized: {self.is_initialized}, Connected: {self.is_connected}")
             timestamp = datetime.now()
             image = self.capture_image()
             
             if image is not None:
-                return self.save_image(image, timestamp)
+                filename = self.save_image(image, timestamp)
+                logger.info(f"Image captured and saved: {filename}")
+                return filename
             else:
+                logger.warning("Failed to capture image - capture_image returned None")
                 return None
                 
         except Exception as e:
             logger.error(f"Error in capture_and_save: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def get_camera_status(self) -> dict:
