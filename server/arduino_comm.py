@@ -40,7 +40,7 @@ class ArduinoCommunicator:
                 else:
                     self.port = 'COM4'
             else:
-                self.port = '/dev/ttyUSB0'  # Linux
+                self.port = '/dev/ttyACM0'  # Linux
     
     def _load_config_port(self) -> Optional[str]:
         """Load Arduino port from configuration file"""
