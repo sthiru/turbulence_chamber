@@ -935,7 +935,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # Initialize camera system
 camera_images_folder = os.path.join(os.path.dirname(__file__), "..", "camera_images")
-camera_initialized = initialize_camera_system(camera_images_folder)
+pfs_file_path = os.path.join(os.path.dirname(__file__), "..", "camera_settings.pfs")  # Default PFS file path
+
+# Check if PFS file exists
+if os.path.exists(pfs_file_path):
+    logger.info(f"Found PFS file: {pfs_file_path}")
+    camera_initialized = initialize_camera_system(camera_images_folder, pfs_file_path)
+else:
+    logger.info(f"No PFS file found at {pfs_file_path}, using default camera settings")
+    camera_initialized = initialize_camera_system(camera_images_folder)
 if camera_initialized:
     logger.info(f"Camera system initialized successfully")
 else:
