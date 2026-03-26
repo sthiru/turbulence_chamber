@@ -39,7 +39,7 @@
     <!-- Fan 1 (Top Left - Outside) -->
     <g id="fan1" transform="translate(430, 40)">
         <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
-        <g class="fan-blade fan-off">
+        <g class="fan-blade fan-off" transform="translate(0, 0)">
             <!-- Properly centered 4-point star -->
             <path d="M 0,-20 L 7,-7 L 20,0 L 7,7 L 0,20 L -7,7 L -20,0 L -7,-7 Z" 
                   fill="#fff" opacity="0.9"/>
@@ -61,7 +61,7 @@
     <!-- Fan 2 (Top Right - Outside) -->
     <g id="fan2" transform="translate(580, 40)">
         <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
-        <g class="fan-blade fan-off">
+        <g class="fan-blade fan-off" transform="translate(0, 0)">
             <!-- Properly centered 4-point star -->
             <path d="M 0,-20 L 7,-7 L 20,0 L 7,7 L 0,20 L -7,7 L -20,0 L -7,-7 Z" 
                   fill="#fff" opacity="0.9"/>
@@ -78,7 +78,7 @@
     <!-- Fan 3 (Bottom Left - Outside) -->
     <g id="fan3" transform="translate(430, 490)">
         <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
-        <g class="fan-blade fan-off">
+        <g class="fan-blade fan-off" transform="translate(0, 0)">
             <!-- Properly centered 4-point star -->
             <path d="M 0,-20 L 7,-7 L 20,0 L 7,7 L 0,20 L -7,7 L -20,0 L -7,-7 Z" 
                   fill="#fff" opacity="0.9"/>
@@ -95,7 +95,7 @@
     <!-- Fan 4 (Bottom Right - Outside) -->
     <g id="fan4" transform="translate(580, 490)">
         <circle cx="0" cy="0" r="30" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
-        <g class="fan-blade fan-off">
+        <g class="fan-blade fan-off" transform="translate(0, 0)">
             <!-- Properly centered 4-point star -->
             <path d="M 0,-20 L 7,-7 L 20,0 L 7,7 L 0,20 L -7,7 L -20,0 L -7,-7 Z" 
                   fill="#fff" opacity="0.9"/>

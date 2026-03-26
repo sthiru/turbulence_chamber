@@ -165,12 +165,15 @@ function updateSensorData(data) {
         const speedElement = document.getElementById(`fan${index + 1}Speed`);
         
         if (fanElement) {
-            // Find the fan blade group within the SVG fan element
+            // Find the fan blade group within the SVG fan element using SVG document context
             const fanBlade = fanElement.querySelector('.fan-blade');
             
             if (fanBlade) {
-                // Remove all animation classes first
-                fanBlade.classList.remove('fan-on', 'fan-off');
+                // Remove any existing SVG animations
+                const existingAnim = fanBlade.querySelector('animateTransform');
+                if (existingAnim) {
+                    existingAnim.remove();
+                }
                 
                 if (speed > 0) {
                     // Calculate rotation duration based on PWM speed (0-255)
@@ -178,15 +181,22 @@ function updateSensorData(data) {
                     // Map: 255 -> 0.5s (fastest), 1 -> 5s (slowest)
                     const duration = 5.0 - (speed / 255) * 4.5; // 5s to 0.5s
                     
-                    // Set animation duration before adding the class
-                    fanBlade.style.animationDuration = `${duration}s`;
+                    // Create SVG animateTransform element
+                    const animateTransform = document.createElementNS('http://www.w3.org/2000/svg', 'animateTransform');
+                    animateTransform.setAttribute('attributeName', 'transform');
+                    animateTransform.setAttribute('type', 'rotate');
+                    animateTransform.setAttribute('from', '0 0 0');
+                    animateTransform.setAttribute('to', '360 0 0');
+                    animateTransform.setAttribute('dur', `${duration}s`);
+                    animateTransform.setAttribute('repeatCount', 'indefinite');
                     
-                    // Add the animation class
-                    fanBlade.classList.add('fan-on');
+                    fanBlade.appendChild(animateTransform);
+                    animateTransform.beginElement();
+                    
                 } else {
                     // Stop animation
                     fanBlade.classList.add('fan-off');
-                    fanBlade.style.animationDuration = '';
+                    fanBlade.style.animation = 'none';
                 }
             }
         }
@@ -201,19 +211,13 @@ function updateSensorData(data) {
         const svgCameraImageElement = svgDoc.getElementById('svgCameraImage');
         const svgCameraPlaceholderElement = svgDoc.getElementById('svgCameraPlaceholder');
         
-        console.log('Camera image data:', data.camera_image);
-        console.log('SVG camera image element found:', !!svgCameraImageElement);
-        console.log('SVG camera placeholder element found:', !!svgCameraPlaceholderElement);
-        
         if (data.camera_image) {
             // Update SVG image source
             const imageUrl = `/camera_images/${data.camera_image}`;
-            console.log('Setting image URL:', imageUrl);
             svgCameraImageElement.setAttribute('href', imageUrl);
             svgCameraPlaceholderElement.style.display = 'none';
         } else {
             // Hide image, show placeholder
-            console.log('No camera image, showing placeholder');
             svgCameraImageElement.setAttribute('href', '');
             svgCameraPlaceholderElement.style.display = 'block';
         }
@@ -245,3 +249,98 @@ function updateSensorData(data) {
 document.addEventListener('DOMContentLoaded', function() {
     initWebSocket();
 });
+
+// Add test functions for manual fan animation testing
+window.testFanAnimation = function(fanNumber = 1, speed = 255) {
+    const svgObject = document.querySelector('object[data="/static/beta.svg"]');
+    let svgDoc = null;
+    
+    if (svgObject && svgObject.contentDocument) {
+        svgDoc = svgObject.contentDocument;
+    } else if (svgObject && svgObject.getSVGDocument) {
+        // Fallback for older browsers
+        svgDoc = svgObject.getSVGDocument();
+    }
+    
+    if (!svgDoc) {
+        return false;
+    }
+    
+    const fanElement = svgDoc.getElementById(`fan${fanNumber}`);
+    const fanBlade = fanElement?.querySelector('.fan-blade');
+    
+    if (fanBlade) {
+        const duration = 5.0 - (speed / 255) * 4.5;
+        
+        // Remove any existing animations
+        const existingAnim = fanBlade.querySelector('animateTransform');
+        if (existingAnim) {
+            existingAnim.remove();
+        }
+        
+        if (speed > 0) {
+            // Create SVG animateTransform element
+            const animateTransform = document.createElementNS('http://www.w3.org/2000/svg', 'animateTransform');
+            animateTransform.setAttribute('attributeName', 'transform');
+            animateTransform.setAttribute('type', 'rotate');
+            animateTransform.setAttribute('from', '0 0 0');
+            animateTransform.setAttribute('to', '360 0 0');
+            animateTransform.setAttribute('dur', `${duration}s`);
+            animateTransform.setAttribute('repeatCount', 'indefinite');
+            
+            fanBlade.appendChild(animateTransform);
+            animateTransform.beginElement();
+            
+            return true;
+        } else {
+            // Speed is 0, no animation needed
+        }
+        
+        return true;
+    } else {
+        return false;
+    }
+};
+
+// Test all fans at different speeds
+window.testAllFans = function() {
+    testFanAnimation(1, 255); // Fastest
+    testFanAnimation(2, 128); // Medium
+    testFanAnimation(3, 64);  // Slow
+    testFanAnimation(4, 0);   // Stopped
+};
+
+// Stop all fans
+window.stopAllFans = function() {
+    const svgObject = document.querySelector('object[data="/static/beta.svg"]');
+    let svgDoc = null;
+    
+    if (svgObject && svgObject.contentDocument) {
+        svgDoc = svgObject.contentDocument;
+    } else if (svgObject && svgObject.getSVGDocument) {
+        svgDoc = svgObject.getSVGDocument();
+    }
+    
+    if (!svgDoc) {
+        console.error('SVG document not found');
+        return false;
+    }
+    
+    for (let i = 1; i <= 4; i++) {
+        const fanElement = svgDoc.getElementById(`fan${i}`);
+        const fanBlade = fanElement?.querySelector('.fan-blade');
+        
+        if (fanBlade) {
+            // Remove SVG animations
+            const animations = fanBlade.querySelectorAll('animateTransform');
+            animations.forEach(anim => anim.remove());
+            
+            // Also remove CSS classes and styles
+            fanBlade.classList.remove('fan-on');
+            fanBlade.classList.add('fan-off');
+            fanBlade.style.animation = 'none';
+        }
+    }
+    
+    return true;
+};
