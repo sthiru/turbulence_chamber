@@ -39,7 +39,9 @@ class BaslerCamera:
         self.is_connected = False
         
         # Camera settings
-
+        self.exposure_time = 10000  # microseconds
+        self.gain = 1.0
+        self.image_format = "Mono8"
         self.camera_settings = {}  # Store loaded pfs settings
         
         # Ensure camera images folder exists
