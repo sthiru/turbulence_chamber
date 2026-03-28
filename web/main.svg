@@ -51,12 +51,40 @@
                   fill="#fff" opacity="0.9"/>
         </g>
         <text x="-45" y="10" text-anchor="middle" font-size="12" fill="#333">F1</text>
+        
+        <!-- Fan 1 Controls -->
+        <g id="fan1-controls" transform="translate(-80, -10)">
+            <!-- On/Off Switch -->
+            <g id="fan1-switch" class="fan-switch" style="cursor: pointer;">
+                <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
+                <circle id="fan1-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
+                <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
+            </g>
+            
+            <!-- Speed Slider (Hidden by default, shown on hover) -->
+            <g id="fan1-slider" class="fan-slider" opacity="0" style="cursor: pointer;">
+                <rect x="0" y="-30" width="40" height="80" rx="5" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
+                <line x1="20" y1="-20" x2="20" y2="40" stroke="#ccc" stroke-width="2"/>
+                <circle id="fan1-slider-knob" cx="20" cy="10" r="6" fill="#007bff" stroke="#0056b3" stroke-width="1"/>
+                <text x="20" y="55" text-anchor="middle" font-size="9" fill="#666">Speed</text>
+            </g>
+        </g>
     </g>
     
     <!-- Hot Plate 1 (in front of F1 - Outside) -->
     <rect id="hotplate1" x="390" y="80" width="80" height="60" rx="5" 
-          class="hot-plate hot-plate-off" stroke="#333" stroke-width="2"/>
+          fill="#c0c0c0" stroke="#333" stroke-width="2"/>
     <text x="430" y="115" text-anchor="middle" font-size="14" fill="#333">H1</text>
+    
+    <!-- Hot Plate 1 Control -->
+    <g id="hotplate1-controls" transform="translate(320, 95)">
+        <!-- On/Off Switch -->
+        <g id="hotplate1-switch" class="hotplate-switch" style="cursor: pointer;">
+            <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
+            <circle id="hotplate1-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
+            <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
+        </g>
+    </g>
     
     <!-- Fan 2 (Top Right - Outside) -->
     <g id="fan2" transform="translate(580, 40)">
@@ -73,6 +101,24 @@
                   fill="#fff" opacity="0.9"/>
         </g>
         <text x="50" y="10" text-anchor="middle" font-size="12" fill="#333">F2</text>
+        
+        <!-- Fan 2 Controls -->
+        <g id="fan2-controls" transform="translate(40, -10)">
+            <!-- On/Off Switch -->
+            <g id="fan2-switch" class="fan-switch" style="cursor: pointer;">
+                <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
+                <circle id="fan2-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
+                <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
+            </g>
+            
+            <!-- Speed Slider (Hidden by default, shown on hover) -->
+            <g id="fan2-slider" class="fan-slider" opacity="0" style="cursor: pointer;">
+                <rect x="0" y="-30" width="40" height="80" rx="5" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
+                <line x1="20" y1="-20" x2="20" y2="40" stroke="#ccc" stroke-width="2"/>
+                <circle id="fan2-slider-knob" cx="20" cy="10" r="6" fill="#007bff" stroke="#0056b3" stroke-width="1"/>
+                <text x="20" y="55" text-anchor="middle" font-size="9" fill="#666">Speed</text>
+            </g>
+        </g>
     </g>
     
     <!-- Fan 3 (Bottom Left - Outside) -->
@@ -90,6 +136,24 @@
                   fill="#fff" opacity="0.9"/>
         </g>
         <text x="50" y="10" text-anchor="middle" font-size="12" fill="#333">F3</text>
+        
+        <!-- Fan 3 Controls -->
+        <g id="fan3-controls" transform="translate(-80, -10)">
+            <!-- On/Off Switch -->
+            <g id="fan3-switch" class="fan-switch" style="cursor: pointer;">
+                <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
+                <circle id="fan3-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
+                <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
+            </g>
+            
+            <!-- Speed Slider (Hidden by default, shown on hover) -->
+            <g id="fan3-slider" class="fan-slider" opacity="0" style="cursor: pointer;">
+                <rect x="0" y="-30" width="40" height="80" rx="5" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
+                <line x1="20" y1="-20" x2="20" y2="40" stroke="#ccc" stroke-width="2"/>
+                <circle id="fan3-slider-knob" cx="20" cy="10" r="6" fill="#007bff" stroke="#0056b3" stroke-width="1"/>
+                <text x="20" y="55" text-anchor="middle" font-size="9" fill="#666">Speed</text>
+            </g>
+        </g>
     </g>
     
     <!-- Fan 4 (Bottom Right - Outside) -->
@@ -107,12 +171,40 @@
                   fill="#fff" opacity="0.9"/>
         </g>
         <text x="0" y="50" text-anchor="middle" font-size="12" fill="#333">F4</text>
+        
+        <!-- Fan 4 Controls -->
+        <g id="fan4-controls" transform="translate(40, -10)">
+            <!-- On/Off Switch -->
+            <g id="fan4-switch" class="fan-switch" style="cursor: pointer;">
+                <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
+                <circle id="fan4-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
+                <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
+            </g>
+            
+            <!-- Speed Slider (Hidden by default, shown on hover) -->
+            <g id="fan4-slider" class="fan-slider" opacity="0" style="cursor: pointer;">
+                <rect x="0" y="-30" width="40" height="80" rx="5" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
+                <line x1="20" y1="-20" x2="20" y2="40" stroke="#ccc" stroke-width="2"/>
+                <circle id="fan4-slider-knob" cx="20" cy="10" r="6" fill="#007bff" stroke="#0056b3" stroke-width="1"/>
+                <text x="20" y="55" text-anchor="middle" font-size="9" fill="#666">Speed</text>
+            </g>
+        </g>
     </g>
     
     <!-- Hot Plate 2 (in front of F2 - Outside) -->
     <rect id="hotplate2" x="540" y="80" width="80" height="60" rx="5" 
-          class="hot-plate hot-plate-off" stroke="#333" stroke-width="2"/>
-    <text x="590" y="115" text-anchor="middle" font-size="14" fill="#333">H2</text>   
+          fill="#c0c0c0" stroke="#333" stroke-width="2"/>
+    <text x="590" y="115" text-anchor="middle" font-size="14" fill="#333">H2</text>
+    
+    <!-- Hot Plate 2 Control -->
+    <g id="hotplate2-controls" transform="translate(630, 95)">
+        <!-- On/Off Switch -->
+        <g id="hotplate2-switch" class="hotplate-switch" style="cursor: pointer;">
+            <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
+            <circle id="hotplate2-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
+            <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
+        </g>
+    </g>   
     
     <!-- Temperature Sensors -->
     <!-- T1 (Top Left) -->

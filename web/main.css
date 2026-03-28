@@ -53,7 +53,7 @@ body {
 }
 
 .hot-plate-off {
-    fill: #e9ecef;
+    fill: #c0c0c0; /* Light silver/grey */
 }
 
 .sensor-circle {

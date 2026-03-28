@@ -261,7 +261,200 @@ function updateSensorData(data) {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     initWebSocket();
+    initFanControls();
 });
+
+// Initialize fan controls
+function initFanControls() {
+    const svgObject = document.querySelector('object[data="/static/main.svg"]');
+    let svgDoc = null;
+    
+    if (svgObject && svgObject.contentDocument) {
+        svgDoc = svgObject.contentDocument;
+    } else if (svgObject && svgObject.getSVGDocument) {
+        svgDoc = svgObject.getSVGDocument();
+    }
+    
+    if (!svgDoc) return;
+    
+    // Initialize controls for each fan
+    for (let i = 1; i <= 4; i++) {
+        initFanControl(svgDoc, i);
+    }
+    
+    // Initialize hot plate controls
+    for (let i = 1; i <= 2; i++) {
+        initHotPlateControl(svgDoc, i);
+    }
+}
+
+// Initialize individual fan control
+function initFanControl(svgDoc, fanNumber) {
+    const controlsGroup = svgDoc.getElementById(`fan${fanNumber}-controls`);
+    if (!controlsGroup) return;
+    
+    const switchElement = svgDoc.getElementById(`fan${fanNumber}-switch`);
+    const switchKnob = svgDoc.getElementById(`fan${fanNumber}-switch-knob`);
+    const sliderElement = svgDoc.getElementById(`fan${fanNumber}-slider`);
+    const sliderKnob = svgDoc.getElementById(`fan${fanNumber}-slider-knob`);
+    
+    let isOn = false;
+    let isDragging = false;
+    
+    // Switch click handler
+    if (switchElement) {
+        switchElement.addEventListener('click', function() {
+            isOn = !isOn;
+            updateSwitchVisual(switchKnob, isOn);
+            
+            // Show/hide slider based on switch state
+            if (sliderElement) {
+                sliderElement.setAttribute('opacity', isOn ? '1' : '0');
+            }
+            
+            // Send fan control command
+            sendFanCommand(fanNumber, isOn ? 255 : 0);
+        });
+        
+        // Hover effects for switch
+        switchElement.addEventListener('mouseenter', function() {
+            if (isOn && sliderElement) {
+                sliderElement.setAttribute('opacity', '1');
+            }
+        });
+        
+        controlsGroup.addEventListener('mouseleave', function() {
+            if (sliderElement) {
+                sliderElement.setAttribute('opacity', isOn ? '1' : '0');
+            }
+        });
+    }
+    
+    // Slider drag handlers
+    if (sliderElement && sliderKnob) {
+        sliderKnob.addEventListener('mousedown', function(e) {
+            if (!isOn) return;
+            isDragging = true;
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', function(e) {
+            if (!isDragging || !isOn) return;
+            
+            const sliderRect = sliderElement.getBoundingClientRect();
+            const svgRect = svgDoc.ownerSVGElement.getBoundingClientRect();
+            
+            // Calculate relative position
+            const relativeY = e.clientY - svgRect.top - (sliderRect.top - svgRect.top);
+            const clampedY = Math.max(-20, Math.min(40, relativeY));
+            
+            // Update knob position
+            sliderKnob.setAttribute('cy', clampedY);
+            
+            // Calculate speed (0-255)
+            const speed = Math.round(((40 - clampedY) / 60) * 255);
+            
+            // Send speed command
+            sendFanCommand(fanNumber, speed);
+        });
+        
+        document.addEventListener('mouseup', function() {
+            isDragging = false;
+        });
+    }
+}
+
+// Update switch visual state
+function updateSwitchVisual(switchKnob, isOn) {
+    if (!switchKnob) return;
+    
+    if (isOn) {
+        switchKnob.setAttribute('cx', '30');
+        switchKnob.setAttribute('fill', '#28a745');
+        switchKnob.setAttribute('stroke', '#1e7e34');
+    } else {
+        switchKnob.setAttribute('cx', '10');
+        switchKnob.setAttribute('fill', '#fff');
+        switchKnob.setAttribute('stroke', '#999');
+    }
+}
+
+// Send fan command to server
+function sendFanCommand(fanNumber, speed) {
+    const command = {
+        type: 'fan_control',
+        fan: fanNumber,
+        speed: speed
+    };
+    
+    // Send via WebSocket if connected
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(command));
+    }
+}
+
+// Initialize individual hot plate control
+function initHotPlateControl(svgDoc, plateNumber) {
+    const switchElement = svgDoc.getElementById(`hotplate${plateNumber}-switch`);
+    const switchKnob = svgDoc.getElementById(`hotplate${plateNumber}-switch-knob`);
+    const hotPlateElement = svgDoc.getElementById(`hotplate${plateNumber}`);
+    
+    let isOn = false;
+    
+    // Switch click handler
+    if (switchElement) {
+        switchElement.addEventListener('click', function() {
+            isOn = !isOn;
+            updateHotPlateSwitchVisual(switchKnob, isOn);
+            updateHotPlateVisual(hotPlateElement, isOn);
+            
+            // Send hot plate control command
+            sendHotPlateCommand(plateNumber, isOn);
+        });
+    }
+}
+
+// Update hot plate switch visual state
+function updateHotPlateSwitchVisual(switchKnob, isOn) {
+    if (!switchKnob) return;
+    
+    if (isOn) {
+        switchKnob.setAttribute('cx', '30');
+        switchKnob.setAttribute('fill', '#28a745');
+        switchKnob.setAttribute('stroke', '#1e7e34');
+    } else {
+        switchKnob.setAttribute('cx', '10');
+        switchKnob.setAttribute('fill', '#fff');
+        switchKnob.setAttribute('stroke', '#999');
+    }
+}
+
+// Update hot plate visual state
+function updateHotPlateVisual(hotPlateElement, isOn) {
+    if (!hotPlateElement) return;
+    
+    if (isOn) {
+        hotPlateElement.classList.remove('hot-plate-off');
+        hotPlateElement.classList.add('hot-plate-on');
+    } else {
+        hotPlateElement.classList.remove('hot-plate-on');
+        hotPlateElement.classList.add('hot-plate-off');
+    }
+}
+
+// Send hot plate command to server
+function sendHotPlateCommand(plateNumber, isOn) {
+    const command = {
+        type: 'hotplate_control',
+        hotplate: plateNumber,
+        state: isOn
+    };
+    
+    // Send via WebSocket if connected
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(command));
+    }
+}
 
 // Add test functions for manual fan animation testing
 window.testFanAnimation = function(fanNumber = 1, speed = 255) {
