@@ -36,18 +36,16 @@ function initWebSocket() {
         
         ws.onclose = function() {
             console.log('WebSocket disconnected');
-            updateConnectionStatus(false);
             scheduleReconnect();
         };
         
         ws.onerror = function(error) {
             console.error('WebSocket error:', error);
-            updateConnectionStatus(false);
+            scheduleReconnect();
         };
         
     } catch (error) {
         console.error('Error initializing WebSocket:', error);
-        updateConnectionStatus(false);
         scheduleReconnect();
     }
 }
@@ -62,15 +60,15 @@ function scheduleReconnect() {
     }
 }
 
-// Update connection status
-function updateConnectionStatus(connected) {
+// Update system ready status display
+function updateSystemReadyStatus(systemReady) {
     const statusElement = document.getElementById('connectionStatus');
-    if (connected) {
+    if (systemReady) {
         statusElement.className = 'connection-status connected';
-        statusElement.innerHTML = '<i class="fas fa-wifi"></i> Connected';
+        statusElement.innerHTML = '<i class="fas fa-check-circle"></i> System Ready';
     } else {
         statusElement.className = 'connection-status disconnected';
-        statusElement.innerHTML = '<i class="fas fa-wifi"></i> Disconnected';
+        statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> System Not Ready';
     }
 }
 
@@ -87,12 +85,27 @@ function handleWebSocketMessage(data) {
 function updateSystemStatus(data) {
     document.getElementById('systemReady').textContent = data.system_ready ? 'Yes' : 'No';
     document.getElementById('arduinoPort').textContent = data.arduino_port || '--';
+    
+    // Update connection status to show system ready state
+    updateSystemReadyStatus(data.system_ready);
+}
+
+// Update system ready status display
+function updateSystemReadyStatus(systemReady) {
+    const statusElement = document.getElementById('connectionStatus');
+    if (systemReady) {
+        statusElement.className = 'connection-status connected';
+        statusElement.innerHTML = '<i class="fas fa-check-circle"></i> System Ready';
+    } else {
+        statusElement.className = 'connection-status disconnected';
+        statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> System Not Ready';
+    }
 }
 
 // Update sensor data
 function updateSensorData(data) {
     // Get the SVG document content
-    const svgObject = document.querySelector('object[data="/static/beta.svg"]');
+    const svgObject = document.querySelector('object[data="/static/main.svg"]');
     let svgDoc = null;
     
     if (svgObject && svgObject.contentDocument) {
@@ -252,7 +265,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Add test functions for manual fan animation testing
 window.testFanAnimation = function(fanNumber = 1, speed = 255) {
-    const svgObject = document.querySelector('object[data="/static/beta.svg"]');
+    const svgObject = document.querySelector('object[data="/static/main.svg"]');
     let svgDoc = null;
     
     if (svgObject && svgObject.contentDocument) {
@@ -312,7 +325,7 @@ window.testAllFans = function() {
 
 // Stop all fans
 window.stopAllFans = function() {
-    const svgObject = document.querySelector('object[data="/static/beta.svg"]');
+    const svgObject = document.querySelector('object[data="/static/main.svg"]');
     let svgDoc = null;
     
     if (svgObject && svgObject.contentDocument) {

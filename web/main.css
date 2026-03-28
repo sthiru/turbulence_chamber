@@ -184,9 +184,10 @@ body {
 }
 
 .connection-status {
-    position: fixed;
-    top: 20px;
-    right: 20px;
+    position: fixed !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    top: auto !important;
     padding: 10px 20px;
     border-radius: 25px;
     font-weight: 600;
