@@ -296,16 +296,19 @@ function handleWebSocketMessage(data) {
     } else if (data.type === 'historical_data' || data.type === 'current_data') {
         // Update sensor data
         if (data.data && data.data.length > 0) {
-            updateSensorData(data.data[data.data.length - 1]);
+            const latestData = data.data[data.data.length - 1];
+            updateSensorData(latestData);
             
             // Also update system ready status if available in current_data
-            const latestData = data.data[data.data.length - 1];
             console.log('Latest data device_status:', latestData.device_status);
             if (latestData.device_status === 'online') {
                 updateSystemReadyStatus(true);
             } else {
                 updateSystemReadyStatus(false);
             }
+            
+            // Capture data point if capturing is active
+            captureDataPoint(latestData);
         }
     }
 }
@@ -508,6 +511,9 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('SVG object not found');
     }
     
+    // Initialize data capture functionality
+    initDataCapture();
+    
     initVideoDisplay();
     // Auto-start video streaming
     setTimeout(() => {
@@ -516,6 +522,151 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, 2000);
 });
+
+// Data Capture System
+let capturedData = [];
+let isCapturing = false;
+
+function initDataCapture() {
+    const startBtn = document.getElementById('startCaptureBtn');
+    const stopBtn = document.getElementById('stopCaptureBtn');
+    const downloadIconBtn = document.getElementById('downloadIconBtn');
+    const dataCounter = document.getElementById('dataCounter');
+    
+    if (startBtn) {
+        startBtn.addEventListener('click', startDataCapture);
+    }
+    
+    if (stopBtn) {
+        stopBtn.addEventListener('click', stopDataCapture);
+    }
+    
+    if (downloadIconBtn) {
+        downloadIconBtn.addEventListener('click', downloadCapturedData);
+    }
+}
+
+function startDataCapture() {
+    isCapturing = true;
+    capturedData = []; // Reset data array
+    
+    const startBtn = document.getElementById('startCaptureBtn');
+    const stopBtn = document.getElementById('stopCaptureBtn');
+    const downloadIconBtn = document.getElementById('downloadIconBtn');
+    
+    // Update UI
+    if (startBtn) startBtn.classList.add('d-none');
+    if (stopBtn) stopBtn.classList.remove('d-none');
+    // Show download icon button during capture
+    if (downloadIconBtn) downloadIconBtn.classList.remove('d-none');
+    
+    updateDataCounter();
+    console.log('Data capture started');
+}
+
+function stopDataCapture() {
+    isCapturing = false;
+    
+    const startBtn = document.getElementById('startCaptureBtn');
+    const stopBtn = document.getElementById('stopCaptureBtn');
+    const downloadIconBtn = document.getElementById('downloadIconBtn');
+    
+    // Update UI
+    if (startBtn) startBtn.classList.remove('d-none');
+    if (stopBtn) stopBtn.classList.add('d-none');
+    // Keep download icon button visible if there's data
+    if (downloadIconBtn && capturedData.length > 0) {
+        downloadIconBtn.classList.remove('d-none');
+    } else if (downloadIconBtn) {
+        downloadIconBtn.classList.add('d-none');
+    }
+    
+    console.log(`Data capture stopped. Captured ${capturedData.length} data points`);
+}
+
+function captureDataPoint(data) {
+    if (!isCapturing) return;
+    
+    // Create a data point with timestamp and relevant sensor data
+    const dataPoint = {
+        timestamp: new Date().toISOString(),
+        temperatures: data.temperatures || [],
+        target_temperatures: data.target_temperatures || [],
+        fan_speeds: data.fan_speeds || [],
+        hot_plate_states: data.hot_plate_states || [],
+        cn2: data.cn2 || 0,
+        cn2_optical: data.cn2_optical || null,
+        temperature_bme: data.temperature_bme || [],
+        humidity: data.humidity || [],
+        pressure: data.pressure || []
+    };
+    
+    capturedData.push(dataPoint);
+    updateDataCounter();
+}
+
+function updateDataCounter() {
+    const dataCounter = document.getElementById('dataCounter');
+    if (dataCounter) {
+        dataCounter.textContent = capturedData.length;
+        
+        // Update badge color based on data count
+        dataCounter.className = capturedData.length === 0 ? 'badge bg-secondary' : 
+                              capturedData.length < 100 ? 'badge bg-primary' : 
+                              capturedData.length < 500 ? 'badge bg-info' : 'badge bg-success';
+    }
+}
+
+function downloadCapturedData() {
+    if (capturedData.length === 0) {
+        alert('No data to download!');
+        return;
+    }
+    
+    // Create CSV content
+    const headers = [
+        'timestamp',
+        'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5',
+        'target_temp_1', 'target_temp_2',
+        'fan_speed_1', 'fan_speed_2', 'fan_speed_3', 'fan_speed_4',
+        'hot_plate_1', 'hot_plate_2',
+        'cn2_thermal', 'cn2_optical',
+        'bme_temp_1', 'bme_temp_2', 'bme_temp_3', 'bme_temp_4', 'bme_temp_5',
+        'humidity_1', 'humidity_2', 'humidity_3', 'humidity_4', 'humidity_5',
+        'pressure_1', 'pressure_2', 'pressure_3', 'pressure_4', 'pressure_5'
+    ];
+    
+    let csvContent = headers.join(',') + '\n';
+    
+    capturedData.forEach(dataPoint => {
+        const row = [
+            dataPoint.timestamp,
+            ...(dataPoint.temperatures || []),
+            ...(dataPoint.target_temperatures || []),
+            ...(dataPoint.fan_speeds || []),
+            ...(dataPoint.hot_plate_states || []),
+            dataPoint.cn2 || '',
+            dataPoint.cn2_optical || '',
+            ...(dataPoint.temperature_bme || []),
+            ...(dataPoint.humidity || []),
+            ...(dataPoint.pressure || [])
+        ];
+        csvContent += row.join(',') + '\n';
+    });
+    
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `turbulence_data_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    console.log(`Downloaded ${capturedData.length} data points as CSV`);
+}
 
 // Initialize fan controls
 function initFanControls() {
