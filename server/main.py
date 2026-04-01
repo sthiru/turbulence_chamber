@@ -26,7 +26,12 @@ from models import (
     SystemStatus, ArduinoResponse, DeviceStatus
 )
 from arduino_comm import arduino_comm
-from camera_acquisition import initialize_camera_system, capture_camera_image, get_camera_status, cleanup_camera_system
+from camera_acquisition import (
+    initialize_camera_system, capture_camera_image, get_camera_status, cleanup_camera_system,
+    start_camera_video_stream, stop_camera_video_stream, get_latest_video_frame,
+    get_camera_streaming_status, add_video_streaming_client, remove_video_streaming_client,
+    diagnose_camera_connection
+)
 from cn2_optical import calculate_cn2_optical, get_cn2_status
 
 # Pydantic model for reconnect request
@@ -95,7 +100,38 @@ class ConnectionManager:
                 logger.warning("Failed to send to WebSocket client, removing connection")
                 self.active_connections.remove(connection)
 
+# Video streaming connection manager
+class VideoStreamManager:
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+
+    async def connect(self, websocket: WebSocket, client_id: str):
+        await websocket.accept()
+        self.active_connections[client_id] = websocket
+        logger.info(f"Video stream client connected: {client_id}. Total video connections: {len(self.active_connections)}")
+        
+        # Add client to camera streaming
+        add_video_streaming_client(client_id, camera_images_folder)
+
+    def disconnect(self, client_id: str):
+        if client_id in self.active_connections:
+            del self.active_connections[client_id]
+            logger.info(f"Video stream client disconnected: {client_id}. Total video connections: {len(self.active_connections)}")
+            
+            # Remove client from camera streaming
+            remove_video_streaming_client(client_id, camera_images_folder)
+
+    async def send_frame(self, client_id: str, frame_data: str):
+        if client_id in self.active_connections:
+            try:
+                await self.active_connections[client_id].send_text(frame_data)
+            except Exception as e:
+                logger.warning(f"Failed to send video frame to client {client_id}: {e}")
+                # Remove disconnected client
+                self.disconnect(client_id)
+
 manager = ConnectionManager()
+video_manager = VideoStreamManager()
 
 # Data storage for Arduino status records
 status_history = deque(maxlen=100)  # Store last 100 records
@@ -104,6 +140,7 @@ MAX_HISTORY_SIZE = 100
 # Global variables for background polling
 polling_interval = 3.0  # Default polling interval in seconds
 background_task = None
+video_streaming_task = None
 last_broadcast_time = 0
 historical_data_sent = False  # Track if full historical data has been sent
 
@@ -201,15 +238,21 @@ async def background_status_polling():
                 cn2_value = calculate_cn2(temperatures, bme_temperatures, bme_pressure)
                 status_data["cn2"] = cn2_value
                 
-                # Capture camera image
-                try:
-                    camera_filename = capture_camera_image(camera_images_folder)
-                    status_data["camera_image"] = camera_filename if camera_filename else None
-                    status_data["camera_status"] = get_camera_status(camera_images_folder)
-                except Exception as e:
-                    logger.error(f"Error capturing camera image: {e}")
-                    status_data["camera_image"] = None
-                    status_data["camera_status"] = {"error": str(e)}
+                # Capture camera image (only if video streaming is not active)
+                streaming_status = get_camera_streaming_status(camera_images_folder)
+                if not streaming_status.get("is_streaming", False):
+                    try:
+                        camera_filename = capture_camera_image(camera_images_folder)
+                        status_data["camera_image"] = camera_filename if camera_filename else None
+                        status_data["camera_status"] = get_camera_status(camera_images_folder)
+                    except Exception as e:
+                        logger.error(f"Error capturing camera image: {e}")
+                        status_data["camera_image"] = None
+                        status_data["camera_status"] = {"error": str(e)}
+                else:
+                    # Video streaming is active, get streaming status
+                    status_data["camera_image"] = None  # No static image when streaming
+                    status_data["camera_status"] = streaming_status
                 
                 # Calculate CN² optical if enough images are available
                 try:
@@ -383,10 +426,55 @@ async def background_status_polling():
         # Wait for next polling interval
         await asyncio.sleep(polling_interval)
 
+# Video streaming background task
+async def video_streaming_worker():
+    """Background task to handle video streaming to connected clients"""
+    logger.info("Starting video streaming worker")
+    
+    while True:
+        try:
+            # Check if there are active video streaming clients
+            if video_manager.active_connections:
+                # Get latest frame from camera
+                frame_data = get_latest_video_frame(camera_images_folder)
+                
+                if frame_data:
+                    # Send frame to all connected video clients
+                    message = json.dumps({
+                        "type": "video_frame",
+                        "frame": frame_data,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    
+                    # Send to each video client
+                    clients_to_remove = []
+                    for client_id in list(video_manager.active_connections.keys()):
+                        try:
+                            await video_manager.send_frame(client_id, message)
+                        except Exception as e:
+                            logger.warning(f"Failed to send frame to client {client_id}: {e}")
+                            clients_to_remove.append(client_id)
+                    
+                    # Remove disconnected clients
+                    for client_id in clients_to_remove:
+                        video_manager.disconnect(client_id)
+                
+                # Small delay to control frame rate
+                await asyncio.sleep(0.033)  # ~30 FPS
+            else:
+                # No video clients, wait longer
+                await asyncio.sleep(1.0)
+                
+        except Exception as e:
+            logger.error(f"Error in video streaming worker: {e}")
+            await asyncio.sleep(1.0)  # Brief delay on error
+    
+    logger.info("Video streaming worker stopped")
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize Arduino connection and start background polling"""
-    global background_task
+    global background_task, video_streaming_task
     
     logger.info("Starting Temperature Control System server...")
     
@@ -414,6 +502,13 @@ async def startup_event():
         # Start background polling task
         background_task = asyncio.create_task(background_status_polling())
         
+        # Start video streaming worker
+        video_streaming_task = asyncio.create_task(video_streaming_worker())
+        
+        # Auto-start video streaming
+        logger.info("Auto-starting video streaming...")
+        start_camera_video_stream(camera_images_folder)
+        
     else:
         logger.warning("Failed to connect to Arduino - server will run without Arduino")
         logger.info("Please check:")
@@ -424,6 +519,13 @@ async def startup_event():
         
         # Start background polling anyway (will show offline status)
         background_task = asyncio.create_task(background_status_polling())
+        
+        # Start video streaming worker anyway
+        video_streaming_task = asyncio.create_task(video_streaming_worker())
+        
+        # Auto-start video streaming
+        logger.info("Auto-starting video streaming...")
+        start_camera_video_stream(camera_images_folder)
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -585,6 +687,56 @@ async def calculate_cn2_optical_endpoint():
                 "message": "CN² optical calculation not ready - insufficient images",
                 "cn2_optical": None
             }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/camera/video/start")
+async def start_video_stream():
+    """Start video streaming from camera"""
+    try:
+        success = start_camera_video_stream(camera_images_folder)
+        if success:
+            return {
+                "status": "success",
+                "message": "Video streaming started successfully"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Failed to start video streaming"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/camera/video/stop")
+async def stop_video_stream():
+    """Stop video streaming from camera"""
+    try:
+        stop_camera_video_stream(camera_images_folder)
+        return {
+            "status": "success",
+            "message": "Video streaming stopped successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/camera/video/status")
+async def get_video_stream_status():
+    """Get video streaming status"""
+    try:
+        return get_camera_streaming_status(camera_images_folder)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/camera/diagnose")
+async def diagnose_camera():
+    """Diagnose camera connection issues"""
+    try:
+        success = diagnose_camera_connection()
+        return {
+            "status": "success" if success else "error",
+            "message": "Camera diagnosis completed" if success else "Camera connection issues found"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -932,6 +1084,71 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
+
+@app.websocket("/ws/video/{client_id}")
+async def video_streaming_websocket(websocket: WebSocket, client_id: str):
+    """WebSocket endpoint for video streaming"""
+    logger.info(f"New video streaming connection attempt from client: {client_id}")
+    
+    try:
+        await video_manager.connect(websocket, client_id)
+        
+        # Send initial status
+        streaming_status = get_camera_streaming_status(camera_images_folder)
+        await websocket.send_text(json.dumps({
+            "type": "stream_status",
+            "status": streaming_status,
+            "client_id": client_id,
+            "timestamp": datetime.now().isoformat()
+        }))
+        
+        logger.info(f"Video streaming connection established for client: {client_id}")
+        
+        # Keep connection alive and handle incoming messages
+        while True:
+            try:
+                message = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                
+                # Parse incoming message
+                try:
+                    data = json.loads(message)
+                    if data.get("type") == "ping":
+                        await websocket.send_text('{"type":"pong"}')
+                    elif data.get("type") == "start_stream":
+                        # Start video streaming if not already active
+                        if not streaming_status.get("is_streaming", False):
+                            success = start_camera_video_stream(camera_images_folder)
+                            await websocket.send_text(json.dumps({
+                                "type": "stream_response",
+                                "action": "start",
+                                "success": success,
+                                "message": "Video streaming started" if success else "Failed to start video streaming",
+                                "timestamp": datetime.now().isoformat()
+                            }))
+                    elif data.get("type") == "stop_stream":
+                        # Stop video streaming
+                        stop_camera_video_stream(camera_images_folder)
+                        await websocket.send_text(json.dumps({
+                            "type": "stream_response",
+                            "action": "stop",
+                            "success": True,
+                            "message": "Video streaming stopped",
+                            "timestamp": datetime.now().isoformat()
+                        }))
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid JSON received from video client {client_id}: {message}")
+                
+            except asyncio.TimeoutError:
+                # Send a ping to keep connection alive
+                await websocket.send_text('{"type":"ping"}')
+                logger.debug(f"Sent ping to video client {client_id}")
+                
+    except WebSocketDisconnect:
+        logger.info(f"Video streaming client disconnected: {client_id}")
+        video_manager.disconnect(client_id)
+    except Exception as e:
+        logger.error(f"Video streaming WebSocket error for client {client_id}: {e}")
+        video_manager.disconnect(client_id)
 
 # Initialize camera system
 camera_images_folder = os.path.join(os.path.dirname(__file__), "..", "camera_images")

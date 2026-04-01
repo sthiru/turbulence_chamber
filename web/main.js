@@ -1,11 +1,19 @@
 // Beta Page JavaScript
 // WebSocket connection
 let ws = null;
+let videoWs = null;
 let reconnectInterval = null;
+let videoReconnectInterval = null;
+
+// Video streaming variables
+let isVideoStreaming = false;
+let videoClientId = null;
+const currentVideoMode = 'video'; // Always video mode now
 
 // Configuration
 const CONFIG = {
     WS_URL: `ws://${window.location.host}/ws/status`,
+    VIDEO_WS_URL: `ws://${window.location.host}/ws/video`,
     RECONNECT_DELAY: 3000,
     WARNING_TEMP: 60,
     DANGER_TEMP: 80
@@ -50,12 +58,211 @@ function initWebSocket() {
     }
 }
 
+// Initialize video streaming WebSocket
+function initVideoWebSocket() {
+    if (!videoClientId) {
+        videoClientId = 'client_' + Math.random().toString(36).substr(2, 9);
+    }
+    
+    try {
+        const videoWsUrl = `${CONFIG.VIDEO_WS_URL}/${videoClientId}`;
+        console.log('Connecting to video streaming WebSocket:', videoWsUrl);
+        
+        videoWs = new WebSocket(videoWsUrl);
+        
+        videoWs.onopen = function() {
+            console.log('Video streaming WebSocket connected');
+            if (videoReconnectInterval) {
+                clearInterval(videoReconnectInterval);
+                videoReconnectInterval = null;
+            }
+        };
+        
+        videoWs.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                handleVideoWebSocketMessage(data);
+            } catch (error) {
+                console.error('Error parsing video WebSocket data:', error);
+            }
+        };
+        
+        videoWs.onclose = function() {
+            console.log('Video streaming WebSocket disconnected');
+            scheduleVideoReconnect();
+        };
+        
+        videoWs.onerror = function(error) {
+            console.error('Video streaming WebSocket error:', error);
+            scheduleVideoReconnect();
+        };
+        
+    } catch (error) {
+        console.error('Error initializing video WebSocket:', error);
+        scheduleVideoReconnect();
+    }
+}
+
+// Handle video streaming WebSocket messages
+function handleVideoWebSocketMessage(data) {
+    switch (data.type) {
+        case 'stream_status':
+            console.log('Video streaming status:', data.status);
+            updateVideoStreamStatus(data.status);
+            break;
+            
+        case 'video_frame':
+            displayVideoFrame(data.frame);
+            break;
+            
+        case 'stream_response':
+            console.log('Stream response:', data);
+            if (data.action === 'start' && data.success) {
+                isVideoStreaming = true;
+            } else if (data.action === 'stop' && data.success) {
+                isVideoStreaming = false;
+            }
+            break;
+            
+        case 'ping':
+            videoWs.send('{"type":"pong"}');
+            break;
+            
+        case 'pong':
+            // Ping/pong response received
+            break;
+            
+        default:
+            console.log('Unknown video message type:', data.type);
+    }
+}
+
+// Display video frame in SVG
+function displayVideoFrame(frameData) {
+    const svgObject = document.querySelector('object[data="/static/main.svg"]');
+    let svgDoc = null;
+    
+    if (svgObject && svgObject.contentDocument) {
+        svgDoc = svgObject.contentDocument;
+    } else if (svgObject && svgObject.getSVGDocument) {
+        svgDoc = svgObject.getSVGDocument();
+    }
+    
+    if (!svgDoc) {
+        console.error('SVG document not found for video frame display');
+        return;
+    }
+    
+    // Find the video stream element in SVG
+    const svgVideoStreamElement = svgDoc.getElementById('svgVideoStream');
+    const videoLoadingIndicator = svgDoc.getElementById('videoLoadingIndicator');
+    const videoStatusIndicator = svgDoc.getElementById('videoStatusIndicator');
+    
+    if (svgVideoStreamElement && frameData) {
+        // Create data URL from base64 frame data
+        const dataUrl = `data:image/jpeg;base64,${frameData}`;
+        svgVideoStreamElement.setAttribute('href', dataUrl);
+        
+        // Hide loading indicator and show streaming status
+        if (videoLoadingIndicator) {
+            videoLoadingIndicator.style.display = 'none';
+        }
+        if (videoStatusIndicator) {
+            videoStatusIndicator.setAttribute('fill', '#28a745'); // Green for active streaming
+        }
+    }
+}
+
+// Update video streaming status display
+function updateVideoStreamStatus(status) {
+    isVideoStreaming = status.is_streaming || false;
+    
+    // Update UI elements based on streaming status
+    const videoStatusElement = document.getElementById('video-stream-status');
+    if (videoStatusElement) {
+        videoStatusElement.textContent = isVideoStreaming ? 'Streaming' : 'Not Streaming';
+        videoStatusElement.className = isVideoStreaming ? 'text-success' : 'text-muted';
+    }
+    
+    // Always show video mode
+    const cameraModeElement = document.getElementById('camera-mode');
+    if (cameraModeElement) {
+        cameraModeElement.textContent = 'Live Video';
+    }
+    
+    // Update SVG video status indicator
+    const svgObject = document.querySelector('object[data="/static/main.svg"]');
+    let svgDoc = null;
+    
+    if (svgObject && svgObject.contentDocument) {
+        svgDoc = svgObject.contentDocument;
+    } else if (svgObject && svgObject.getSVGDocument) {
+        svgDoc = svgObject.getSVGDocument();
+    }
+    
+    if (svgDoc) {
+        const videoStatusIndicator = svgDoc.getElementById('videoStatusIndicator');
+        const videoLoadingIndicator = svgDoc.getElementById('videoLoadingIndicator');
+        
+        if (videoStatusIndicator) {
+            if (isVideoStreaming) {
+                videoStatusIndicator.setAttribute('fill', '#28a745'); // Green
+                if (videoLoadingIndicator) {
+                    videoLoadingIndicator.style.display = 'none';
+                }
+            } else {
+                videoStatusIndicator.setAttribute('fill', '#dc3545'); // Red
+                if (videoLoadingIndicator) {
+                    videoLoadingIndicator.style.display = 'block';
+                    videoLoadingIndicator.textContent = 'Waiting for Stream...';
+                }
+            }
+        }
+    }
+}
+
+// Initialize video display
+function initVideoDisplay() {
+    const svgObject = document.querySelector('object[data="/static/main.svg"]');
+    let svgDoc = null;
+    
+    if (svgObject && svgObject.contentDocument) {
+        svgDoc = svgObject.contentDocument;
+    } else if (svgObject && svgObject.getSVGDocument) {
+        svgDoc = svgObject.getSVGDocument();
+    }
+    
+    if (svgDoc) {
+        const videoLoadingIndicator = svgDoc.getElementById('videoLoadingIndicator');
+        const videoStatusIndicator = svgDoc.getElementById('videoStatusIndicator');
+        
+        if (videoLoadingIndicator) {
+            videoLoadingIndicator.textContent = 'Loading Video...';
+            videoLoadingIndicator.style.display = 'block';
+        }
+        
+        if (videoStatusIndicator) {
+            videoStatusIndicator.setAttribute('fill', '#ffc107'); // Yellow for loading
+        }
+    }
+}
+
 // Schedule reconnection
 function scheduleReconnect() {
     if (!reconnectInterval) {
         reconnectInterval = setInterval(() => {
             console.log('Attempting to reconnect...');
             initWebSocket();
+        }, CONFIG.RECONNECT_DELAY);
+    }
+}
+
+// Schedule video reconnection
+function scheduleVideoReconnect() {
+    if (!videoReconnectInterval) {
+        videoReconnectInterval = setInterval(() => {
+            console.log('Attempting to reconnect video streaming...');
+            initVideoWebSocket();
         }, CONFIG.RECONNECT_DELAY);
     }
 }
@@ -219,21 +426,9 @@ function updateSensorData(data) {
         }
     });
     
-    // Update camera image and status
-    if (data.camera_image !== undefined) {
-        const svgCameraImageElement = svgDoc.getElementById('svgCameraImage');
-        const svgCameraPlaceholderElement = svgDoc.getElementById('svgCameraPlaceholder');
-        
-        if (data.camera_image) {
-            // Update SVG image source
-            const imageUrl = `/camera_images/${data.camera_image}`;
-            svgCameraImageElement.setAttribute('href', imageUrl);
-            svgCameraPlaceholderElement.style.display = 'none';
-        } else {
-            // Hide image, show placeholder
-            svgCameraImageElement.setAttribute('href', '');
-            svgCameraPlaceholderElement.style.display = 'block';
-        }
+    // Update camera streaming status
+    if (data.camera_status && data.camera_status.is_streaming !== undefined) {
+        updateVideoStreamStatus(data.camera_status);
     }
     
     // Update CN² optical
@@ -261,7 +456,15 @@ function updateSensorData(data) {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     initWebSocket();
+    initVideoWebSocket();
     initFanControls();
+    initVideoDisplay();
+    // Auto-start video streaming
+    setTimeout(() => {
+        if (videoWs && videoWs.readyState === WebSocket.OPEN) {
+            videoWs.send('{"type":"start_stream"}');
+        }
+    }, 2000);
 });
 
 // Initialize fan controls

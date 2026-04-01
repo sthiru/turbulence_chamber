@@ -329,16 +329,18 @@
         <!-- Lens reflection -->
         <ellipse cx="-2" cy="28" rx="3" ry="2" fill="#fff" opacity="0.3"/>
         
-        <!-- Camera Image Display -->
-        <g id="cameraImageDisplay" transform="translate(60, -150)">
-            <!-- Image frame - positioned at y=400 -->
-            <rect x="0" y="0" width="400" height="400" rx="2" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
-            <!-- Camera image element -->
-            <image id="svgCameraImage" x="5" y="5" width="390" height="390" href="" preserveAspectRatio="xMidYMid meet"/>
-            <!-- Placeholder text when no image -->
-            <text id="svgCameraPlaceholder" x="200" y="200" text-anchor="middle" font-size="14" fill="#6c757d">Waiting...</text>
-            <!-- Image label -->
-            <text x="200" y="395" text-anchor="middle" font-size="12" fill="#6c757d">Live Feed</text>
+        <!-- Video Stream Display -->
+        <g id="videoStreamDisplay" transform="translate(60, -150)">
+            <!-- Video frame - positioned at y=400 -->
+            <rect x="0" y="0" width="400" height="400" rx="2" fill="#000" stroke="#dee2e6" stroke-width="2"/>
+            <!-- Video stream element -->
+            <image id="svgVideoStream" x="5" y="5" width="390" height="390" href="" preserveAspectRatio="xMidYMid meet"/>
+            <!-- Loading indicator -->
+            <text id="videoLoadingIndicator" x="200" y="200" text-anchor="middle" font-size="16" fill="#fff" font-weight="bold">Loading Video...</text>
+            <!-- Video status indicator -->
+            <rect id="videoStatusIndicator" x="10" y="10" width="12" height="12" rx="6" fill="#dc3545"/>
+            <!-- Video label -->
+            <text x="200" y="395" text-anchor="middle" font-size="14" fill="#fff" font-weight="bold">Live Video Stream</text>
         </g>
     </g>
     
