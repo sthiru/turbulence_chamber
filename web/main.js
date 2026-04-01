@@ -26,7 +26,6 @@ function initWebSocket() {
         
         ws.onopen = function() {
             console.log('WebSocket connected');
-            updateConnectionStatus(true);
             if (reconnectInterval) {
                 clearInterval(reconnectInterval);
                 reconnectInterval = null;
@@ -270,28 +269,60 @@ function scheduleVideoReconnect() {
 // Update system ready status display
 function updateSystemReadyStatus(systemReady) {
     const statusElement = document.getElementById('connectionStatus');
-    if (systemReady) {
-        statusElement.className = 'connection-status connected';
-        statusElement.innerHTML = '<i class="fas fa-check-circle"></i> System Ready';
+    console.log('updateSystemReadyStatus called with:', systemReady);
+    console.log('Status element found:', statusElement);
+    
+    if (statusElement) {
+        if (systemReady) {
+            statusElement.className = 'connection-status connected';
+            statusElement.innerHTML = '<i class="fas fa-check-circle"></i> System Ready';
+            console.log('Status set to connected');
+        } else {
+            statusElement.className = 'connection-status disconnected';
+            statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> System Not Ready';
+            console.log('Status set to disconnected');
+        }
     } else {
-        statusElement.className = 'connection-status disconnected';
-        statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> System Not Ready';
+        console.error('Connection status element not found!');
     }
 }
 
 // Handle WebSocket messages
 function handleWebSocketMessage(data) {
+    console.log('WebSocket message received:', data.type, data);
+    
     if (data.type === 'system_status') {
         updateSystemStatus(data);
     } else if (data.type === 'historical_data' || data.type === 'current_data') {
-        updateSensorData(data.data[data.data.length - 1]);
+        // Update sensor data
+        if (data.data && data.data.length > 0) {
+            updateSensorData(data.data[data.data.length - 1]);
+            
+            // Also update system ready status if available in current_data
+            const latestData = data.data[data.data.length - 1];
+            console.log('Latest data device_status:', latestData.device_status);
+            if (latestData.device_status === 'online') {
+                updateSystemReadyStatus(true);
+            } else {
+                updateSystemReadyStatus(false);
+            }
+        }
     }
 }
 
 // Update system status
 function updateSystemStatus(data) {
-    document.getElementById('systemReady').textContent = data.system_ready ? 'Yes' : 'No';
-    document.getElementById('arduinoPort').textContent = data.arduino_port || '--';
+    // Check if elements exist before trying to update them
+    const systemReadyElement = document.getElementById('systemReady');
+    const arduinoPortElement = document.getElementById('arduinoPort');
+    
+    if (systemReadyElement) {
+        systemReadyElement.textContent = data.system_ready ? 'Yes' : 'No';
+    }
+    
+    if (arduinoPortElement) {
+        arduinoPortElement.textContent = data.arduino_port || '--';
+    }
     
     // Update connection status to show system ready state
     updateSystemReadyStatus(data.system_ready);
@@ -443,7 +474,10 @@ function updateSensorData(data) {
     // Update CN²
     if (data.cn2 !== undefined && data.cn2 !== null) {
         const cn2Value = data.cn2.toExponential(2);
-        document.getElementById('cn2Value').textContent = cn2Value;
+        const cn2ValueElement = document.getElementById('cn2Value');
+        if (cn2ValueElement) {
+            cn2ValueElement.textContent = cn2Value;
+        }
         
         // Update CN² title in SVG
         const cn2TitleElement = svgDoc.getElementById('cn2TitleValue');
@@ -456,8 +490,24 @@ function updateSensorData(data) {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     initWebSocket();
-    initVideoWebSocket();
-    initFanControls();
+    
+    // Wait for SVG to load before initializing controls
+    const svgObject = document.querySelector('object[data="/static/main.svg"]');
+    if (svgObject) {
+        svgObject.addEventListener('load', function() {
+            console.log('SVG fully loaded, initializing controls...');
+            setTimeout(initFanControls, 100); // Small delay to ensure SVG is ready
+        });
+        
+        // Also try immediately in case SVG is already loaded
+        if (svgObject.contentDocument) {
+            console.log('SVG already loaded, initializing controls...');
+            setTimeout(initFanControls, 100);
+        }
+    } else {
+        console.error('SVG object not found');
+    }
+    
     initVideoDisplay();
     // Auto-start video streaming
     setTimeout(() => {
@@ -470,15 +520,23 @@ document.addEventListener('DOMContentLoaded', function() {
 // Initialize fan controls
 function initFanControls() {
     const svgObject = document.querySelector('object[data="/static/main.svg"]');
+    console.log('SVG object found:', svgObject);
     let svgDoc = null;
     
     if (svgObject && svgObject.contentDocument) {
         svgDoc = svgObject.contentDocument;
+        console.log('SVG document found via contentDocument');
     } else if (svgObject && svgObject.getSVGDocument) {
         svgDoc = svgObject.getSVGDocument();
+        console.log('SVG document found via getSVGDocument');
     }
     
-    if (!svgDoc) return;
+    if (!svgDoc) {
+        console.error('SVG document not found - controls cannot be initialized');
+        return;
+    }
+    
+    console.log('SVG document ready, initializing controls...');
     
     // Initialize controls for each fan
     for (let i = 1; i <= 4; i++) {
@@ -494,55 +552,30 @@ function initFanControls() {
 // Initialize individual fan control
 function initFanControl(svgDoc, fanNumber) {
     const controlsGroup = svgDoc.getElementById(`fan${fanNumber}-controls`);
+    console.log(`Fan ${fanNumber} controls group found:`, controlsGroup);
     if (!controlsGroup) return;
     
-    const switchElement = svgDoc.getElementById(`fan${fanNumber}-switch`);
-    const switchKnob = svgDoc.getElementById(`fan${fanNumber}-switch-knob`);
     const sliderElement = svgDoc.getElementById(`fan${fanNumber}-slider`);
     const sliderKnob = svgDoc.getElementById(`fan${fanNumber}-slider-knob`);
     
-    let isOn = false;
-    let isDragging = false;
+    console.log(`Fan ${fanNumber} elements - slider:`, sliderElement, 'sliderKnob:', sliderKnob);
     
-    // Switch click handler
-    if (switchElement) {
-        switchElement.addEventListener('click', function() {
-            isOn = !isOn;
-            updateSwitchVisual(switchKnob, isOn);
-            
-            // Show/hide slider based on switch state
-            if (sliderElement) {
-                sliderElement.setAttribute('opacity', isOn ? '1' : '0');
-            }
-            
-            // Send fan control command
-            sendFanCommand(fanNumber, isOn ? 255 : 0);
-        });
-        
-        // Hover effects for switch
-        switchElement.addEventListener('mouseenter', function() {
-            if (isOn && sliderElement) {
-                sliderElement.setAttribute('opacity', '1');
-            }
-        });
-        
-        controlsGroup.addEventListener('mouseleave', function() {
-            if (sliderElement) {
-                sliderElement.setAttribute('opacity', isOn ? '1' : '0');
-            }
-        });
-    }
+    let isDragging = false;
+    let currentSpeed = 0;
     
     // Slider drag handlers
     if (sliderElement && sliderKnob) {
+        console.log(`Fan ${fanNumber} slider elements found, adding drag handlers...`);
+        
         sliderKnob.addEventListener('mousedown', function(e) {
-            if (!isOn) return;
+            console.log(`Fan ${fanNumber} slider mousedown!`);
             isDragging = true;
             e.preventDefault();
+            e.stopPropagation();
         });
         
         document.addEventListener('mousemove', function(e) {
-            if (!isDragging || !isOn) return;
+            if (!isDragging) return;
             
             const sliderRect = sliderElement.getBoundingClientRect();
             const svgRect = svgDoc.ownerSVGElement.getBoundingClientRect();
@@ -555,15 +588,24 @@ function initFanControl(svgDoc, fanNumber) {
             sliderKnob.setAttribute('cy', clampedY);
             
             // Calculate speed (0-255)
-            const speed = Math.round(((40 - clampedY) / 60) * 255);
+            currentSpeed = Math.round(((40 - clampedY) / 60) * 255);
             
             // Send speed command
-            sendFanCommand(fanNumber, speed);
+            sendFanCommand(fanNumber, currentSpeed);
         });
         
         document.addEventListener('mouseup', function() {
-            isDragging = false;
+            if (isDragging) {
+                console.log(`Fan ${fanNumber} slider drag ended, speed: ${currentSpeed}`);
+                isDragging = false;
+            }
         });
+        
+        // Check if element has pointer-events
+        const computedStyle = window.getComputedStyle(sliderElement);
+        console.log(`Fan ${fanNumber} slider pointer-events:`, computedStyle.pointerEvents);
+    } else {
+        console.error(`Fan ${fanNumber} slider elements not found!`);
     }
 }
 
@@ -602,11 +644,14 @@ function initHotPlateControl(svgDoc, plateNumber) {
     const switchKnob = svgDoc.getElementById(`hotplate${plateNumber}-switch-knob`);
     const hotPlateElement = svgDoc.getElementById(`hotplate${plateNumber}`);
     
+    console.log(`Hot plate ${plateNumber} elements - switch:`, switchElement, 'knob:', switchKnob, 'plate:', hotPlateElement);
+    
     let isOn = false;
     
     // Switch click handler
     if (switchElement) {
         switchElement.addEventListener('click', function() {
+            console.log(`Hot plate ${plateNumber} switch clicked!`);
             isOn = !isOn;
             updateHotPlateSwitchVisual(switchKnob, isOn);
             updateHotPlateVisual(hotPlateElement, isOn);

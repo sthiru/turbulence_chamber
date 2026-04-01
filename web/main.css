@@ -183,6 +183,33 @@ body {
     transform: translateY(-2px);
 }
 
+/* Fan and Hot Plate Controls */
+.fan-switch,
+.fan-slider,
+.hotplate-switch {
+    pointer-events: all !important;
+    z-index: 10 !important;
+}
+
+.fan-switch:hover,
+.hotplate-switch:hover {
+    opacity: 0.8;
+}
+
+.fan-slider:hover {
+    opacity: 1 !important;
+}
+
+/* Ensure SVG controls are above other elements */
+#fan1-controls,
+#fan2-controls,
+#fan3-controls,
+#fan4-controls,
+#hotplate1-controls,
+#hotplate2-controls {
+    pointer-events: all !important;
+}
+
 .connection-status {
     position: fixed !important;
     bottom: 20px !important;

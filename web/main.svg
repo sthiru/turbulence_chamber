@@ -54,15 +54,8 @@
         
         <!-- Fan 1 Controls -->
         <g id="fan1-controls" transform="translate(-80, -10)">
-            <!-- On/Off Switch -->
-            <g id="fan1-switch" class="fan-switch" style="cursor: pointer;">
-                <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
-                <circle id="fan1-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
-                <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
-            </g>
-            
-            <!-- Speed Slider (Hidden by default, shown on hover) -->
-            <g id="fan1-slider" class="fan-slider" opacity="0" style="cursor: pointer;">
+            <!-- Speed Slider -->
+            <g id="fan1-slider" class="fan-slider" style="cursor: pointer;">
                 <rect x="0" y="-30" width="40" height="80" rx="5" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
                 <line x1="20" y1="-20" x2="20" y2="40" stroke="#ccc" stroke-width="2"/>
                 <circle id="fan1-slider-knob" cx="20" cy="10" r="6" fill="#007bff" stroke="#0056b3" stroke-width="1"/>
@@ -104,15 +97,8 @@
         
         <!-- Fan 2 Controls -->
         <g id="fan2-controls" transform="translate(40, -10)">
-            <!-- On/Off Switch -->
-            <g id="fan2-switch" class="fan-switch" style="cursor: pointer;">
-                <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
-                <circle id="fan2-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
-                <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
-            </g>
-            
-            <!-- Speed Slider (Hidden by default, shown on hover) -->
-            <g id="fan2-slider" class="fan-slider" opacity="0" style="cursor: pointer;">
+            <!-- Speed Slider -->
+            <g id="fan2-slider" class="fan-slider" style="cursor: pointer;">
                 <rect x="0" y="-30" width="40" height="80" rx="5" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
                 <line x1="20" y1="-20" x2="20" y2="40" stroke="#ccc" stroke-width="2"/>
                 <circle id="fan2-slider-knob" cx="20" cy="10" r="6" fill="#007bff" stroke="#0056b3" stroke-width="1"/>
@@ -139,15 +125,8 @@
         
         <!-- Fan 3 Controls -->
         <g id="fan3-controls" transform="translate(-80, -10)">
-            <!-- On/Off Switch -->
-            <g id="fan3-switch" class="fan-switch" style="cursor: pointer;">
-                <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
-                <circle id="fan3-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
-                <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
-            </g>
-            
-            <!-- Speed Slider (Hidden by default, shown on hover) -->
-            <g id="fan3-slider" class="fan-slider" opacity="0" style="cursor: pointer;">
+            <!-- Speed Slider -->
+            <g id="fan3-slider" class="fan-slider" style="cursor: pointer;">
                 <rect x="0" y="-30" width="40" height="80" rx="5" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
                 <line x1="20" y1="-20" x2="20" y2="40" stroke="#ccc" stroke-width="2"/>
                 <circle id="fan3-slider-knob" cx="20" cy="10" r="6" fill="#007bff" stroke="#0056b3" stroke-width="1"/>
@@ -174,15 +153,8 @@
         
         <!-- Fan 4 Controls -->
         <g id="fan4-controls" transform="translate(40, -10)">
-            <!-- On/Off Switch -->
-            <g id="fan4-switch" class="fan-switch" style="cursor: pointer;">
-                <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
-                <circle id="fan4-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
-                <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
-            </g>
-            
-            <!-- Speed Slider (Hidden by default, shown on hover) -->
-            <g id="fan4-slider" class="fan-slider" opacity="0" style="cursor: pointer;">
+            <!-- Speed Slider -->
+            <g id="fan4-slider" class="fan-slider" style="cursor: pointer;">
                 <rect x="0" y="-30" width="40" height="80" rx="5" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
                 <line x1="20" y1="-20" x2="20" y2="40" stroke="#ccc" stroke-width="2"/>
                 <circle id="fan4-slider-knob" cx="20" cy="10" r="6" fill="#007bff" stroke="#0056b3" stroke-width="1"/>

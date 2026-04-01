@@ -228,6 +228,7 @@ async def background_status_polling():
                 status_data = response.data.dict()
                 status_data["device_status"] = "online"
                 status_data["arduino_port"] = arduino_comm.port if arduino_comm.is_connected else None
+                status_data["system_ready"] = True  # System is ready when Arduino responds successfully
                 status_data["timestamp"] = datetime.now().isoformat()
                 
                 # Calculate CN² and add to status data
@@ -491,6 +492,7 @@ async def startup_event():
                 status_data = response.data.dict()
                 status_data["device_status"] = "online"
                 status_data["arduino_port"] = arduino_comm.port
+                status_data["system_ready"] = True  # System is ready when Arduino responds successfully
                 status_data["timestamp"] = datetime.now().isoformat()
                 status_history.append(status_data.copy())
                 logger.info("Initial Arduino status stored in history")
