@@ -6,11 +6,13 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Body
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional, List, Dict
+from functools import lru_cache
 import asyncio
 import json
 import time
@@ -20,6 +22,7 @@ from collections import deque
 import csv
 import io
 import math
+import os
 
 from models import (
     TemperatureCommand, FanCommand, HotPlateCommand, 
@@ -30,7 +33,7 @@ from camera_acquisition import (
     initialize_camera_system, capture_camera_image, get_camera_status, cleanup_camera_system,
     start_camera_video_stream, stop_camera_video_stream, get_latest_video_frame,
     get_camera_streaming_status, add_video_streaming_client, remove_video_streaming_client,
-    diagnose_camera_connection
+    diagnose_camera_connection, get_camera_instance
 )
 from cn2_optical import calculate_cn2_optical, get_cn2_status
 
@@ -42,9 +45,31 @@ class ReconnectRequest(BaseModel):
 class HotPlateToggleRequest(BaseModel):
     state: bool
 
+# Pydantic model for data capture request
+class DataCaptureRequest(BaseModel):
+    start: bool
+    capture_id: Optional[str] = None
+
+# Pydantic model for data point with image
+class DataPointWithImage(BaseModel):
+    timestamp: str
+    temperatures: List[float]
+    target_temperatures: List[float]
+    fan_speeds: List[int]
+    hot_plate_states: List[bool]
+    cn2: Optional[float] = None
+    cn2_optical: Optional[float] = None
+    temperature_bme: List[float]
+    humidity: List[float]
+    pressure: List[float]
+    image_filename: Optional[str] = None
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Constants
+MAX_HISTORY_SIZE = 1000
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -134,8 +159,71 @@ manager = ConnectionManager()
 video_manager = VideoStreamManager()
 
 # Data storage for Arduino status records
-status_history = deque(maxlen=100)  # Store last 100 records
-MAX_HISTORY_SIZE = 100
+status_history = deque(maxlen=1000)  # Store last 1000 status updates
+status_update_queue = asyncio.Queue()
+video_stream_manager = VideoStreamManager()
+
+# Data capture state
+data_capture_active = False
+current_capture_session = None
+captured_data_points = []
+
+def create_capture_folder() -> str:
+    """Create a date-based folder for camera images"""
+    now = datetime.now()
+    date_folder = now.strftime("%d_%b_%Y")  # e.g., "03_Apr_2026"
+    time_folder = now.strftime("%H_%M")     # e.g., "14_30"
+    
+    # Create folder structure: camera_images/DD_MMM_YYYY/HH_MM
+    base_folder = os.path.join("camera_images", date_folder, time_folder)
+    
+    try:
+        os.makedirs(base_folder, exist_ok=True)
+        logger.info(f"Created capture folder: {base_folder}")
+        return base_folder
+    except Exception as e:
+        logger.error(f"Failed to create capture folder: {e}")
+        return "camera_images"  # Fallback to base folder
+
+def capture_and_save_image(capture_folder: str) -> Optional[str]:
+    """Capture and save a camera image with timestamp"""
+    try:
+        logger.debug(f"Attempting to capture and save image to: {capture_folder}")
+        
+        # Get camera instance
+        camera = get_camera_instance(camera_images_folder)
+        
+        # Capture image with the correct folder path
+        image = camera.capture_image()
+        
+        if image is not None:
+            logger.debug(f"Image captured successfully, shape: {image.shape}")
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now()
+            filename = f"camera_{timestamp.strftime('%Y%m%d_%H%M%S_%f')[:-3]}.png"
+            filepath = os.path.join(capture_folder, filename)
+            
+            logger.debug(f"Saving image to: {filepath}")
+            
+            # Save image to the session-specific folder
+            success = cv2.imwrite(filepath, image)
+            
+            if success:
+                logger.info(f"Image saved successfully: {filepath}")
+                return filename
+            else:
+                logger.error(f"Failed to save image: {filepath}")
+                return None
+        else:
+            logger.warning("Failed to capture image - capture_image returned None")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error capturing and saving image: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 # Global variables for background polling
 polling_interval = 3.0  # Default polling interval in seconds
@@ -210,21 +298,18 @@ def calculate_cn2(temperatures, bme_temperatures, bme_pressure, r=0.5):
 
 # Background polling task
 async def background_status_polling():
-    """Continuously poll Arduino for status and store in cache"""
-    global last_broadcast_time, last_system_status, historical_data_sent
+    """Background task to poll Arduino for status and broadcast to WebSocket clients"""
+    global last_broadcast_time, historical_data_sent, last_system_status
     
-    logger.info(f"Starting background status polling with {polling_interval}s interval")
-    last_system_status = {}  # Track last system status to detect changes
-    historical_data_sent = False  # Reset for new connections
+    # Initialize last_system_status
+    last_system_status = None
     
     while True:
         try:
-            current_time = time.time()
-            
             # Get status from Arduino
             response = await arduino_comm.get_status()
             
-            if response.status == "ok" and response.data:
+            if response.status == "ok":
                 status_data = response.data.dict()
                 status_data["device_status"] = "online"
                 status_data["arduino_port"] = arduino_comm.port if arduino_comm.is_connected else None
@@ -232,49 +317,91 @@ async def background_status_polling():
                 status_data["timestamp"] = datetime.now().isoformat()
                 
                 # Calculate CN² and add to status data
-                temperatures = status_data.get("temperatures", [])
-                bme_temperatures = status_data.get("temperature_bme", [])
-                bme_pressure = status_data.get("pressure", [])
+                try:
+                    cn2_value = calculate_cn2(
+                        status_data.get("temperatures", []),
+                        status_data.get("temperature_bme", []),
+                        status_data.get("pressure", [])
+                    )
+                    status_data["cn2"] = cn2_value
+                except Exception as e:
+                    logger.warning(f"Error calculating CN²: {e}")
+                    status_data["cn2"] = None
                 
-                cn2_value = calculate_cn2(temperatures, bme_temperatures, bme_pressure)
-                status_data["cn2"] = cn2_value
-                
-                # Capture camera image (only if video streaming is not active)
-                streaming_status = get_camera_streaming_status(camera_images_folder)
-                if not streaming_status.get("is_streaming", False):
-                    try:
-                        camera_filename = capture_camera_image(camera_images_folder)
-                        status_data["camera_image"] = camera_filename if camera_filename else None
-                        status_data["camera_status"] = get_camera_status(camera_images_folder)
-                    except Exception as e:
-                        logger.error(f"Error capturing camera image: {e}")
-                        status_data["camera_image"] = None
-                        status_data["camera_status"] = {"error": str(e)}
-                else:
-                    # Video streaming is active, get streaming status
-                    status_data["camera_image"] = None  # No static image when streaming
-                    status_data["camera_status"] = streaming_status
-                
-                # Calculate CN² optical if enough images are available
+                # Calculate optical CN² if we have temperature differences
                 try:
                     cn2_optical = calculate_cn2_optical(camera_images_folder)
                     status_data["cn2_optical"] = cn2_optical
-                    status_data["cn2_status"] = get_cn2_status(camera_images_folder)
-                    
-                    if cn2_optical is not None:
-                        logger.info(f"CN² optical calculated: {cn2_optical:.2e} m^(-2/3)")
-                        
                 except Exception as e:
-                    logger.error(f"Error calculating CN² optical: {e}")
+                    logger.warning(f"Error calculating optical CN²: {e}")
                     status_data["cn2_optical"] = None
-                    status_data["cn2_status"] = {"error": str(e)}
+                
+                # Capture camera image if data capture is active
+                image_filename = None
+                global data_capture_active, current_capture_session, captured_data_points
+                
+                if data_capture_active and current_capture_session:
+                    try:
+                        logger.debug(f"Data capture active, session: {current_capture_session['id']}")
+                        logger.debug(f"Capture folder: {current_capture_session['folder']}")
+                        
+                        image_filename = capture_and_save_image(current_capture_session["folder"])
+                        
+                        if image_filename:
+                            logger.info(f"Successfully captured image: {image_filename}")
+                        else:
+                            logger.warning("Image capture returned None")
+                    except Exception as e:
+                        logger.warning(f"Failed to capture image during data capture: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    logger.debug("Data capture not active or no session")
+                
+                # Add image filename to status data
+                status_data["image_filename"] = image_filename
                 
                 # Store in history
                 status_history.append(status_data.copy())
                 
+                # Store in captured data points if capture is active
+                if data_capture_active and current_capture_session:
+                    data_point = status_data.copy()
+                    data_point["session_id"] = current_capture_session["id"]
+                    captured_data_points.append(data_point)
+                    logger.debug(f"Captured data point {len(captured_data_points)} with image: {image_filename}")
+                
                 # Broadcast to all connected clients
                 if manager.active_connections:
-                    # Check if system status changed (for system_status messages)
+                    logger.debug(f"Broadcasting data to {len(manager.active_connections)} clients")
+                    
+                    # Always send current data as current_data message
+                    current_data_message = {
+                        "type": "current_data",
+                        "data": [{
+                            "temperatures": status_data.get("temperatures", []),
+                            "target_temperatures": status_data.get("target_temperatures", []),
+                            "fan_speeds": status_data.get("fan_speeds", []),
+                            "hot_plate_states": status_data.get("hot_plate_states", []),
+                            "temperature_bme": status_data.get("temperature_bme", []),
+                            "humidity": status_data.get("humidity", []),
+                            "pressure": status_data.get("pressure", []),
+                            "cn2": status_data.get("cn2", 0.0),
+                            "cn2_optical": status_data.get("cn2_optical"),
+                            "cn2_status": status_data.get("cn2_status"),
+                            "camera_image": status_data.get("camera_image"),
+                            "camera_status": status_data.get("camera_status"),
+                            "image_filename": status_data.get("image_filename"),
+                            "timestamp": status_data.get("timestamp")
+                        }],
+                        "count": 1,
+                        "latest_only": True
+                    }
+                    
+                    await manager.broadcast(json.dumps(current_data_message))
+                    logger.debug("Sent current data to WebSocket clients")
+                    
+                    # Also send system status if it changed
                     current_system_status = {
                         "device_status": status_data.get("device_status", "unknown"),
                         "system_ready": status_data.get("system_ready", False),
@@ -283,7 +410,6 @@ async def background_status_polling():
                         "timestamp": status_data.get("timestamp")
                     }
                     
-                    # Send system status only if it changed or first broadcast
                     system_status_changed = (
                         not last_system_status or
                         current_system_status["device_status"] != last_system_status.get("device_status") or
@@ -297,69 +423,7 @@ async def background_status_polling():
                             **current_system_status
                         }))
                         last_system_status = current_system_status.copy()
-                        logger.info(f"System status changed: {current_system_status['device_status']} | Ready: {current_system_status['system_ready']}")
-                        
-                        # Reset historical data flag when system status changes (new connection)
-                        if system_status_changed:
-                            historical_data_sent = False
-                    
-                    # Send data based on whether historical data has been sent
-                    if not historical_data_sent:
-                        # Send complete historical data for first time (without system status fields)
-                        historical_data_message = {
-                            "type": "historical_data",
-                            "data": [
-                                {
-                                    "temperatures": record.get("temperatures", []),
-                                    "target_temperatures": record.get("target_temperatures", []),
-                                    "fan_speeds": record.get("fan_speeds", []),
-                                    "hot_plate_states": record.get("hot_plate_states", []),
-                                    "temperature_bme": record.get("temperature_bme", []),
-                                    "humidity": record.get("humidity", []),
-                                    "pressure": record.get("pressure", []),
-                                    "cn2": record.get("cn2", 0.0),
-                                    "cn2_optical": record.get("cn2_optical"),
-                                    "cn2_status": record.get("cn2_status"),
-                                    "camera_image": record.get("camera_image"),
-                                    "camera_status": record.get("camera_status"),
-                                    "timestamp": record.get("timestamp")
-                                } for record in status_history
-                            ],
-                            "count": len(status_history),
-                            "max_size": MAX_HISTORY_SIZE
-                        }
-                        await manager.broadcast(json.dumps(historical_data_message))
-                        historical_data_sent = True
-                        logger.info(f"Sent complete historical data: {len(status_history)} records")
-                    else:
-                        # Send only current data (last 10 records) for subsequent updates (without system status fields)
-                        recent_records = list(status_history)[-10:] if len(status_history) > 10 else list(status_history)
-                        current_data_message = {
-                            "type": "current_data",
-                            "data": [
-                                {
-                                    "temperatures": record.get("temperatures", []),
-                                    "target_temperatures": record.get("target_temperatures", []),
-                                    "fan_speeds": record.get("fan_speeds", []),
-                                    "hot_plate_states": record.get("hot_plate_states", []),
-                                    "temperature_bme": record.get("temperature_bme", []),
-                                    "humidity": record.get("humidity", []),
-                                    "pressure": record.get("pressure", []),
-                                    "cn2": record.get("cn2", 0.0),
-                                    "cn2_optical": record.get("cn2_optical"),
-                                    "cn2_status": record.get("cn2_status"),
-                                    "camera_image": record.get("camera_image"),
-                                    "camera_status": record.get("camera_status"),
-                                    "timestamp": record.get("timestamp")
-                                } for record in recent_records
-                            ],
-                            "count": len(recent_records),
-                            "latest_only": True
-                        }
-                        await manager.broadcast(json.dumps(current_data_message))
-                        logger.debug(f"Sent current data: {len(recent_records)} recent records")
-                    
-                    last_broadcast_time = current_time
+                        logger.debug(f"System status changed: {current_system_status['device_status']} | Ready: {current_system_status['system_ready']}")
                 else:
                     logger.debug("No WebSocket clients connected, skipping broadcast")
                 
@@ -430,16 +494,20 @@ async def background_status_polling():
 # Video streaming background task
 async def video_streaming_worker():
     """Background task to handle video streaming to connected clients"""
-    logger.info("Starting video streaming worker")
+    logger.debug("Starting video streaming worker")
     
     while True:
         try:
             # Check if there are active video streaming clients
             if video_manager.active_connections:
+                logger.debug(f"Active video clients: {len(video_manager.active_connections)}")
+                
                 # Get latest frame from camera
                 frame_data = get_latest_video_frame(camera_images_folder)
                 
                 if frame_data:
+                    logger.debug(f"Got video frame, length: {len(frame_data)}")
+                    
                     # Send frame to all connected video clients
                     message = json.dumps({
                         "type": "video_frame",
@@ -452,6 +520,7 @@ async def video_streaming_worker():
                     for client_id in list(video_manager.active_connections.keys()):
                         try:
                             await video_manager.send_frame(client_id, message)
+                            logger.debug(f"Sent frame to client {client_id}")
                         except Exception as e:
                             logger.warning(f"Failed to send frame to client {client_id}: {e}")
                             clients_to_remove.append(client_id)
@@ -459,6 +528,8 @@ async def video_streaming_worker():
                     # Remove disconnected clients
                     for client_id in clients_to_remove:
                         video_manager.disconnect(client_id)
+                else:
+                    logger.debug("No video frame available")
                 
                 # Small delay to control frame rate
                 await asyncio.sleep(0.033)  # ~30 FPS
@@ -470,7 +541,7 @@ async def video_streaming_worker():
             logger.error(f"Error in video streaming worker: {e}")
             await asyncio.sleep(1.0)  # Brief delay on error
     
-    logger.info("Video streaming worker stopped")
+    logger.debug("Video streaming worker stopped")
 
 @app.on_event("startup")
 async def startup_event():
@@ -480,10 +551,10 @@ async def startup_event():
     logger.info("Starting Temperature Control System server...")
     
     # Connect to Arduino
-    logger.info(f"Attempting to connect to Arduino on {arduino_comm.port}...")
+    logger.debug(f"Attempting to connect to Arduino on {arduino_comm.port}...")
     success = await arduino_comm.connect()
     if success:
-        logger.info("Arduino connected successfully")
+        logger.debug("Arduino connected successfully")
         
         # Get initial status and store it
         try:
@@ -495,7 +566,7 @@ async def startup_event():
                 status_data["system_ready"] = True  # System is ready when Arduino responds successfully
                 status_data["timestamp"] = datetime.now().isoformat()
                 status_history.append(status_data.copy())
-                logger.info("Initial Arduino status stored in history")
+                logger.debug("Initial Arduino status stored in history")
             else:
                 logger.warning("Failed to get initial Arduino status")
         except Exception as e:
@@ -536,14 +607,33 @@ async def shutdown_event():
     cleanup_camera_system()
 
 # API Routes
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "arduino_connected": arduino_comm.is_connected,
+        "arduino_port": arduino_comm.port
+    }
+
 @app.get("/")
 async def root():
-    """Serve the main web interface"""
+    """Serve the main dashboard page"""
     web_file = os.path.join(os.path.dirname(__file__), "..", "web", "index.html")
     if os.path.exists(web_file):
         return FileResponse(web_file)
     else:
-        return {"message": "Temperature Control System API", "version": "1.0.0"}
+        raise HTTPException(status_code=404, detail="Main page not found")
+
+@app.get("/video-test", response_class=HTMLResponse)
+async def video_test():
+    """Serve the video test page"""
+    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "video_test.html")
+    if os.path.exists(web_file):
+        return FileResponse(web_file)
+    else:
+        raise HTTPException(status_code=404, detail="Video test page not found")
 
 @app.get("/main")
 async def main():
@@ -742,6 +832,203 @@ async def diagnose_camera():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/data-capture")
+async def toggle_data_capture(request: DataCaptureRequest):
+    """Start or stop data capture with camera images"""
+    global data_capture_active, current_capture_session, captured_data_points
+    
+    try:
+        if request.start:
+            # Start data capture
+            if data_capture_active:
+                return {"status": "error", "message": "Data capture already active"}
+            
+            # Create new capture session
+            capture_folder = create_capture_folder()
+            current_capture_session = {
+                "id": request.capture_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                "start_time": datetime.now().isoformat(),
+                "folder": capture_folder,
+                "data_points": []
+            }
+            
+            data_capture_active = True
+            captured_data_points = []
+            
+            logger.info(f"Started data capture session: {current_capture_session['id']}")
+            return {
+                "status": "success",
+                "message": "Data capture started",
+                "session_id": current_capture_session["id"],
+                "folder": capture_folder
+            }
+            
+        else:
+            # Stop data capture
+            if not data_capture_active:
+                return {"status": "error", "message": "No active data capture session"}
+            
+            session_info = current_capture_session.copy()
+            session_info["end_time"] = datetime.now().isoformat()
+            session_info["total_data_points"] = len(captured_data_points)
+            
+            # Reset capture state
+            data_capture_active = False
+            current_capture_session = None
+            
+            logger.info(f"Stopped data capture session: {session_info['id']}")
+            return {
+                "status": "success",
+                "message": "Data capture stopped",
+                "session_info": session_info
+            }
+            
+    except Exception as e:
+        logger.error(f"Error toggling data capture: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/data-capture/status")
+async def get_data_capture_status():
+    """Get current data capture status"""
+    global data_capture_active, current_capture_session, captured_data_points
+    
+    return {
+        "active": data_capture_active,
+        "session": current_capture_session,
+        "data_points_count": len(captured_data_points)
+    }
+
+@app.get("/api/data-capture/download")
+async def download_captured_data():
+    """Download captured data as CSV"""
+    global captured_data_points
+    
+    if not captured_data_points:
+        raise HTTPException(status_code=404, detail="No captured data available")
+    
+    try:
+        # Create CSV content
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        header = [
+            'timestamp', 'session_id',
+            'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5',
+            'target_temp_1', 'target_temp_2',
+            'fan_speed_1', 'fan_speed_2', 'fan_speed_3', 'fan_speed_4',
+            'hot_plate_1', 'hot_plate_2',
+            'cn2_thermal', 'cn2_optical',
+            'bme_temp_1', 'bme_temp_2', 'bme_temp_3', 'bme_temp_4', 'bme_temp_5',
+            'humidity_1', 'humidity_2', 'humidity_3', 'humidity_4', 'humidity_5',
+            'pressure_1', 'pressure_2', 'pressure_3', 'pressure_4', 'pressure_5',
+            'image_filename'
+        ]
+        writer.writerow(header)
+        
+        # Write data points
+        for point in captured_data_points:
+            row = [
+                point['timestamp'],
+                point.get('session_id', ''),
+                *(point.get('temperatures', [])),
+                *(point.get('target_temperatures', [])),
+                *(point.get('fan_speeds', [])),
+                *(point.get('hot_plate_states', [])),
+                point.get('cn2', ''),
+                point.get('cn2_optical', ''),
+                *(point.get('temperature_bme', [])),
+                *(point.get('humidity', [])),
+                *(point.get('pressure', [])),
+                point.get('image_filename', '')
+            ]
+            writer.writerow(row)
+        
+        # Create response
+        csv_content = output.getvalue()
+        output.close()
+        
+        filename = f"turbulence_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
+        return StreamingResponse(
+            io.StringIO(csv_content),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error creating CSV download: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/camera/test-image")
+async def get_test_image():
+    """Get a test image for video display debugging"""
+    try:
+        # Create a simple test image using PIL
+        import numpy as np
+        from io import BytesIO
+        import base64
+        
+        # Create a colorful test pattern
+        width, height = 640, 480
+        image = np.zeros((height, width, 3), dtype=np.uint8)
+        
+        # Create a test pattern
+        for y in range(height):
+            for x in range(width):
+                # Create a gradient pattern
+                image[y, x, 0] = int((x / width) * 255)  # Red gradient
+                image[y, x, 1] = int((y / height) * 255)  # Green gradient
+                image[y, x, 2] = int(((x + y) / (width + height)) * 255)  # Blue gradient
+        
+        # Add some text or pattern
+        center_x, center_y = width // 2, height // 2
+        cv2.circle(image, (center_x, center_y), 100, (255, 255, 255), 2)
+        cv2.putText(image, "TEST IMAGE", (center_x - 80, center_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        
+        # Convert to JPEG and base64
+        pil_image = Image.fromarray(image)
+        buffer = BytesIO()
+        pil_image.save(buffer, format='JPEG', quality=90)
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        
+        return {
+            "status": "success",
+            "image_data": img_str,
+            "timestamp": datetime.now().isoformat(),
+            "message": "Test image generated successfully"
+        }
+        
+    except Exception as e:
+        # If OpenCV is not available, create a simple pattern with PIL
+        try:
+            from PIL import Image, ImageDraw
+            import base64
+            from io import BytesIO
+            
+            # Create a simple test image
+            image = Image.new('RGB', (640, 480), color='black')
+            draw = ImageDraw.Draw(image)
+            
+            # Draw some test patterns
+            draw.rectangle([50, 50, 590, 430], outline='white', width=2)
+            draw.ellipse([270, 190, 370, 290], fill='red', outline='white')
+            draw.text([250, 240], "TEST", fill='white')
+            
+            # Convert to JPEG and base64
+            buffer = BytesIO()
+            image.save(buffer, format='JPEG', quality=90)
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+            
+            return {
+                "status": "success",
+                "image_data": img_str,
+                "timestamp": datetime.now().isoformat(),
+                "message": "Test image generated successfully (PIL only)"
+            }
+        except Exception as e2:
+            raise HTTPException(status_code=500, detail=f"Failed to generate test image: {str(e)}")
+
 @app.post("/api/polling_interval")
 async def set_polling_interval(interval: float):
     """Set the polling interval for Arduino status updates"""
@@ -769,15 +1056,15 @@ async def reconnect_arduino(request: ReconnectRequest = None):
         # Update port if provided
         if request and request.port:
             arduino_comm.port = request.port
-            logger.info(f"Attempting to reconnect Arduino to port: {request.port}")
+            logger.debug(f"Attempting to reconnect Arduino to port: {request.port}")
         else:
-            logger.info(f"Attempting to reconnect Arduino to port: {arduino_comm.port}")
+            logger.debug(f"Attempting to reconnect Arduino to port: {arduino_comm.port}")
         
         # Reconnect
         success = await arduino_comm.connect()
         
         if success:
-            logger.info("Arduino successfully connected")
+            logger.debug("Arduino successfully connected")
             return {
                 "status": "success", 
                 "message": f"Arduino connected to {arduino_comm.port}",
@@ -802,7 +1089,7 @@ async def reconnect_arduino(request: ReconnectRequest = None):
 async def force_reconnect_arduino():
     """Force immediate Arduino reconnection"""
     try:
-        logger.info("Force reconnecting Arduino...")
+        logger.debug("Force reconnecting Arduino...")
         await arduino_comm.disconnect()
         await asyncio.sleep(1)  # Brief delay
         success = await arduino_comm.connect()
@@ -1032,125 +1319,135 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.info("New WebSocket connection attempt...")
     await manager.connect(websocket)
     
-    try:
-        # Send system status immediately for fast footer update
-        current_status = {
-            "type": "system_status",
-            "device_status": "offline",
-            "system_ready": False,
-            "arduino_port": arduino_comm.port if arduino_comm.is_connected else None,
-            "polling_interval": polling_interval,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        # If we have recent data, use that for system status
-        if status_history:
-            latest_data = status_history[-1]
-            current_status.update({
-                "device_status": latest_data.get("device_status", "unknown"),
-                "system_ready": latest_data.get("system_ready", False),
-                "arduino_port": latest_data.get("arduino_port"),
-                "timestamp": latest_data.get("timestamp")
-            })
-        
-        await websocket.send_text(json.dumps(current_status))
-        logger.info("Sent system status to new WebSocket client")
-        
-        # Send historical data separately (this can take longer)
-        if status_history:
-            logger.info(f"Sending {len(status_history)} historical records to new WebSocket client")
-            historical_data = {
-                "type": "historical_data",
-                "data": list(status_history),
-                "count": len(status_history),
-                "max_size": MAX_HISTORY_SIZE
-            }
-            await websocket.send_text(json.dumps(historical_data))
-            logger.info("Sent historical data to new WebSocket client")
-        else:
-            logger.info("No historical data available for new WebSocket client")
-        
-        logger.info("WebSocket connection established, waiting for messages...")
-        while True:
-            # Keep connection alive and handle any incoming messages
+    # Send system status immediately for fast footer update
+    current_status = {
+        "type": "system_status",
+        "device_status": "offline",
+        "system_ready": False,
+        "arduino_port": arduino_comm.port if arduino_comm.is_connected else None,
+        "polling_interval": polling_interval,
+        "timestamp": datetime.now().isoformat()
+    }
+    await websocket.send_text(json.dumps(current_status))
+    
+    # Keep connection alive and handle incoming messages
+    while True:
+        try:
+            message = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            
+            # Parse incoming message
             try:
-                message = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
-                logger.debug(f"Received WebSocket message: {message}")
-            except asyncio.TimeoutError:
-                # Send a ping to keep connection alive
-                await websocket.send_text('{"type":"ping"}')
-                logger.debug("Sent ping to keep WebSocket alive")
-    except WebSocketDisconnect:
-        logger.info("WebSocket client disconnected normally")
-        manager.disconnect(websocket)
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        manager.disconnect(websocket)
+                data = json.loads(message)
+                if data.get("type") == "ping":
+                    await websocket.send_text('{"type":"pong"}')
+                elif data.get("type") == "get_status":
+                    # Send current status
+                    await websocket.send_text(json.dumps(current_status))
+            except json.JSONDecodeError:
+                logger.warning("Invalid JSON received from WebSocket")
+            
+        except asyncio.TimeoutError:
+            # Send ping to keep connection alive
+            await websocket.send_text('{"type":"ping"}')
+            
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected")
+            break
+            
+        except Exception as e:
+            logger.error(f"WebSocket connection error: {e}")
+            break
+    
+    manager.disconnect(websocket)
 
 @app.websocket("/ws/video/{client_id}")
 async def video_streaming_websocket(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for video streaming"""
     logger.info(f"New video streaming connection attempt from client: {client_id}")
     
-    try:
-        await video_manager.connect(websocket, client_id)
-        
-        # Send initial status
+    await video_manager.connect(websocket, client_id)
+    
+    # Ensure video streaming is started
+    streaming_status = get_camera_streaming_status(camera_images_folder)
+    if not streaming_status.get("is_streaming", False):
+        logger.info("Starting video streaming for new client connection")
+        start_camera_video_stream(camera_images_folder)
+        # Wait a moment for streaming to start
+        await asyncio.sleep(1.0)
         streaming_status = get_camera_streaming_status(camera_images_folder)
-        await websocket.send_text(json.dumps({
-            "type": "stream_status",
-            "status": streaming_status,
-            "client_id": client_id,
-            "timestamp": datetime.now().isoformat()
-        }))
-        
-        logger.info(f"Video streaming connection established for client: {client_id}")
-        
-        # Keep connection alive and handle incoming messages
-        while True:
+    
+    # Send initial status
+    await websocket.send_text(json.dumps({
+        "type": "stream_status",
+        "status": streaming_status,
+        "client_id": client_id,
+        "timestamp": datetime.now().isoformat()
+    }))
+    
+    logger.info(f"Video streaming connection established for client: {client_id}")
+    
+    # Keep connection alive and handle incoming messages
+    while True:
+        try:
+            message = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            
+            # Parse incoming message
             try:
-                message = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
-                
-                # Parse incoming message
-                try:
-                    data = json.loads(message)
-                    if data.get("type") == "ping":
-                        await websocket.send_text('{"type":"pong"}')
-                    elif data.get("type") == "start_stream":
-                        # Start video streaming if not already active
-                        if not streaming_status.get("is_streaming", False):
-                            success = start_camera_video_stream(camera_images_folder)
-                            await websocket.send_text(json.dumps({
-                                "type": "stream_response",
-                                "action": "start",
-                                "success": success,
-                                "message": "Video streaming started" if success else "Failed to start video streaming",
-                                "timestamp": datetime.now().isoformat()
-                            }))
-                    elif data.get("type") == "stop_stream":
-                        # Stop video streaming
-                        stop_camera_video_stream(camera_images_folder)
+                data = json.loads(message)
+                if data.get("type") == "ping":
+                    await websocket.send_text('{"type":"pong"}')
+                elif data.get("type") == "start_stream":
+                    # Start video streaming if not already active
+                    if not streaming_status.get("is_streaming", False):
+                        success = start_camera_video_stream(camera_images_folder)
                         await websocket.send_text(json.dumps({
                             "type": "stream_response",
-                            "action": "stop",
-                            "success": True,
-                            "message": "Video streaming stopped",
+                            "action": "start",
+                            "success": success,
+                            "message": "Video streaming started" if success else "Failed to start video streaming",
                             "timestamp": datetime.now().isoformat()
                         }))
-                except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON received from video client {client_id}: {message}")
-                
-            except asyncio.TimeoutError:
-                # Send a ping to keep connection alive
-                await websocket.send_text('{"type":"ping"}')
-                logger.debug(f"Sent ping to video client {client_id}")
-                
-    except WebSocketDisconnect:
-        logger.info(f"Video streaming client disconnected: {client_id}")
-        video_manager.disconnect(client_id)
-    except Exception as e:
-        logger.error(f"Video streaming WebSocket error for client {client_id}: {e}")
-        video_manager.disconnect(client_id)
+                elif data.get("type") == "stop_stream":
+                    # Stop video streaming
+                    stop_camera_video_stream(camera_images_folder)
+                    await websocket.send_text(json.dumps({
+                        "type": "stream_response",
+                        "action": "stop",
+                        "success": True,
+                        "message": "Video streaming stopped successfully",
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                elif data.get("type") == "test_frame":
+                    # Send a test frame
+                    test_frame = get_latest_video_frame(camera_images_folder)
+                    if test_frame:
+                        await websocket.send_text(json.dumps({
+                            "type": "video_frame",
+                            "frame": test_frame,
+                            "timestamp": datetime.now().isoformat()
+                        }))
+                    else:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": "No test frame available",
+                            "timestamp": datetime.now().isoformat()
+                        }))
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON received from video client {client_id}")
+            
+        except asyncio.TimeoutError:
+            # Send ping to keep connection alive
+            await websocket.send_text('{"type":"ping"}')
+            
+        except WebSocketDisconnect:
+            logger.info(f"Video streaming client disconnected: {client_id}")
+            break
+            
+        except Exception as e:
+            logger.error(f"Error handling video WebSocket message from {client_id}: {e}")
+            break
+    
+    video_manager.disconnect(client_id)
 
 # Initialize camera system
 camera_images_folder = os.path.join(os.path.dirname(__file__), "..", "camera_images")

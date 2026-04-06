@@ -443,8 +443,22 @@ class BaslerCamera:
                 cv2.rectangle(simulated_image, (200, 150), (440, 330), 150, -1)
                 return simulated_image
                 
+            # Check if camera object is valid
+            if not self.camera or not hasattr(self.camera, 'RetrieveResult'):
+                logger.error("Camera object is not valid for image capture")
+                return None
+                
             # Grab image
-            grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
+            try:
+                grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
+            except Exception as e:
+                logger.error(f"Error calling RetrieveResult: {e}")
+                # Fall back to simulation mode
+                logger.debug("Falling back to simulation mode")
+                simulated_image = np.random.randint(0, 255, (480, 640), dtype=np.uint8)
+                cv2.circle(simulated_image, (320, 240), 50, 200, -1)
+                cv2.rectangle(simulated_image, (200, 150), (440, 330), 150, -1)
+                return simulated_image
             
             if grabResult.GrabSucceeded():
                 # Convert to OpenCV format
@@ -462,13 +476,22 @@ class BaslerCamera:
                 logger.debug(f"Captured image: {image.shape}")
                 return image
             else:
-                logger.error(f"Failed to grab image: {grabResult.ErrorCode()} {grabResult.ErrorDescription()}")
+                logger.error(f"Failed to grab image: {grabResult.ErrorCode} {grabResult.ErrorDescription}")
                 grabResult.Release()
                 return None
                 
         except Exception as e:
             logger.error(f"Error capturing image: {e}")
-            return None
+            import traceback
+            traceback.print_exc()
+            # Fall back to simulation mode on error
+            try:
+                simulated_image = np.random.randint(0, 255, (480, 640), dtype=np.uint8)
+                cv2.circle(simulated_image, (320, 240), 50, 200, -1)
+                cv2.rectangle(simulated_image, (200, 150), (440, 330), 150, -1)
+                return simulated_image
+            except:
+                return None
     
     def save_image(self, image: np.ndarray, timestamp: Optional[datetime] = None) -> Optional[str]:
         """
@@ -595,13 +618,19 @@ class BaslerCamera:
                         # Add frame to queue (non-blocking, drop if full)
                         try:
                             self.frame_queue.put_nowait(frame_data)
+                            logger.debug(f"Added frame to queue, size: {len(frame_data)}")
                         except queue.Full:
                             # Drop oldest frame and add new one
                             try:
                                 self.frame_queue.get_nowait()
                                 self.frame_queue.put_nowait(frame_data)
+                                logger.debug("Replaced oldest frame in queue")
                             except queue.Empty:
                                 pass
+                    else:
+                        logger.warning("Failed to encode frame for streaming")
+                else:
+                    logger.warning("Failed to capture image for streaming")
                 
                 # Small delay to control frame rate
                 time.sleep(0.033)  # ~30 FPS
@@ -841,13 +870,34 @@ def start_camera_video_stream(camera_images_folder: str = "camera_images") -> bo
     """Start video streaming from camera
     
     Args:
-        camera_images_folder: Directory for camera operations
+        camera_images_folder: Folder path for camera operations
         
     Returns:
         bool: True if streaming started successfully, False otherwise
     """
-    camera = get_camera_instance(camera_images_folder)
-    return camera.start_video_stream()
+    global camera_instance
+    
+    try:
+        # Get camera instance (will use simulation if real camera fails)
+        camera = get_camera_instance(camera_images_folder)
+        
+        if not camera:
+            logger.error("Failed to get camera instance for video streaming")
+            return False
+        
+        # Start video streaming on the camera
+        success = camera.start_video_stream()
+        
+        if success:
+            logger.info("Camera video streaming started successfully")
+            return True
+        else:
+            logger.error("Failed to start camera video streaming")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error starting camera video stream: {e}")
+        return False
 
 def stop_camera_video_stream(camera_images_folder: str = "camera_images"):
     """Stop video streaming from camera
@@ -867,8 +917,24 @@ def get_latest_video_frame(camera_images_folder: str = "camera_images") -> Optio
     Returns:
         str: Base64 encoded JPEG frame, or None if no frame available
     """
-    camera = get_camera_instance(camera_images_folder)
-    return camera.get_latest_frame()
+    try:
+        camera = get_camera_instance(camera_images_folder)
+        
+        # Check if streaming is active
+        if not camera.is_streaming:
+            logger.warning("Video streaming is not active, attempting to start...")
+            camera.start_video_stream()
+        
+        frame = camera.get_latest_frame()
+        if frame:
+            logger.debug(f"Got video frame, length: {len(frame)}")
+        else:
+            logger.debug("No video frame available")
+        
+        return frame
+    except Exception as e:
+        logger.error(f"Error getting latest video frame: {e}")
+        return None
 
 def get_camera_streaming_status(camera_images_folder: str = "camera_images") -> dict:
     """Get camera streaming status

@@ -22,37 +22,51 @@ const CONFIG = {
 // Initialize WebSocket connection
 function initWebSocket() {
     try {
-        ws = new WebSocket(CONFIG.WS_URL);
-        
-        ws.onopen = function() {
-            console.log('WebSocket connected');
-            if (reconnectInterval) {
-                clearInterval(reconnectInterval);
-                reconnectInterval = null;
-            }
-        };
-        
-        ws.onmessage = function(event) {
-            try {
-                const data = JSON.parse(event.data);
-                handleWebSocketMessage(data);
-            } catch (error) {
-                console.error('Error parsing WebSocket data:', error);
-            }
-        };
-        
-        ws.onclose = function() {
-            console.log('WebSocket disconnected');
-            scheduleReconnect();
-        };
-        
-        ws.onerror = function(error) {
-            console.error('WebSocket error:', error);
-            scheduleReconnect();
-        };
-        
+        // Check if server is available
+        const serverUrl = `http://${window.location.host}`;
+        fetch(serverUrl)
+            .then(response => {
+                if (response.ok) {
+                    // Server is available, connect WebSocket
+                    ws = new WebSocket(CONFIG.WS_URL);
+                    
+                    ws.onopen = function() {
+                        if (reconnectInterval) {
+                            clearInterval(reconnectInterval);
+                            reconnectInterval = null;
+                        }
+                    };
+                    
+                    ws.onmessage = function(event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            handleWebSocketMessage(data);
+                        } catch (error) {
+                            // Silently handle parsing errors
+                        }
+                    };
+                    
+                    ws.onclose = function() {
+                        scheduleReconnect();
+                    };
+                    
+                    ws.onerror = function(error) {
+                        // Try to display connection status
+                        updateSystemReadyStatus(false);
+                        scheduleReconnect();
+                    };
+                } else {
+                    throw new Error('Server not responding');
+                }
+            })
+            .catch(error => {
+                console.error('Server not available, WebSocket connection failed');
+                updateSystemReadyStatus(false);
+                scheduleReconnect();
+            });
+            
     } catch (error) {
-        console.error('Error initializing WebSocket:', error);
+        updateSystemReadyStatus(false);
         scheduleReconnect();
     }
 }
@@ -65,16 +79,17 @@ function initVideoWebSocket() {
     
     try {
         const videoWsUrl = `${CONFIG.VIDEO_WS_URL}/${videoClientId}`;
-        console.log('Connecting to video streaming WebSocket:', videoWsUrl);
         
         videoWs = new WebSocket(videoWsUrl);
         
         videoWs.onopen = function() {
-            console.log('Video streaming WebSocket connected');
             if (videoReconnectInterval) {
                 clearInterval(videoReconnectInterval);
                 videoReconnectInterval = null;
             }
+            
+            // Send ping to test connection
+            videoWs.send('{"type":"ping"}');
         };
         
         videoWs.onmessage = function(event) {
@@ -82,22 +97,19 @@ function initVideoWebSocket() {
                 const data = JSON.parse(event.data);
                 handleVideoWebSocketMessage(data);
             } catch (error) {
-                console.error('Error parsing video WebSocket data:', error);
+                // Silently handle parsing errors
             }
         };
         
         videoWs.onclose = function() {
-            console.log('Video streaming WebSocket disconnected');
             scheduleVideoReconnect();
         };
         
         videoWs.onerror = function(error) {
-            console.error('Video streaming WebSocket error:', error);
             scheduleVideoReconnect();
         };
         
     } catch (error) {
-        console.error('Error initializing video WebSocket:', error);
         scheduleVideoReconnect();
     }
 }
@@ -106,7 +118,6 @@ function initVideoWebSocket() {
 function handleVideoWebSocketMessage(data) {
     switch (data.type) {
         case 'stream_status':
-            console.log('Video streaming status:', data.status);
             updateVideoStreamStatus(data.status);
             break;
             
@@ -115,7 +126,6 @@ function handleVideoWebSocketMessage(data) {
             break;
             
         case 'stream_response':
-            console.log('Stream response:', data);
             if (data.action === 'start' && data.success) {
                 isVideoStreaming = true;
             } else if (data.action === 'stop' && data.success) {
@@ -127,12 +137,8 @@ function handleVideoWebSocketMessage(data) {
             videoWs.send('{"type":"pong"}');
             break;
             
-        case 'pong':
-            // Ping/pong response received
-            break;
-            
         default:
-            console.log('Unknown video message type:', data.type);
+            // Silently handle unknown message types
     }
 }
 
@@ -148,7 +154,8 @@ function displayVideoFrame(frameData) {
     }
     
     if (!svgDoc) {
-        console.error('SVG document not found for video frame display');
+        // Try alternative method - wait for SVG to load
+        setTimeout(() => displayVideoFrame(frameData), 100);
         return;
     }
     
@@ -250,7 +257,6 @@ function initVideoDisplay() {
 function scheduleReconnect() {
     if (!reconnectInterval) {
         reconnectInterval = setInterval(() => {
-            console.log('Attempting to reconnect...');
             initWebSocket();
         }, CONFIG.RECONNECT_DELAY);
     }
@@ -260,7 +266,6 @@ function scheduleReconnect() {
 function scheduleVideoReconnect() {
     if (!videoReconnectInterval) {
         videoReconnectInterval = setInterval(() => {
-            console.log('Attempting to reconnect video streaming...');
             initVideoWebSocket();
         }, CONFIG.RECONNECT_DELAY);
     }
@@ -269,46 +274,41 @@ function scheduleVideoReconnect() {
 // Update system ready status display
 function updateSystemReadyStatus(systemReady) {
     const statusElement = document.getElementById('connectionStatus');
-    console.log('updateSystemReadyStatus called with:', systemReady);
-    console.log('Status element found:', statusElement);
     
     if (statusElement) {
         if (systemReady) {
             statusElement.className = 'connection-status connected';
             statusElement.innerHTML = '<i class="fas fa-check-circle"></i> System Ready';
-            console.log('Status set to connected');
         } else {
             statusElement.className = 'connection-status disconnected';
             statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> System Not Ready';
-            console.log('Status set to disconnected');
         }
-    } else {
-        console.error('Connection status element not found!');
     }
 }
 
 // Handle WebSocket messages
 function handleWebSocketMessage(data) {
-    console.log('WebSocket message received:', data.type, data);
-    
     if (data.type === 'system_status') {
         updateSystemStatus(data);
     } else if (data.type === 'historical_data' || data.type === 'current_data') {
-        // Update sensor data
-        if (data.data && data.data.length > 0) {
-            const latestData = data.data[data.data.length - 1];
+        updateSensorData(data.data);
+        
+        // Get latest data for system status
+        const dataArray = Array.isArray(data.data) ? data.data : [data.data];
+        const latestData = dataArray[dataArray.length - 1];
+        
+        if (latestData) {
             updateSensorData(latestData);
             
+            // Capture data point if data capture is active
+            captureDataPoint(latestData);
+            
             // Also update system ready status if available in current_data
-            console.log('Latest data device_status:', latestData.device_status);
             if (latestData.device_status === 'online') {
                 updateSystemReadyStatus(true);
             } else {
                 updateSystemReadyStatus(false);
             }
-            
-            // Capture data point if capturing is active
-            captureDataPoint(latestData);
         }
     }
 }
@@ -494,17 +494,18 @@ function updateSensorData(data) {
 document.addEventListener('DOMContentLoaded', function() {
     initWebSocket();
     
+    // Initialize video streaming WebSocket
+    initVideoWebSocket();
+    
     // Wait for SVG to load before initializing controls
     const svgObject = document.querySelector('object[data="/static/main.svg"]');
     if (svgObject) {
         svgObject.addEventListener('load', function() {
-            console.log('SVG fully loaded, initializing controls...');
             setTimeout(initFanControls, 100); // Small delay to ensure SVG is ready
         });
         
         // Also try immediately in case SVG is already loaded
         if (svgObject.contentDocument) {
-            console.log('SVG already loaded, initializing controls...');
             setTimeout(initFanControls, 100);
         }
     } else {
@@ -526,6 +527,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Data Capture System
 let capturedData = [];
 let isCapturing = false;
+let currentSessionId = null;
 
 function initDataCapture() {
     const startBtn = document.getElementById('startCaptureBtn');
@@ -544,44 +546,113 @@ function initDataCapture() {
     if (downloadIconBtn) {
         downloadIconBtn.addEventListener('click', downloadCapturedData);
     }
+    
+    // Check capture status on page load
+    checkCaptureStatus();
 }
 
-function startDataCapture() {
-    isCapturing = true;
-    capturedData = []; // Reset data array
-    
-    const startBtn = document.getElementById('startCaptureBtn');
-    const stopBtn = document.getElementById('stopCaptureBtn');
-    const downloadIconBtn = document.getElementById('downloadIconBtn');
-    
-    // Update UI
-    if (startBtn) startBtn.classList.add('d-none');
-    if (stopBtn) stopBtn.classList.remove('d-none');
-    // Show download icon button during capture
-    if (downloadIconBtn) downloadIconBtn.classList.remove('d-none');
-    
-    updateDataCounter();
-    console.log('Data capture started');
-}
-
-function stopDataCapture() {
-    isCapturing = false;
-    
-    const startBtn = document.getElementById('startCaptureBtn');
-    const stopBtn = document.getElementById('stopCaptureBtn');
-    const downloadIconBtn = document.getElementById('downloadIconBtn');
-    
-    // Update UI
-    if (startBtn) startBtn.classList.remove('d-none');
-    if (stopBtn) stopBtn.classList.add('d-none');
-    // Keep download icon button visible if there's data
-    if (downloadIconBtn && capturedData.length > 0) {
-        downloadIconBtn.classList.remove('d-none');
-    } else if (downloadIconBtn) {
-        downloadIconBtn.classList.add('d-none');
+async function checkCaptureStatus() {
+    try {
+        const response = await fetch('/api/data-capture/status');
+        const status = await response.json();
+        
+        if (status.active) {
+            isCapturing = true;
+            currentSessionId = status.session?.id;
+            updateCaptureUI(true);
+        }
+    } catch (e) {
+        console.error('Error checking capture status:', e);
     }
+}
+
+async function startDataCapture() {
+    try {
+        const response = await fetch('/api/data-capture', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                start: true,
+                capture_id: `session_${new Date().toISOString().replace(/[:.]/g, '-')}`
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            isCapturing = true;
+            currentSessionId = result.session_id;
+            capturedData = []; // Reset data array
+            
+            updateCaptureUI(true);
+            
+            // Show notification
+            showNotification('Data capture started', 'success');
+        } else {
+            console.error('Failed to start data capture:', result.message);
+            showNotification('Failed to start data capture: ' + result.message, 'error');
+        }
+    } catch (e) {
+        console.error('Error starting data capture:', e);
+        showNotification('Error starting data capture', 'error');
+    }
+}
+
+async function stopDataCapture() {
+    try {
+        const response = await fetch('/api/data-capture', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                start: false
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            isCapturing = false;
+            
+            updateCaptureUI(false);
+            
+            // Show notification with session info
+            showNotification(`Data capture stopped. ${result.session_info.total_data_points} data points captured.`, 'info');
+        } else {
+            console.error('Failed to stop data capture:', result.message);
+            showNotification('Failed to stop data capture: ' + result.message, 'error');
+        }
+    } catch (e) {
+        console.error('Error stopping data capture:', e);
+        showNotification('Error stopping data capture', 'error');
+    }
+}
+
+function updateCaptureUI(capturing) {
+    const startBtn = document.getElementById('startCaptureBtn');
+    const stopBtn = document.getElementById('stopCaptureBtn');
+    const downloadIconBtn = document.getElementById('downloadIconBtn');
     
-    console.log(`Data capture stopped. Captured ${capturedData.length} data points`);
+    if (capturing) {
+        if (startBtn) startBtn.classList.add('d-none');
+        if (stopBtn) stopBtn.classList.remove('d-none');
+        if (downloadIconBtn) downloadIconBtn.classList.remove('d-none');
+    } else {
+        if (startBtn) startBtn.classList.remove('d-none');
+        if (stopBtn) stopBtn.classList.add('d-none');
+        
+        // Always keep download button visible if there's captured data
+        if (downloadIconBtn) {
+            if (capturedData.length > 0) {
+                downloadIconBtn.classList.remove('d-none');
+            } else {
+                downloadIconBtn.classList.add('d-none');
+            }
+        }
+    }
 }
 
 function captureDataPoint(data) {
@@ -598,7 +669,9 @@ function captureDataPoint(data) {
         cn2_optical: data.cn2_optical || null,
         temperature_bme: data.temperature_bme || [],
         humidity: data.humidity || [],
-        pressure: data.pressure || []
+        pressure: data.pressure || [],
+        image_filename: data.image_filename || null,
+        session_id: currentSessionId
     };
     
     capturedData.push(dataPoint);
@@ -617,77 +690,67 @@ function updateDataCounter() {
     }
 }
 
-function downloadCapturedData() {
-    if (capturedData.length === 0) {
-        alert('No data to download!');
-        return;
+async function downloadCapturedData() {
+    try {
+        const response = await fetch('/api/data-capture/download');
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'turbulence_data.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            showNotification('Data downloaded successfully', 'success');
+        } else {
+            const error = await response.json();
+            console.error('Failed to download data:', error.detail);
+            showNotification('Failed to download data: ' + error.detail, 'error');
+        }
+    } catch (e) {
+        console.error('Error downloading data:', e);
+        showNotification('Error downloading data', 'error');
     }
+}
+
+function showNotification(message, type = 'info') {
+    // Create a simple notification (you can enhance this with a proper notification library)
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
     
-    // Create CSV content
-    const headers = [
-        'timestamp',
-        'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5',
-        'target_temp_1', 'target_temp_2',
-        'fan_speed_1', 'fan_speed_2', 'fan_speed_3', 'fan_speed_4',
-        'hot_plate_1', 'hot_plate_2',
-        'cn2_thermal', 'cn2_optical',
-        'bme_temp_1', 'bme_temp_2', 'bme_temp_3', 'bme_temp_4', 'bme_temp_5',
-        'humidity_1', 'humidity_2', 'humidity_3', 'humidity_4', 'humidity_5',
-        'pressure_1', 'pressure_2', 'pressure_3', 'pressure_4', 'pressure_5'
-    ];
+    document.body.appendChild(notification);
     
-    let csvContent = headers.join(',') + '\n';
-    
-    capturedData.forEach(dataPoint => {
-        const row = [
-            dataPoint.timestamp,
-            ...(dataPoint.temperatures || []),
-            ...(dataPoint.target_temperatures || []),
-            ...(dataPoint.fan_speeds || []),
-            ...(dataPoint.hot_plate_states || []),
-            dataPoint.cn2 || '',
-            dataPoint.cn2_optical || '',
-            ...(dataPoint.temperature_bme || []),
-            ...(dataPoint.humidity || []),
-            ...(dataPoint.pressure || [])
-        ];
-        csvContent += row.join(',') + '\n';
-    });
-    
-    // Create and download the file
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `turbulence_data_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-    
-    console.log(`Downloaded ${capturedData.length} data points as CSV`);
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 5000);
 }
 
 // Initialize fan controls
 function initFanControls() {
     const svgObject = document.querySelector('object[data="/static/main.svg"]');
-    console.log('SVG object found:', svgObject);
     let svgDoc = null;
     
     if (svgObject && svgObject.contentDocument) {
         svgDoc = svgObject.contentDocument;
-        console.log('SVG document found via contentDocument');
     } else if (svgObject && svgObject.getSVGDocument) {
         svgDoc = svgObject.getSVGDocument();
-        console.log('SVG document found via getSVGDocument');
     }
     
     if (!svgDoc) {
-        console.error('SVG document not found - controls cannot be initialized');
         return;
     }
-    
-    console.log('SVG document ready, initializing controls...');
     
     // Initialize controls for each fan
     for (let i = 1; i <= 4; i++) {
@@ -695,31 +758,25 @@ function initFanControls() {
     }
     
     // Initialize hot plate controls
-    for (let i = 1; i <= 2; i++) {
-        initHotPlateControl(svgDoc, i);
-    }
+    initHotPlateControl(svgDoc, 1);
+    initHotPlateControl(svgDoc, 2);
 }
 
 // Initialize individual fan control
 function initFanControl(svgDoc, fanNumber) {
     const controlsGroup = svgDoc.getElementById(`fan${fanNumber}-controls`);
-    console.log(`Fan ${fanNumber} controls group found:`, controlsGroup);
     if (!controlsGroup) return;
     
     const sliderElement = svgDoc.getElementById(`fan${fanNumber}-slider`);
     const sliderKnob = svgDoc.getElementById(`fan${fanNumber}-slider-knob`);
-    
-    console.log(`Fan ${fanNumber} elements - slider:`, sliderElement, 'sliderKnob:', sliderKnob);
     
     let isDragging = false;
     let currentSpeed = 0;
     
     // Slider drag handlers
     if (sliderElement && sliderKnob) {
-        console.log(`Fan ${fanNumber} slider elements found, adding drag handlers...`);
         
         sliderKnob.addEventListener('mousedown', function(e) {
-            console.log(`Fan ${fanNumber} slider mousedown!`);
             isDragging = true;
             e.preventDefault();
             e.stopPropagation();
@@ -747,16 +804,10 @@ function initFanControl(svgDoc, fanNumber) {
         
         document.addEventListener('mouseup', function() {
             if (isDragging) {
-                console.log(`Fan ${fanNumber} slider drag ended, speed: ${currentSpeed}`);
                 isDragging = false;
             }
         });
         
-        // Check if element has pointer-events
-        const computedStyle = window.getComputedStyle(sliderElement);
-        console.log(`Fan ${fanNumber} slider pointer-events:`, computedStyle.pointerEvents);
-    } else {
-        console.error(`Fan ${fanNumber} slider elements not found!`);
     }
 }
 
@@ -795,14 +846,11 @@ function initHotPlateControl(svgDoc, plateNumber) {
     const switchKnob = svgDoc.getElementById(`hotplate${plateNumber}-switch-knob`);
     const hotPlateElement = svgDoc.getElementById(`hotplate${plateNumber}`);
     
-    console.log(`Hot plate ${plateNumber} elements - switch:`, switchElement, 'knob:', switchKnob, 'plate:', hotPlateElement);
-    
     let isOn = false;
     
     // Switch click handler
     if (switchElement) {
         switchElement.addEventListener('click', function() {
-            console.log(`Hot plate ${plateNumber} switch clicked!`);
             isOn = !isOn;
             updateHotPlateSwitchVisual(switchKnob, isOn);
             updateHotPlateVisual(hotPlateElement, isOn);
