@@ -53,7 +53,7 @@ class ArduinoCommunicator:
                     for line in content.split('\n'):
                         if line.strip().startswith('ARDUINO_PORT ='):
                             port_value = line.split('=')[1].strip().strip('"\'')
-                            logger.info(f"Loaded Arduino port from config: {port_value}")
+                            logger.debug(f"Loaded Arduino port from config: {port_value}")
                             return port_value
         except Exception as e:
             logger.warning(f"Failed to load Arduino config: {e}")
@@ -69,8 +69,8 @@ class ArduinoCommunicator:
                 write_timeout=2.0
             )
             self.is_connected = True
-            logger.info(f"Connected to Arduino on {self.port}")
-            logger.info("Waiting for Arduino to initialize...")
+            logger.debug(f"Connected to Arduino on {self.port}")
+            logger.debug("Waiting for Arduino to initialize...")
             await asyncio.sleep(3)  # Increased from 2 to 3 seconds
             
             # Clear any initial data
@@ -88,7 +88,7 @@ class ArduinoCommunicator:
         if self.serial_conn and self.serial_conn.is_open:
             self.serial_conn.close()
             self.is_connected = False
-            logger.info("Disconnected from Arduino")
+            logger.debug("Disconnected from Arduino")
     
     async def send_command(self, command: ArduinoCommand) -> ArduinoResponse:
         """Send command to Arduino and return response"""
@@ -107,7 +107,6 @@ class ArduinoCommunicator:
             try:
                 # Convert command to JSON and send
                 cmd_json = json.dumps(command.dict(exclude_none=True))
-                logger.info(f"Sending command: {cmd_json}")
                 
                 # Clear any pending input first
                 self.serial_conn.reset_input_buffer()
@@ -115,7 +114,7 @@ class ArduinoCommunicator:
                 # Send command
                 self.serial_conn.write((cmd_json + '\n').encode())
                 self.serial_conn.flush()
-                logger.info(f"Command sent to Arduino on {self.port}")
+                logger.debug(f"Command sent to Arduino on {self.port}")
                 
                 # Check if data was actually written
                 bytes_written = self.serial_conn.out_waiting
@@ -123,12 +122,11 @@ class ArduinoCommunicator:
                 
                 # Wait for response
                 response_line = await self._read_line()
-                logger.info(f"Raw response from Arduino: {response_line}")
+                logger.debug(f"Raw response from Arduino: {response_line}")
                 
                 if response_line:
                     try:
                         response_data = json.loads(response_line)
-                        logger.info(f"Parsed response: {response_data}")
                         return ArduinoResponse(**response_data)
                     except json.JSONDecodeError as e:
                         logger.error(f"JSON decode error: {e}")
@@ -248,11 +246,11 @@ class ArduinoCommunicator:
                             consecutive_failures = 0
                 else:
                     # Try to reconnect
-                    logger.info("Arduino disconnected, attempting to reconnect...")
+                    logger.debug("Arduino disconnected, attempting to reconnect...")
                     await self.connect()
                     if self.is_connected:
                         consecutive_failures = 0
-                        logger.info("Arduino reconnected successfully")
+                        logger.debug("Arduino reconnected successfully")
                     else:
                         consecutive_failures += 1
                         logger.warning(f"Reconnection failed {consecutive_failures}/{max_failures}")
