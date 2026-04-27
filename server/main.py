@@ -35,7 +35,7 @@ from camera_acquisition import (
     get_camera_streaming_status, add_video_streaming_client, remove_video_streaming_client,
     diagnose_camera_connection, get_camera_instance
 )
-from cn2_optical import calculate_cn2_optical, get_cn2_status
+from cn2_optical import cn2.calculate_cn2_optical, cn2.get_cn2_status
 
 # Pydantic model for reconnect request
 class ReconnectRequest(BaseModel):
