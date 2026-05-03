@@ -708,6 +708,7 @@ class BaslerCamera:
         status = {
             "initialized": self.is_initialized,
             "connected": self.is_connected,
+            "is_streaming": self.is_streaming,
             "available": PYLON_AVAILABLE,
             "camera_info": self.camera_info,
             "image_folder": self.camera_images_folder

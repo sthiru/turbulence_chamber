@@ -22,12 +22,19 @@ const CONFIG = {
     UPDATE_INTERVAL: 2000,
     CHART_MAX_POINTS: 150, // 5 minutes at 2-second intervals
     CHART_DURATION: 300000, // 5 minutes in milliseconds
-    NUM_SENSORS: 5,
+    NUM_SENSORS: 12,
     SENSOR_COLORS: [
         '#FF6384', // Red
         '#36A2EB', // Blue  
         '#FFCE56', // Yellow
         '#4BC0C0', // Teal
+        '#9966FF', // Purple
+        '#FF9F40', // Orange
+        '#FF6384', // Red
+        '#C9CBCF', // Gray
+        '#4BC0C0', // Teal
+        '#36A2EB', // Blue
+        '#FFCE56', // Yellow
         '#9966FF'  // Purple
     ]
 };
@@ -396,8 +403,7 @@ function initChart() {
 
 // Update BME280 sensor displays
 function updateBMESensors(data) {
-    const bmeTemps = data.temperature_bme || [];
-    const bmeHumidity = data.humidity || [];
+    const bmeTemps = data.temperature_bmp || [];
     const bmePressure = data.pressure || [];
     
     // Update BME280 temperature displays
@@ -426,18 +432,6 @@ function updateBMESensors(data) {
                         cardElement.classList.add('border-success');
                     }
                 }
-            }
-        }
-    });
-    
-    // Update BME280 humidity displays
-    bmeHumidity.forEach((humidity, index) => {
-        const humidityElement = document.getElementById(`bme-humidity-${index + 1}`);
-        if (humidityElement) {
-            if (humidity < 0 || humidity > 100) {
-                humidityElement.textContent = '--%';
-            } else {
-                humidityElement.textContent = humidity.toFixed(1) + '%';
             }
         }
     });

@@ -6,6 +6,7 @@
     <title>Turbulence Controller - Main</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/static/main.css">
 </head>
 <body>
@@ -16,39 +17,28 @@
                 <i class="fas fa-thermometer-half text-primary me-2"></i>
                 Turbulence Controller
             </a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link active" href="/main" style="font-size: 0.9rem;">
-                    <i class="fas fa-sliders-h me-1"></i> Control Panel
-                </a>
-                <span class="navbar-text ms-3" style="font-size: 0.8rem;">
-                    <i class="fas fa-video text-success me-1"></i> Live Video Stream
-                </span>
-            </div>
-        </div>
-    </nav>
-
-    <!-- Add padding to account for fixed navbar -->
-    <div style="padding-top: 60px;">
-        <!-- Main Content -->
-        <div class="system-container">
-            <!-- Data Capture Section -->
-            <div class="data-capture-section mb-3">
-                <div class="card">
-                    <div class="card-body py-2">
-                        <div class="row align-items-center justify-content-center">
+            <div class="navbar-nav ms-auto d-flex align-items-center">
+                <!-- Data Capture Section -->
+                <div class="card bg-light me-3 py-1 px-2" style="border: 1px solid #dee2e6;">
+                    <div class="card-body py-0">
+                        <div class="row align-items-center">
                             <div class="col-auto">
                                 <button id="startCaptureBtn" class="btn btn-primary btn-sm">
-                                    <i class="fas fa-play me-2"></i>Start Data Capture
+                                    <i class="fas fa-play me-1"></i> Start Data Capture
                                 </button>
                                 <button id="stopCaptureBtn" class="btn btn-danger btn-sm d-none">
-                                    <i class="fas fa-stop me-2"></i>Stop Capture
+                                    <i class="fas fa-stop me-1"></i> Stop Capture
+                                </button>
+                            </div>
+                            <div class="col-auto">
+                                <button id="startVideoBtn" class="btn btn-outline-success btn-sm">
+                                    <i class="fas fa-play me-1"></i> Start Stream
                                 </button>
                             </div>
                             <div class="col-auto">
                                 <div class="text-muted">
-                                    <small>Data Acquired: </small>
+                                    <small>Data: </small>
                                     <span id="dataCounter" class="badge bg-secondary">0</span>
-                                    <small> points</small>
                                 </div>
                             </div>
                             <div class="col-auto">
@@ -59,8 +49,42 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Video Controls -->
+                <div class="d-flex align-items-center me-3">
+                    <button id="stopVideoBtn" class="btn btn-sm btn-outline-danger me-2 d-none" style="font-size: 0.8rem;">
+                        <i class="fas fa-stop me-1"></i> Stop Stream
+                    </button>
+                    <button id="refreshCameraBtn" class="btn btn-sm btn-outline-primary me-2 d-none" style="font-size: 0.8rem;">
+                        <i class="fas fa-sync-alt me-1"></i> Refresh Camera
+                    </button>
+                </div>
+                
+                <!-- Hamburger Menu -->
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary btn-sm" type="button" id="menuDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="menuDropdown">
+                        <li><a class="dropdown-item" href="#" id="showTemperatureGraph">
+                            <i class="fas fa-chart-line me-2"></i> Temperature Trend Graph
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" id="showCamera">
+                            <i class="fas fa-video me-2"></i> Camera
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" id="showControlPanel">
+                            <i class="fas fa-sliders-h me-2"></i> Control Panel
+                        </a></li>
+                    </ul>
+                </div>
             </div>
-            
+        </div>
+    </nav>
+
+    <!-- Add padding to account for fixed navbar -->
+    <div style="padding-top: 60px;">
+        <!-- Main Content -->
+        <div class="system-container">
             <!-- SVG System Model -->
             <div class="svg-container">
                 <object data="/static/main.svg" type="image/svg+xml" width="100%" height="100%">
@@ -75,7 +99,153 @@
         </div>
     </div>
 
+    <!-- Control Panel Overlay -->
+    <div id="controlPanelOverlay" class="modal fade" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-sliders-h me-2"></i>Control Panel</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <iframe src="/main" style="width: 100%; height: 600px; border: none;"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Temperature Trend Graph Overlay -->
+    <div id="temperatureGraphOverlay" class="modal fade" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-chart-line me-2"></i>Temperature Trend Graph</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <canvas id="temperatureTrendChart" height="400"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Modal -->
+    <div class="modal fade" id="cameraOverlay" tabindex="-1" aria-labelledby="cameraOverlayLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-video me-2"></i>Camera View</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Video frame -->
+                    <div style="position: relative; background: #000; min-height: 400px; display: flex; align-items: center; justify-content: center;">
+                        <!-- Video stream element -->
+                        <image id="svgVideoStream" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="max-height: 500px;"/>
+                        <!-- Loading indicator -->
+                        <div id="videoLoadingIndicator" style="position: absolute; color: #fff; font-weight: bold; font-size: 16px;">Loading Video...</div>
+                        <!-- Video status indicator -->
+                        <rect id="videoStatusIndicator" style="position: absolute; top: 10px; left: 10px; width: 12px; height: 12px; border-radius: 6px; background: #dc3545;"/>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/camera.js"></script>
     <script src="/static/main.js"></script>
+    <script>
+        // Initialize control panel overlay
+        document.getElementById('showControlPanel').addEventListener('click', function(e) {
+            e.preventDefault();
+            new bootstrap.Modal(document.getElementById('controlPanelOverlay')).show();
+        });
+
+        // Initialize temperature graph overlay
+        document.getElementById('showTemperatureGraph').addEventListener('click', function(e) {
+            e.preventDefault();
+            const modal = new bootstrap.Modal(document.getElementById('temperatureGraphOverlay'));
+            modal.show();
+            
+            // Initialize chart when modal is shown
+            document.getElementById('temperatureGraphOverlay').addEventListener('shown.bs.modal', function() {
+                initTemperatureTrendChart();
+            }, { once: true });
+        });
+
+        // Initialize camera overlay
+        document.getElementById('showCamera').addEventListener('click', function(e) {
+            e.preventDefault();
+            new bootstrap.Modal(document.getElementById('cameraOverlay')).show();
+        });
+
+        // Temperature trend chart initialization
+        let temperatureTrendChart = null;
+        function initTemperatureTrendChart() {
+            const ctx = document.getElementById('temperatureTrendChart').getContext('2d');
+            
+            if (temperatureTrendChart) {
+                temperatureTrendChart.destroy();
+            }
+            
+            const sensorColors = [
+                'rgb(75, 192, 192)',
+                'rgb(255, 99, 132)',
+                'rgb(54, 162, 235)',
+                'rgb(153, 102, 255)',
+                'rgb(255, 159, 64)',
+                'rgb(255, 205, 86)',
+                'rgb(75, 192, 192)',
+                'rgb(199, 199, 199)',
+                'rgb(83, 102, 255)',
+                'rgb(40, 159, 64)',
+                'rgb(210, 99, 132)',
+                'rgb(255, 159, 64)'
+            ];
+            
+            const datasets = [];
+            for (let i = 0; i < 12; i++) {
+                datasets.push({
+                    label: `Sensor ${i + 1}`,
+                    data: [],
+                    borderColor: sensorColors[i],
+                    tension: 0.1
+                });
+            }
+            
+            temperatureTrendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            title: {
+                                display: true,
+                                text: 'Temperature (°C)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+    </script>
 </body>
 </html>

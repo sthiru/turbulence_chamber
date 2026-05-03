@@ -1,19 +1,11 @@
 // Beta Page JavaScript
 // WebSocket connection
 let ws = null;
-let videoWs = null;
 let reconnectInterval = null;
-let videoReconnectInterval = null;
-
-// Video streaming variables
-let isVideoStreaming = false;
-let videoClientId = null;
-const currentVideoMode = 'video'; // Always video mode now
 
 // Configuration
 const CONFIG = {
     WS_URL: `ws://${window.location.host}/ws/status`,
-    VIDEO_WS_URL: `ws://${window.location.host}/ws/video`,
     RECONNECT_DELAY: 3000,
     WARNING_TEMP: 60,
     DANGER_TEMP: 80
@@ -71,202 +63,11 @@ function initWebSocket() {
     }
 }
 
-// Initialize video streaming WebSocket
-function initVideoWebSocket() {
-    if (!videoClientId) {
-        videoClientId = 'client_' + Math.random().toString(36).substr(2, 9);
-    }
-    
-    try {
-        const videoWsUrl = `${CONFIG.VIDEO_WS_URL}/${videoClientId}`;
-        
-        videoWs = new WebSocket(videoWsUrl);
-        
-        videoWs.onopen = function() {
-            if (videoReconnectInterval) {
-                clearInterval(videoReconnectInterval);
-                videoReconnectInterval = null;
-            }
-            
-            // Send ping to test connection
-            videoWs.send('{"type":"ping"}');
-        };
-        
-        videoWs.onmessage = function(event) {
-            try {
-                const data = JSON.parse(event.data);
-                handleVideoWebSocketMessage(data);
-            } catch (error) {
-                // Silently handle parsing errors
-            }
-        };
-        
-        videoWs.onclose = function() {
-            scheduleVideoReconnect();
-        };
-        
-        videoWs.onerror = function(error) {
-            scheduleVideoReconnect();
-        };
-        
-    } catch (error) {
-        scheduleVideoReconnect();
-    }
-}
-
-// Handle video streaming WebSocket messages
-function handleVideoWebSocketMessage(data) {
-    switch (data.type) {
-        case 'stream_status':
-            updateVideoStreamStatus(data.status);
-            break;
-            
-        case 'video_frame':
-            displayVideoFrame(data.frame);
-            break;
-            
-        case 'stream_response':
-            if (data.action === 'start' && data.success) {
-                isVideoStreaming = true;
-            } else if (data.action === 'stop' && data.success) {
-                isVideoStreaming = false;
-            }
-            break;
-            
-        case 'ping':
-            videoWs.send('{"type":"pong"}');
-            break;
-            
-        default:
-            // Silently handle unknown message types
-    }
-}
-
-// Display video frame in SVG
-function displayVideoFrame(frameData) {
-    const svgObject = document.querySelector('object[data="/static/main.svg"]');
-    let svgDoc = null;
-    
-    if (svgObject && svgObject.contentDocument) {
-        svgDoc = svgObject.contentDocument;
-    } else if (svgObject && svgObject.getSVGDocument) {
-        svgDoc = svgObject.getSVGDocument();
-    }
-    
-    if (!svgDoc) {
-        // Try alternative method - wait for SVG to load
-        setTimeout(() => displayVideoFrame(frameData), 100);
-        return;
-    }
-    
-    // Find the video stream element in SVG
-    const svgVideoStreamElement = svgDoc.getElementById('svgVideoStream');
-    const videoLoadingIndicator = svgDoc.getElementById('videoLoadingIndicator');
-    const videoStatusIndicator = svgDoc.getElementById('videoStatusIndicator');
-    
-    if (svgVideoStreamElement && frameData) {
-        // Create data URL from base64 frame data
-        const dataUrl = `data:image/jpeg;base64,${frameData}`;
-        svgVideoStreamElement.setAttribute('href', dataUrl);
-        
-        // Hide loading indicator and show streaming status
-        if (videoLoadingIndicator) {
-            videoLoadingIndicator.style.display = 'none';
-        }
-        if (videoStatusIndicator) {
-            videoStatusIndicator.setAttribute('fill', '#28a745'); // Green for active streaming
-        }
-    }
-}
-
-// Update video streaming status display
-function updateVideoStreamStatus(status) {
-    isVideoStreaming = status.is_streaming || false;
-    
-    // Update UI elements based on streaming status
-    const videoStatusElement = document.getElementById('video-stream-status');
-    if (videoStatusElement) {
-        videoStatusElement.textContent = isVideoStreaming ? 'Streaming' : 'Not Streaming';
-        videoStatusElement.className = isVideoStreaming ? 'text-success' : 'text-muted';
-    }
-    
-    // Always show video mode
-    const cameraModeElement = document.getElementById('camera-mode');
-    if (cameraModeElement) {
-        cameraModeElement.textContent = 'Live Video';
-    }
-    
-    // Update SVG video status indicator
-    const svgObject = document.querySelector('object[data="/static/main.svg"]');
-    let svgDoc = null;
-    
-    if (svgObject && svgObject.contentDocument) {
-        svgDoc = svgObject.contentDocument;
-    } else if (svgObject && svgObject.getSVGDocument) {
-        svgDoc = svgObject.getSVGDocument();
-    }
-    
-    if (svgDoc) {
-        const videoStatusIndicator = svgDoc.getElementById('videoStatusIndicator');
-        const videoLoadingIndicator = svgDoc.getElementById('videoLoadingIndicator');
-        
-        if (videoStatusIndicator) {
-            if (isVideoStreaming) {
-                videoStatusIndicator.setAttribute('fill', '#28a745'); // Green
-                if (videoLoadingIndicator) {
-                    videoLoadingIndicator.style.display = 'none';
-                }
-            } else {
-                videoStatusIndicator.setAttribute('fill', '#dc3545'); // Red
-                if (videoLoadingIndicator) {
-                    videoLoadingIndicator.style.display = 'block';
-                    videoLoadingIndicator.textContent = 'Waiting for Stream...';
-                }
-            }
-        }
-    }
-}
-
-// Initialize video display
-function initVideoDisplay() {
-    const svgObject = document.querySelector('object[data="/static/main.svg"]');
-    let svgDoc = null;
-    
-    if (svgObject && svgObject.contentDocument) {
-        svgDoc = svgObject.contentDocument;
-    } else if (svgObject && svgObject.getSVGDocument) {
-        svgDoc = svgObject.getSVGDocument();
-    }
-    
-    if (svgDoc) {
-        const videoLoadingIndicator = svgDoc.getElementById('videoLoadingIndicator');
-        const videoStatusIndicator = svgDoc.getElementById('videoStatusIndicator');
-        
-        if (videoLoadingIndicator) {
-            videoLoadingIndicator.textContent = 'Loading Video...';
-            videoLoadingIndicator.style.display = 'block';
-        }
-        
-        if (videoStatusIndicator) {
-            videoStatusIndicator.setAttribute('fill', '#ffc107'); // Yellow for loading
-        }
-    }
-}
-
 // Schedule reconnection
 function scheduleReconnect() {
     if (!reconnectInterval) {
         reconnectInterval = setInterval(() => {
             initWebSocket();
-        }, CONFIG.RECONNECT_DELAY);
-    }
-}
-
-// Schedule video reconnection
-function scheduleVideoReconnect() {
-    if (!videoReconnectInterval) {
-        videoReconnectInterval = setInterval(() => {
-            initVideoWebSocket();
         }, CONFIG.RECONNECT_DELAY);
     }
 }
@@ -460,11 +261,6 @@ function updateSensorData(data) {
         }
     });
     
-    // Update camera streaming status
-    if (data.camera_status && data.camera_status.is_streaming !== undefined) {
-        updateVideoStreamStatus(data.camera_status);
-    }
-    
     // Update CN² optical
     if (data.cn2_optical !== undefined && data.cn2_optical !== null) {
         const cn2OpticalElement = document.getElementById('cn2OpticalValue');
@@ -488,14 +284,20 @@ function updateSensorData(data) {
             cn2TitleElement.textContent = cn2Value;
         }
     }
+
+    // Update windflow sensors
+    const flowRates = data.flow_rates || [];
+    flowRates.forEach((flow, index) => {
+        const flowElement = svgDoc.getElementById(`flow${index + 1}`);
+        if (flowElement) {
+            flowElement.textContent = flow.toFixed(2) + ' m/s';
+        }
+    });
 }
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     initWebSocket();
-    
-    // Initialize video streaming WebSocket
-    initVideoWebSocket();
     
     // Wait for SVG to load before initializing controls
     const svgObject = document.querySelector('object[data="/static/main.svg"]');
@@ -514,14 +316,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize data capture functionality
     initDataCapture();
-    
-    initVideoDisplay();
-    // Auto-start video streaming
-    setTimeout(() => {
-        if (videoWs && videoWs.readyState === WebSocket.OPEN) {
-            videoWs.send('{"type":"start_stream"}');
-        }
-    }, 2000);
 });
 
 // Data Capture System
@@ -667,7 +461,7 @@ function captureDataPoint(data) {
         hot_plate_states: data.hot_plate_states || [],
         cn2: data.cn2 || 0,
         cn2_optical: data.cn2_optical || null,
-        temperature_bme: data.temperature_bme || [],
+        temperature_bmp: data.temperature_bmp || [],
         humidity: data.humidity || [],
         pressure: data.pressure || [],
         image_filename: data.image_filename || null,

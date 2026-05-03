@@ -35,7 +35,7 @@ from camera_acquisition import (
     get_camera_streaming_status, add_video_streaming_client, remove_video_streaming_client,
     diagnose_camera_connection, get_camera_instance
 )
-from cn2_optical import cn2.calculate_cn2_optical, cn2.get_cn2_status
+from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status
 
 # Pydantic model for reconnect request
 class ReconnectRequest(BaseModel):
@@ -54,14 +54,15 @@ class DataCaptureRequest(BaseModel):
 class DataPointWithImage(BaseModel):
     timestamp: str
     temperatures: List[float]
+    temperature_bmp: List[float]
+    temperature_dht: List[float]
     target_temperatures: List[float]
     fan_speeds: List[int]
-    hot_plate_states: List[bool]
+    hot_plate_states: List[bool]  
+    pressure: List[float]
+    humidity: List[float]
     cn2: Optional[float] = None
     cn2_optical: Optional[float] = None
-    temperature_bme: List[float]
-    humidity: List[float]
-    pressure: List[float]
     image_filename: Optional[str] = None
 
 # Configure logging
@@ -320,7 +321,7 @@ async def background_status_polling():
                 try:
                     cn2_value = calculate_cn2(
                         status_data.get("temperatures", []),
-                        status_data.get("temperature_bme", []),
+                        status_data.get("temperature_bmp", []),
                         status_data.get("pressure", [])
                     )
                     status_data["cn2"] = cn2_value
@@ -375,6 +376,9 @@ async def background_status_polling():
                 if manager.active_connections:
                     logger.debug(f"Broadcasting data to {len(manager.active_connections)} clients")
                     
+                    # Get camera status for streaming
+                    camera_status = get_camera_status(camera_images_folder)
+                    
                     # Always send current data as current_data message
                     current_data_message = {
                         "type": "current_data",
@@ -383,14 +387,16 @@ async def background_status_polling():
                             "target_temperatures": status_data.get("target_temperatures", []),
                             "fan_speeds": status_data.get("fan_speeds", []),
                             "hot_plate_states": status_data.get("hot_plate_states", []),
-                            "temperature_bme": status_data.get("temperature_bme", []),
-                            "humidity": status_data.get("humidity", []),
+                            "temperature_bmp": status_data.get("temperature_bmp", []),
                             "pressure": status_data.get("pressure", []),
+                            "temperature_dht": status_data.get("temperature_dht", []),
+                            "humidity": status_data.get("humidity", []),
+                            "flow_rates": status_data.get("flow_rates", []),
                             "cn2": status_data.get("cn2", 0.0),
                             "cn2_optical": status_data.get("cn2_optical"),
                             "cn2_status": status_data.get("cn2_status"),
                             "camera_image": status_data.get("camera_image"),
-                            "camera_status": status_data.get("camera_status"),
+                            "camera_status": camera_status,
                             "image_filename": status_data.get("image_filename"),
                             "timestamp": status_data.get("timestamp")
                         }],
@@ -825,9 +831,13 @@ async def diagnose_camera():
     """Diagnose camera connection issues"""
     try:
         success = diagnose_camera_connection()
+        camera_status = get_camera_status(camera_images_folder)
+        camera_connected = camera_status.get("connected", False) if camera_status else False
+        
         return {
             "status": "success" if success else "error",
-            "message": "Camera diagnosis completed" if success else "Camera connection issues found"
+            "message": "Camera diagnosis completed" if success else "Camera connection issues found",
+            "camera_connected": camera_connected
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -914,14 +924,15 @@ async def download_captured_data():
         # Write header
         header = [
             'timestamp', 'session_id',
-            'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5',
+            'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5','temp_sensor_6', 'temp_sensor_7', 'temp_sensor_8', 'temp_sensor_9', 'temp_sensor_10','temp_sensor_11','temp_sensor_12',
+            'bmp_temp_1', 'bmp_temp_2',
+            'dht_temp_1', 'dht_temp_2',
             'target_temp_1', 'target_temp_2',
             'fan_speed_1', 'fan_speed_2', 'fan_speed_3', 'fan_speed_4',
             'hot_plate_1', 'hot_plate_2',
+            'pressure_1', 'pressure_2',
+            'humidity_1', 'humidity_2',
             'cn2_thermal', 'cn2_optical',
-            'bme_temp_1', 'bme_temp_2', 'bme_temp_3', 'bme_temp_4', 'bme_temp_5',
-            'humidity_1', 'humidity_2', 'humidity_3', 'humidity_4', 'humidity_5',
-            'pressure_1', 'pressure_2', 'pressure_3', 'pressure_4', 'pressure_5',
             'image_filename'
         ]
         writer.writerow(header)
@@ -932,14 +943,15 @@ async def download_captured_data():
                 point['timestamp'],
                 point.get('session_id', ''),
                 *(point.get('temperatures', [])),
+                *(point.get('temperature_bmp', [])),
+                *(point.get('temperature_dht', [])),
                 *(point.get('target_temperatures', [])),
                 *(point.get('fan_speeds', [])),
                 *(point.get('hot_plate_states', [])),
+                *(point.get('pressure', [])),
+                *(point.get('humidity', [])),
                 point.get('cn2', ''),
                 point.get('cn2_optical', ''),
-                *(point.get('temperature_bme', [])),
-                *(point.get('humidity', [])),
-                *(point.get('pressure', [])),
                 point.get('image_filename', '')
             ]
             writer.writerow(row)
@@ -1122,7 +1134,6 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
             "fan_speed_1", "fan_speed_2", "fan_speed_3", "fan_speed_4",
             "hot_plate_1", "hot_plate_2",
             "bme_temp_1", "bme_temp_2", "bme_temp_3", "bme_temp_4",
-            "bme_humidity_1", "bme_humidity_2", "bme_humidity_3", "bme_humidity_4",
             "bme_pressure_1", "bme_pressure_2", "bme_pressure_3", "bme_pressure_4",
             "error"
         ])
@@ -1138,7 +1149,6 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
         "fan_speed_1", "fan_speed_2", "fan_speed_3", "fan_speed_4",
         "hot_plate_1", "hot_plate_2",
         "bme_temp_1", "bme_temp_2", "bme_temp_3", "bme_temp_4",
-        "bme_humidity_1", "bme_humidity_2", "bme_humidity_3", "bme_humidity_4",
         "bme_pressure_1", "bme_pressure_2", "bme_pressure_3", "bme_pressure_4",
         "error"
     ])
@@ -1173,14 +1183,9 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
             row.append(hot_plates[i] if i < len(hot_plates) else "")
         
         # BME280 temperatures
-        bme_temps = record.get("temperature_bme", [])
+        bme_temps = record.get("temperature_bmp", [])
         for i in range(4):
             row.append(bme_temps[i] if i < len(bme_temps) else "")
-        
-        # BME280 humidity
-        bme_humidity = record.get("humidity", [])
-        for i in range(4):
-            row.append(bme_humidity[i] if i < len(bme_humidity) else "")
         
         # BME280 pressure
         bme_pressure = record.get("pressure", [])

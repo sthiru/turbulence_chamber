@@ -23,13 +23,23 @@ class HotPlateData(BaseModel):
     current_temperature: float
     state: bool
 
+class CameraStatus(BaseModel):
+    connected: bool
+    initialized: bool
+    is_streaming: bool = False
+    error: Optional[str] = None
+
 class SystemStatus(BaseModel):
     temperatures: List[float]
-    temperature_bme: List[float]
+    temperature_bmp: List[float]
     pressure: List[float]
+    temperature_dht: List[float]
+    humidity_dht: List[float]
     target_temperatures: List[float]
     fan_speeds: List[int]
     hot_plate_states: List[bool]
+    flow_rates: List[float]
+    camera_status: Optional[CameraStatus] = None
     system_ready: bool
     device_status: Optional[DeviceStatus] = None
 
