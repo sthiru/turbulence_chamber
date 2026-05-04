@@ -167,7 +167,7 @@ function updateSensorData(data) {
     temperatures.forEach((temp, index) => {
         const tempElement = svgDoc.getElementById(`temp${index + 1}`);
         const sensorElement = svgDoc.getElementById(`sensor${index + 1}`);
-        
+
         if (tempElement) {
             if (temp < -100) {
                 tempElement.textContent = '--°C';
@@ -175,13 +175,13 @@ function updateSensorData(data) {
                 tempElement.textContent = temp.toFixed(1) + '°C';
             }
         }
-        
+
         // Update sensor color based on temperature (SVG elements)
         if (sensorElement && temp >= -100) {
             const circle = sensorElement.querySelector('circle');
             if (circle) {
                 circle.classList.remove('sensor-normal', 'sensor-warning', 'sensor-danger');
-                
+
                 if (temp >= CONFIG.DANGER_TEMP) {
                     circle.classList.add('sensor-danger');
                 } else if (temp >= CONFIG.WARNING_TEMP) {
@@ -192,6 +192,30 @@ function updateSensorData(data) {
             }
         }
     });
+
+    // Update ambient temperature and humidity (from DHT sensor)
+    const ambientTemps = data.temperature_dht || [];
+    const humidities = data.humidity || [];
+
+    if (ambientTemps.length > 0 && ambientTemps[0] >= -100) {
+        const ambientTempElement = svgDoc.getElementById('ambientTemp');
+        if (ambientTempElement) {
+            ambientTempElement.textContent = ambientTemps[0].toFixed(1) + '°C';
+        }
+    }
+
+    if (humidities.length > 1 && humidities[1] >= 0) {
+        const ambientHumElement = svgDoc.getElementById('ambientHum');
+        if (ambientHumElement) {
+            ambientHumElement.textContent = humidities[1].toFixed(1) + '%';
+        }
+
+        // Also update internal humidity (using the same humidity data for now)
+        const internalHumElement = svgDoc.getElementById('internalHum');
+        if (internalHumElement) {
+            internalHumElement.textContent = humidities[1].toFixed(1) + '%';
+        }
+    }
     
     // Update hot plates
     const hotPlateStates = data.hot_plate_states || [];
