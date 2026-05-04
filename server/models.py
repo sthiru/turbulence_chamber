@@ -34,7 +34,7 @@ class SystemStatus(BaseModel):
     temperature_bmp: List[float]
     pressure: List[float]
     temperature_dht: List[float]
-    humidity_dht: List[float]
+    humidity: List[float]
     target_temperatures: List[float]
     fan_speeds: List[int]
     hot_plate_states: List[bool]
