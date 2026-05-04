@@ -236,15 +236,20 @@ void initializeBME280Sensors() {
   // Initialize SPI
   SPI.begin();
   
-  // Initialize chip select pins
+  // Initialize chip select pins and set them HIGH (inactive)
   pinMode(BMP280_CS_1, OUTPUT);
   pinMode(BMP280_CS_2, OUTPUT);
+  digitalWrite(BMP280_CS_1, HIGH);
+  digitalWrite(BMP280_CS_2, HIGH);
   
   // Initialize BME280 sensor 1
+  digitalWrite(BMP280_CS_1, LOW);  // Select sensor 1
+  delay(10);  // Small delay for CS to settle
   bmpFound[0] = bmp1.begin();
+  digitalWrite(BMP280_CS_1, HIGH);  // Deselect sensor 1
+  
   if (bmpFound[0]) {
     Serial.println("BME280 sensor 1 found (CS pin 26)");
-    
   } else {
     Serial.println("BME280 sensor 1 not found (CS pin 26)");
     Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
@@ -256,10 +261,13 @@ void initializeBME280Sensors() {
   }
   
   // Initialize BME280 sensor 2
+  digitalWrite(BMP280_CS_2, LOW);  // Select sensor 2
+  delay(10);  // Small delay for CS to settle
   bmpFound[1] = bmp2.begin();
+  digitalWrite(BMP280_CS_2, HIGH);  // Deselect sensor 2
+  
   if (bmpFound[1]) {
     Serial.println("BME280 sensor 2 found (CS pin 28)");
-    
   } else {
     Serial.println("BME280 sensor 2 not found (CS pin 28)");
   }
@@ -359,13 +367,21 @@ void updateTemperatures() {
 }
 
 void updateBME280Sensors() {
-  // Array of sensor pointers for easier iteration
+  // Array of sensor pointers and CS pins for easier iteration
   Adafruit_BMP280* bmpSensors[NUM_BMP280_SENSORS] = {&bmp1, &bmp2};
+  int csPins[NUM_BMP280_SENSORS] = {BMP280_CS_1, BMP280_CS_2};
   
   for (int i = 0; i < NUM_BMP280_SENSORS; i++) {
     if (bmpFound[i]) {
+      // Select the sensor by pulling CS LOW
+      digitalWrite(csPins[i], LOW);
+      delay(1);  // Small delay for CS to settle
+      
       bmpTemperatures[i] = bmpSensors[i]->readTemperature();
       bmpPressure[i] = bmpSensors[i]->readPressure() / 100.0F; // Convert Pa to hPa
+      
+      // Deselect the sensor by pulling CS HIGH
+      digitalWrite(csPins[i], HIGH);
       
       if (isnan(bmpTemperatures[i]) || isnan(bmpPressure[i])) {
         Serial.print("Failed to read from BME280 sensor ");

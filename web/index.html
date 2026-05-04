@@ -23,16 +23,16 @@
                     <div class="card-body py-0">
                         <div class="row align-items-center">
                             <div class="col-auto">
+                                <button id="startVideoBtn" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#cameraOverlay">
+                                    <i class="fas fa-video me-1"></i> Open Camera
+                                </button>
+                            </div>
+                            <div class="col-auto">
                                 <button id="startCaptureBtn" class="btn btn-primary btn-sm">
                                     <i class="fas fa-play me-1"></i> Start Data Capture
                                 </button>
                                 <button id="stopCaptureBtn" class="btn btn-danger btn-sm d-none">
                                     <i class="fas fa-stop me-1"></i> Stop Capture
-                                </button>
-                            </div>
-                            <div class="col-auto">
-                                <button id="startVideoBtn" class="btn btn-outline-success btn-sm">
-                                    <i class="fas fa-play me-1"></i> Start Stream
                                 </button>
                             </div>
                             <div class="col-auto">
@@ -177,8 +177,28 @@
         // Initialize camera overlay
         document.getElementById('showCamera').addEventListener('click', function(e) {
             e.preventDefault();
-            new bootstrap.Modal(document.getElementById('cameraOverlay')).show();
+            const cameraModalElement = document.getElementById('cameraOverlay');
+            const cameraModal = new bootstrap.Modal(cameraModalElement);
+            cameraModal.show();
         });
+
+        // Camera modal event listeners for video stream
+        const cameraModalElement = document.getElementById('cameraOverlay');
+        if (cameraModalElement) {
+            cameraModalElement.addEventListener('show.bs.modal', function() {
+                // Connect to video stream when modal opens
+                if (typeof startVideoStream === 'function') {
+                    startVideoStream();
+                }
+            });
+
+            cameraModalElement.addEventListener('hidden.bs.modal', function() {
+                // Disconnect video stream when modal closes
+                if (typeof stopVideoStream === 'function') {
+                    stopVideoStream();
+                }
+            });
+        }
 
         // Temperature trend chart initialization
         let temperatureTrendChart = null;

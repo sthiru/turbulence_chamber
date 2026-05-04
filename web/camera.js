@@ -107,32 +107,15 @@ function handleVideoWebSocketMessage(data) {
     }
 }
 
-// Display video frame in SVG
+// Display video frame in modal
 function displayVideoFrame(frameData) {
-    const svgObject = document.querySelector('object[data="/static/main.svg"]');
-    let svgDoc = null;
-    
-    if (svgObject && svgObject.contentDocument) {
-        svgDoc = svgObject.contentDocument;
-    } else if (svgObject && svgObject.getSVGDocument) {
-        svgDoc = svgObject.getSVGDocument();
-    }
-    
-    if (!svgDoc) {
-        // Try alternative method - wait for SVG to load
-        setTimeout(() => displayVideoFrame(frameData), 100);
-        return;
-    }
-    
-    // Find the video stream element in modal
-    const svgVideoStreamElement = document.getElementById('svgVideoStream');
+    const videoStreamElement = document.getElementById('svgVideoStream');
     const videoLoadingIndicator = document.getElementById('videoLoadingIndicator');
     const videoStatusIndicator = document.getElementById('videoStatusIndicator');
     
-    if (svgVideoStreamElement && frameData) {
-        // Create data URL from base64 frame data
+    if (videoStreamElement && frameData) {
         const dataUrl = `data:image/jpeg;base64,${frameData}`;
-        svgVideoStreamElement.setAttribute('href', dataUrl);
+        videoStreamElement.setAttribute('href', dataUrl);
         
         // Hide loading indicator and show streaming status
         if (videoLoadingIndicator) {
@@ -168,105 +151,54 @@ function updateVideoStreamStatus(status) {
         }
     }
     
-    // Update start/stop button visibility
-    const startVideoBtn = document.getElementById('startVideoBtn');
-    const stopVideoBtn = document.getElementById('stopVideoBtn');
-    const refreshCameraBtn = document.getElementById('refreshCameraBtn');
-    
-    if (startVideoBtn && stopVideoBtn) {
-        if (isVideoStreaming) {
-            startVideoBtn.classList.add('d-none');
-            stopVideoBtn.classList.remove('d-none');
-        } else {
-            startVideoBtn.classList.remove('d-none');
-            stopVideoBtn.classList.add('d-none');
-        }
-    }
-    
-    // Show refresh button if camera is not connected
-    if (refreshCameraBtn) {
-        if (!cameraConnected) {
-            refreshCameraBtn.classList.remove('d-none');
-        } else {
-            refreshCameraBtn.classList.add('d-none');
-        }
-    }
-    
-    // Update Start Stream button based on camera status
-    updateStartStreamButton(cameraConnected);
-    
     // Always show video mode
     const cameraModeElement = document.getElementById('camera-mode');
     if (cameraModeElement) {
         cameraModeElement.textContent = 'Live Video';
     }
     
-    // Update SVG video status indicator
-    const svgObject = document.querySelector('object[data="/static/main.svg"]');
-    let svgDoc = null;
-    
-    if (svgObject && svgObject.contentDocument) {
-        svgDoc = svgObject.contentDocument;
-    } else if (svgObject && svgObject.getSVGDocument) {
-        svgDoc = svgObject.getSVGDocument();
-    }
-    
+    // Update modal video status indicator
     const videoStatusIndicator = document.getElementById('videoStatusIndicator');
     const videoLoadingIndicator = document.getElementById('videoLoadingIndicator');
-    
+
     if (videoStatusIndicator) {
         if (isVideoStreaming) {
             videoStatusIndicator.style.background = '#28a745'; // Green
-            if (videoLoadingIndicator) {
-                videoLoadingIndicator.style.display = 'none';
-            }
+        } else if (cameraConnected) {
+            videoStatusIndicator.style.background = '#ffc107'; // Yellow for loading
         } else {
-            videoStatusIndicator.style.background = '#dc3545'; // Red
-            if (videoLoadingIndicator) {
-                videoLoadingIndicator.style.display = 'block';
-                if (!cameraConnected) {
-                    videoLoadingIndicator.textContent = 'Camera not connected';
-                } else {
-                    videoLoadingIndicator.textContent = 'Waiting for Stream...';
-                }
-            }
+            videoStatusIndicator.style.background = '#dc3545'; // Red for disconnected
+        }
+    }
+
+    if (videoLoadingIndicator) {
+        if (cameraConnected) {
+            videoLoadingIndicator.style.display = 'none';
+        } else {
+            videoLoadingIndicator.style.display = 'block';
+        }
+    }
+
+    if (videoLoadingIndicator) {
+        if (cameraConnected) {
+            videoLoadingIndicator.textContent = 'Waiting for Stream...';
+        } else {
+            videoLoadingIndicator.textContent = 'Camera not connected';
         }
     }
 }
 
 // Initialize video display
 async function initVideoDisplay() {
-    const svgObject = document.querySelector('object[data="/static/main.svg"]');
-    
-    // Wait for SVG to load
-    if (svgObject) {
-        await new Promise((resolve) => {
-            if (svgObject.contentDocument) {
-                resolve();
-            } else {
-                svgObject.addEventListener('load', resolve);
-                // Also resolve after a timeout in case load event doesn't fire
-                setTimeout(resolve, 1000);
-            }
-        });
-    }
-    
-    let svgDoc = null;
-    if (svgObject && svgObject.contentDocument) {
-        svgDoc = svgObject.contentDocument;
-    } else if (svgObject && svgObject.getSVGDocument) {
-        svgDoc = svgObject.getSVGDocument();
-    }
-    
     const videoLoadingIndicator = document.getElementById('videoLoadingIndicator');
     const videoStatusIndicator = document.getElementById('videoStatusIndicator');
-    
+
     // Check camera status on initialization
     try {
         const response = await fetch('/api/camera/status');
         const cameraStatus = await response.json();
         const cameraConnected = cameraStatus.connected || false;
-        
+
         if (videoLoadingIndicator) {
             if (cameraConnected) {
                 videoLoadingIndicator.textContent = 'Loading Video...';
@@ -275,92 +207,28 @@ async function initVideoDisplay() {
             }
             videoLoadingIndicator.style.display = 'block';
         }
-        
+
         if (videoStatusIndicator) {
             if (cameraConnected) {
-                videoStatusIndicator.style.background = '#ffc107'; // Yellow for loading
+                videoStatusIndicator.style.background = '#28a745'; // Green for active streaming
             } else {
                 videoStatusIndicator.style.background = '#dc3545'; // Red for disconnected
             }
         }
-        
-        // Show refresh button if camera is not connected
-        const refreshCameraBtn = document.getElementById('refreshCameraBtn');
-        if (refreshCameraBtn) {
-            if (!cameraConnected) {
-                refreshCameraBtn.classList.remove('d-none');
-            }
-        }
-        
-        // Update Start Stream button based on camera status
-        updateStartStreamButton(cameraConnected);
     } catch (e) {
         // On error, assume camera is not connected
         if (videoLoadingIndicator) {
             videoLoadingIndicator.textContent = 'Camera not connected';
             videoLoadingIndicator.style.display = 'block';
         }
-        
+
         if (videoStatusIndicator) {
             videoStatusIndicator.style.background = '#dc3545'; // Red for disconnected
         }
-        
-        const refreshCameraBtn = document.getElementById('refreshCameraBtn');
-        if (refreshCameraBtn) {
-            refreshCameraBtn.classList.remove('d-none');
-        }
-        
-        // Update Start Stream button
-        updateStartStreamButton(false);
     }
 }
 
 // ... rest of the code remains the same ...
-function updateStartStreamButton(cameraConnected) {
-    const startVideoBtn = document.getElementById('startVideoBtn');
-    if (!startVideoBtn) return;
-    
-    if (!cameraConnected) {
-        // Change to refresh icon and disable
-        startVideoBtn.innerHTML = '<i class="fas fa-sync-alt me-1"></i> Refresh Camera';
-        startVideoBtn.classList.remove('btn-outline-success');
-        startVideoBtn.classList.add('btn-outline-primary');
-        startVideoBtn.disabled = true;
-        
-        // Update click handler to refresh camera instead of start stream
-        startVideoBtn.onclick = function() {
-            refreshCamera();
-        };
-    } else {
-        // Reset to start stream button
-        startVideoBtn.innerHTML = '<i class="fas fa-play me-1"></i> Start Stream';
-        startVideoBtn.classList.remove('btn-outline-primary');
-        startVideoBtn.classList.add('btn-outline-success');
-        startVideoBtn.disabled = false;
-        
-        // Reset click handler to start stream
-        startVideoBtn.onclick = function() {
-            startVideoStream();
-        };
-    }
-}
-
-// Initialize video control buttons
-function initVideoControls() {
-    const stopVideoBtn = document.getElementById('stopVideoBtn');
-    const refreshCameraBtn = document.getElementById('refreshCameraBtn');
-    
-    // Start Stream button is handled dynamically based on camera status
-    // Don't add event listener here
-    
-    if (stopVideoBtn) {
-        stopVideoBtn.addEventListener('click', stopVideoStream);
-    }
-    
-    if (refreshCameraBtn) {
-        refreshCameraBtn.addEventListener('click', refreshCamera);
-    }
-}
 
 // Start video stream
 async function startVideoStream() {
@@ -410,54 +278,16 @@ async function stopVideoStream() {
     }
 }
 
-// Refresh camera connection
-async function refreshCamera() {
-    try {
-        const refreshCameraBtn = document.getElementById('refreshCameraBtn');
-        if (refreshCameraBtn) {
-            refreshCameraBtn.disabled = true;
-            refreshCameraBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Connecting...';
-        }
-        
-        const response = await fetch('/api/camera/diagnose', {
-            method: 'POST'
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success' && result.camera_connected) {
-            showNotification('Camera connected successfully', 'success');
-            
-            // Update video status
-            updateVideoStreamStatus({ is_streaming: false, camera_connected: true });
-            
-            // Reconnect video WebSocket
-            if (videoWs) {
-                videoWs.close();
-            }
-            initVideoWebSocket();
-        } else {
-            showNotification('Camera connection failed: ' + (result.message || 'Camera not found'), 'error');
-            updateVideoStreamStatus({ is_streaming: false, camera_connected: false });
-        }
-    } catch (e) {
-        console.error('Error refreshing camera:', e);
-        showNotification('Error refreshing camera connection', 'error');
-        updateVideoStreamStatus({ is_streaming: false, camera_connected: false });
-    } finally {
-        const refreshCameraBtn = document.getElementById('refreshCameraBtn');
-        if (refreshCameraBtn) {
-            refreshCameraBtn.disabled = false;
-            refreshCameraBtn.innerHTML = '<i class="fas fa-sync-alt me-1"></i> Refresh Camera';
-        }
-    }
-}
 
 // Schedule video reconnection
 function scheduleVideoReconnect() {
     if (!videoReconnectInterval) {
         videoReconnectInterval = setInterval(() => {
-            initVideoWebSocket();
+            if (videoWs && videoWs.readyState === WebSocket.OPEN) {
+                videoWs.send('{"type":"ping"}');
+            } else {
+                initVideoWebSocket();
+            }
         }, VIDEO_CONFIG.RECONNECT_DELAY);
     }
 }
