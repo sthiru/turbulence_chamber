@@ -644,7 +644,7 @@ async def video_test():
 @app.get("/main")
 async def main():
     """Serve the main visualization interface"""
-    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "dashboard.html")
+    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "control-panel.html")
     if os.path.exists(web_file):
         return FileResponse(web_file)
     else:

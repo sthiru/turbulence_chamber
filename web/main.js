@@ -242,24 +242,25 @@ function updateSensorData(data) {
     fanSpeeds.forEach((speed, index) => {
         const fanElement = svgDoc.getElementById(`fan${index + 1}`);
         const speedElement = document.getElementById(`fan${index + 1}Speed`);
-        
+        const sliderKnob = svgDoc.getElementById(`fan${index + 1}-slider-knob`);
+
         if (fanElement) {
             // Find the fan blade group within the SVG fan element using SVG document context
             const fanBlade = fanElement.querySelector('.fan-blade');
-            
+
             if (fanBlade) {
                 // Remove any existing SVG animations
                 const existingAnim = fanBlade.querySelector('animateTransform');
                 if (existingAnim) {
                     existingAnim.remove();
                 }
-                
+
                 if (speed > 0) {
                     // Calculate rotation duration based on PWM speed (0-255)
                     // Higher speed = faster rotation = shorter duration
                     // Map: 255 -> 0.5s (fastest), 1 -> 5s (slowest)
                     const duration = 5.0 - (speed / 255) * 4.5; // 5s to 0.5s
-                    
+
                     // Create SVG animateTransform element
                     const animateTransform = document.createElementNS('http://www.w3.org/2000/svg', 'animateTransform');
                     animateTransform.setAttribute('attributeName', 'transform');
@@ -268,10 +269,10 @@ function updateSensorData(data) {
                     animateTransform.setAttribute('to', '360 0 0');
                     animateTransform.setAttribute('dur', `${duration}s`);
                     animateTransform.setAttribute('repeatCount', 'indefinite');
-                    
+
                     fanBlade.appendChild(animateTransform);
                     animateTransform.beginElement();
-                    
+
                 } else {
                     // Stop animation
                     fanBlade.classList.add('fan-off');
@@ -279,7 +280,14 @@ function updateSensorData(data) {
                 }
             }
         }
-        
+
+        // Update slider knob position based on speed (0-255 maps to -20 to 40)
+        if (sliderKnob) {
+            const sliderRange = 60; // From -20 to 40
+            const knobPosition = -20 + (speed / 255) * sliderRange;
+            sliderKnob.setAttribute('cy', knobPosition);
+        }
+
         if (speedElement) {
             speedElement.textContent = speed;
         }
