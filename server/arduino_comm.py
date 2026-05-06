@@ -16,7 +16,7 @@ from models import ArduinoCommand, ArduinoResponse, SystemStatus, DeviceStatus
 logger = logging.getLogger(__name__)
 
 class ArduinoCommunicator:
-    def __init__(self, port: str = None, baudrate: int = 115200):
+    def __init__(self, port: str = None, baudrate: int = 250000):
         # Try to load configuration from config file first
         self.port = self._load_config_port() or port
         self.baudrate = baudrate

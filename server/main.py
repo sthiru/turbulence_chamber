@@ -36,6 +36,8 @@ from camera_acquisition import (
     diagnose_camera_connection, get_camera_instance
 )
 from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status
+from calibration.calibration_agent import CalibrationAgent
+from calibration.models import CalibrationRequest, CalibrationControl
 
 # Pydantic model for reconnect request
 class ReconnectRequest(BaseModel):
@@ -650,6 +652,15 @@ async def main():
     else:
         return {"message": "Main interface not found", "version": "1.0.0"}
 
+@app.get("/calibration")
+async def calibration():
+    """Serve the calibration interface"""
+    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "calibration.html")
+    if os.path.exists(web_file):
+        return FileResponse(web_file)
+    else:
+        return {"message": "Calibration interface not found", "version": "1.0.0"}
+
 @app.get("/api/status")
 async def get_system_status():
     """Get current system status"""
@@ -839,6 +850,96 @@ async def diagnose_camera():
             "message": "Camera diagnosis completed" if success else "Camera connection issues found",
             "camera_connected": camera_connected
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Calibration API endpoints
+@app.post("/api/calibration/start")
+async def start_calibration(request: CalibrationRequest):
+    """Start a new calibration session"""
+    try:
+        session = await calibration_agent.start_calibration(request)
+        return {
+            "status": "success",
+            "message": "Calibration started",
+            "session_id": session.session_id,
+            "total_steps": session.total_steps,
+            "estimated_duration": session.get_estimated_remaining_time()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/calibration/control")
+async def control_calibration(control: CalibrationControl):
+    """Control calibration (pause, resume, stop)"""
+    try:
+        if control.action == "pause":
+            calibration_agent.pause_calibration()
+            return {"status": "success", "message": "Calibration paused"}
+        elif control.action == "resume":
+            calibration_agent.resume_calibration()
+            return {"status": "success", "message": "Calibration resumed"}
+        elif control.action == "stop":
+            calibration_agent.stop_calibration()
+            return {"status": "success", "message": "Calibration stopped"}
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid action: {control.action}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calibration/status")
+async def get_calibration_status():
+    """Get current calibration session status"""
+    try:
+        session = calibration_agent.get_session_status()
+        if session:
+            return {
+                "status": "success",
+                "session": session.dict(),
+                "progress": session.get_progress(),
+                "estimated_remaining_time": session.get_estimated_remaining_time()
+            }
+        else:
+            return {
+                "status": "idle",
+                "message": "No active calibration session"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calibration/lookup-table")
+async def get_calibration_lookup_table():
+    """Get the latest calibration lookup table"""
+    try:
+        lookup_table = calibration_agent.get_latest_lookup_table()
+        if lookup_table:
+            return {
+                "status": "success",
+                "lookup_table": lookup_table
+            }
+        else:
+            return {
+                "status": "info",
+                "message": "No lookup table available. Run calibration first."
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calibration/windflow-polynomials")
+async def get_windflow_polynomials():
+    """Get the latest fan-to-windflow polynomial calibration results"""
+    try:
+        result = calibration_agent.get_windflow_calibration_result()
+        if result:
+            return {
+                "status": "success",
+                "polynomials": result.dict()
+            }
+        else:
+            return {
+                "status": "info",
+                "message": "No windflow polynomials available. Run calibration with pre-calibration enabled."
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1457,6 +1558,9 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
 # Initialize camera system
 camera_images_folder = os.path.join(os.path.dirname(__file__), "..", "camera_images")
 pfs_file_path = os.path.join(os.path.dirname(__file__), "..", "camera_settings.pfs")  # Default PFS file path
+
+# Initialize calibration agent
+calibration_agent = CalibrationAgent(arduino_comm)
 
 # Check if PFS file exists
 if os.path.exists(pfs_file_path):

@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chamber Calibration - Turbulence Controller</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .calibration-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .progress-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .status-badge {
+            font-size: 1.2em;
+            padding: 10px 20px;
+        }
+        .control-section {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .calibration-log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 2px 0;
+        }
+        .log-info { color: #4ec9b0; }
+        .log-warning { color: #dcdcaa; }
+        .log-error { color: #f14c4c; }
+        .log-success { color: #6a9955; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-wind me-2"></i>Turbulence Controller
+            </a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="/">Dashboard</a>
+                <a class="nav-link" href="/main">Control Panel</a>
+                <a class="nav-link active" href="/calibration">Calibration</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="calibration-container mt-4">
+        <h2 class="mb-4">
+            <i class="fas fa-sliders-h me-2"></i>Chamber Calibration
+        </h2>
+
+        <!-- Status Section -->
+        <div class="progress-section">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h5>Calibration Status</h5>
+                    <span id="calibrationStatus" class="badge bg-secondary status-badge">Idle</span>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Progress</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress" style="height: 25px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div class="mt-2 text-muted">
+                        <small>Step <span id="currentStep">0</span> of <span id="totalSteps">0</span></small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-3">
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <h6>Estimated Remaining Time</h6>
+                        <h4 id="estimatedTime">--:--:--</h4>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <h6>Session ID</h6>
+                        <h4 id="sessionId">--</h4>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <h6>Current Step Type</h6>
+                        <h4 id="stepType">--</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Section -->
+        <div class="control-section">
+            <h5 class="mb-4">Calibration Configuration</h5>
+            
+            <form id="calibrationForm">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="calibrateFans" checked>
+                            <label class="form-check-label" for="calibrateFans">
+                                Calibrate Fans
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="calibrateHotplates" checked>
+                            <label class="form-check-label" for="calibrateHotplates">
+                                Calibrate Hot Plates
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="calibrateCombined">
+                            <label class="form-check-label" for="calibrateCombined">
+                                Combined Calibration (Fans + Hot Plates)
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="runPreCalibration" checked>
+                            <label class="form-check-label" for="runPreCalibration">
+                                Run Fan-to-Windflow Pre-Calibration
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="fanSpeedMin" class="form-label">Fan Speed Min (PWM)</label>
+                            <input type="number" class="form-control" id="fanSpeedMin" value="0" min="0" max="255">
+                        </div>
+                        <div class="mb-3">
+                            <label for="fanSpeedMax" class="form-label">Fan Speed Max (PWM)</label>
+                            <input type="number" class="form-control" id="fanSpeedMax" value="255" min="0" max="255">
+                        </div>
+                        <div class="mb-3">
+                            <label for="fanSpeedStep" class="form-label">Fan Speed Step</label>
+                            <input type="number" class="form-control" id="fanSpeedStep" value="25" min="1" max="50">
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="hotplateTempMin" class="form-label">Hot Plate Temp Min (°C)</label>
+                            <input type="number" class="form-control" id="hotplateTempMin" value="25" min="20" max="100">
+                        </div>
+                        <div class="mb-3">
+                            <label for="hotplateTempMax" class="form-label">Hot Plate Temp Max (°C)</label>
+                            <input type="number" class="form-control" id="hotplateTempMax" value="80" min="20" max="120">
+                        </div>
+                        <div class="mb-3">
+                            <label for="hotplateTempStep" class="form-label">Hot Plate Temp Step (°C)</label>
+                            <input type="number" class="form-control" id="hotplateTempStep" value="5" min="1" max="20">
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="stabilizationTime" class="form-label">Stabilization Time (s)</label>
+                            <input type="number" class="form-control" id="stabilizationTime" value="60" min="30" max="300">
+                        </div>
+                        <div class="mb-3">
+                            <label for="measurementDuration" class="form-label">Measurement Duration (s)</label>
+                            <input type="number" class="form-control" id="measurementDuration" value="30" min="10" max="300">
+                        </div>
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Notes</label>
+                            <textarea class="form-control" id="notes" rows="2" placeholder="Optional calibration notes..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-success btn-lg" id="startCalibration">
+                        <i class="fas fa-play me-2"></i>Start Calibration
+                    </button>
+                    <button type="button" class="btn btn-warning btn-lg" id="pauseCalibration" disabled>
+                        <i class="fas fa-pause me-2"></i>Pause
+                    </button>
+                    <button type="button" class="btn btn-info btn-lg" id="resumeCalibration" disabled>
+                        <i class="fas fa-play me-2"></i>Resume
+                    </button>
+                    <button type="button" class="btn btn-danger btn-lg" id="stopCalibration" disabled>
+                        <i class="fas fa-stop me-2"></i>Stop
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Log Section -->
+        <div class="control-section mt-4">
+            <h5 class="mb-3">Calibration Log</h5>
+            <div class="calibration-log" id="calibrationLog">
+                <div class="log-entry log-info">[INFO] Calibration system initialized</div>
+            </div>
+        </div>
+
+        <!-- Lookup Table Section -->
+        <div class="control-section mt-4">
+            <h5 class="mb-3">Lookup Table</h5>
+            <button class="btn btn-primary mb-3" id="loadLookupTable">
+                <i class="fas fa-download me-2"></i>Load Latest Lookup Table
+            </button>
+            <pre id="lookupTableDisplay" class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto; display: none;"></pre>
+        </div>
+
+        <!-- Windflow Polynomial Section -->
+        <div class="control-section mt-4">
+            <h5 class="mb-3">Fan-to-Windflow Polynomial Calibration</h5>
+            <button class="btn btn-primary mb-3" id="loadWindflowPolynomials">
+                <i class="fas fa-chart-line me-2"></i>Load Windflow Polynomials
+            </button>
+            <div id="windflowPolynomialsDisplay" class="bg-light p-3 rounded" style="display: none;">
+                <h6>Fan-to-Windflow Polynomial Coefficients</h6>
+                <div id="polynomialCharts" class="row mt-3"></div>
+                <pre id="polynomialData" class="mt-3" style="max-height: 300px; overflow-y: auto;"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Calibration control script
+        let calibrationInterval = null;
+        let isCalibrating = false;
+        
+        // DOM elements
+        const statusBadge = document.getElementById('calibrationStatus');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        const currentStep = document.getElementById('currentStep');
+        const totalSteps = document.getElementById('totalSteps');
+        const estimatedTime = document.getElementById('estimatedTime');
+        const sessionId = document.getElementById('sessionId');
+        const stepType = document.getElementById('stepType');
+        const calibrationLog = document.getElementById('calibrationLog');
+        
+        // Buttons
+        const startBtn = document.getElementById('startCalibration');
+        const pauseBtn = document.getElementById('pauseCalibration');
+        const resumeBtn = document.getElementById('resumeCalibration');
+        const stopBtn = document.getElementById('stopCalibration');
+        const loadLookupBtn = document.getElementById('loadLookupTable');
+        const loadWindflowBtn = document.getElementById('loadWindflowPolynomials');
+        
+        // Log function
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logClass = `log-${type}`;
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${logClass}`;
+            entry.textContent = `[${timestamp}] [${type.toUpperCase()}] ${message}`;
+            calibrationLog.appendChild(entry);
+            calibrationLog.scrollTop = calibrationLog.scrollHeight;
+        }
+        
+        // Format time
+        function formatTime(seconds) {
+            if (!seconds || seconds < 0) return '--:--:--';
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        // Update status display
+        function updateStatus(status) {
+            statusBadge.className = 'badge status-badge';
+            
+            switch(status) {
+                case 'idle':
+                    statusBadge.classList.add('bg-secondary');
+                    statusBadge.textContent = 'Idle';
+                    break;
+                case 'running':
+                    statusBadge.classList.add('bg-primary');
+                    statusBadge.textContent = 'Running';
+                    break;
+                case 'paused':
+                    statusBadge.classList.add('bg-warning');
+                    statusBadge.textContent = 'Paused';
+                    break;
+                case 'completed':
+                    statusBadge.classList.add('bg-success');
+                    statusBadge.textContent = 'Completed';
+                    break;
+                case 'failed':
+                    statusBadge.classList.add('bg-danger');
+                    statusBadge.textContent = 'Failed';
+                    break;
+                default:
+                    statusBadge.classList.add('bg-secondary');
+                    statusBadge.textContent = status;
+            }
+        }
+        
+        // Start calibration
+        startBtn.addEventListener('click', async () => {
+            const request = {
+                calibrate_fans: document.getElementById('calibrateFans').checked,
+                calibrate_hotplates: document.getElementById('calibrateHotplates').checked,
+                calibrate_combined: document.getElementById('calibrateCombined').checked,
+                run_pre_calibration: document.getElementById('runPreCalibration').checked,
+                fan_speed_min: parseInt(document.getElementById('fanSpeedMin').value),
+                fan_speed_max: parseInt(document.getElementById('fanSpeedMax').value),
+                fan_speed_step: parseInt(document.getElementById('fanSpeedStep').value),
+                hotplate_temp_min: parseFloat(document.getElementById('hotplateTempMin').value),
+                hotplate_temp_max: parseFloat(document.getElementById('hotplateTempMax').value),
+                hotplate_temp_step: parseFloat(document.getElementById('hotplateTempStep').value),
+                stabilization_time: parseInt(document.getElementById('stabilizationTime').value),
+                measurement_duration: parseInt(document.getElementById('measurementDuration').value),
+                notes: document.getElementById('notes').value
+            };
+            
+            try {
+                addLog('Starting calibration...', 'info');
+                const response = await fetch('/api/calibration/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(request)
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    addLog(`Calibration started: ${result.session_id}`, 'success');
+                    sessionId.textContent = result.session_id;
+                    totalSteps.textContent = result.total_steps;
+                    estimatedTime.textContent = formatTime(result.estimated_duration);
+                    
+                    isCalibrating = true;
+                    updateStatus('running');
+                    
+                    // Enable/disable buttons
+                    startBtn.disabled = true;
+                    pauseBtn.disabled = false;
+                    resumeBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    
+                    // Start polling
+                    startPolling();
+                } else {
+                    addLog(`Failed to start calibration: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                addLog(`Error starting calibration: ${error}`, 'error');
+            }
+        });
+        
+        // Pause calibration
+        pauseBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/calibration/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'pause' })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    addLog('Calibration paused', 'warning');
+                    updateStatus('paused');
+                    pauseBtn.disabled = true;
+                    resumeBtn.disabled = false;
+                }
+            } catch (error) {
+                addLog(`Error pausing calibration: ${error}`, 'error');
+            }
+        });
+        
+        // Resume calibration
+        resumeBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/calibration/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'resume' })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    addLog('Calibration resumed', 'success');
+                    updateStatus('running');
+                    pauseBtn.disabled = false;
+                    resumeBtn.disabled = true;
+                }
+            } catch (error) {
+                addLog(`Error resuming calibration: ${error}`, 'error');
+            }
+        });
+        
+        // Stop calibration
+        stopBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/calibration/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'stop' })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    addLog('Calibration stopped', 'warning');
+                    stopPolling();
+                    resetUI();
+                }
+            } catch (error) {
+                addLog(`Error stopping calibration: ${error}`, 'error');
+            }
+        });
+        
+        // Load lookup table
+        loadLookupBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/calibration/lookup-table');
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const display = document.getElementById('lookupTableDisplay');
+                    display.style.display = 'block';
+                    display.textContent = JSON.stringify(result.lookup_table, null, 2);
+                    addLog('Lookup table loaded', 'success');
+                } else {
+                    addLog(result.message, 'warning');
+                }
+            } catch (error) {
+                addLog(`Error loading lookup table: ${error}`, 'error');
+            }
+        });
+        
+        // Load windflow polynomials
+        loadWindflowBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/calibration/windflow-polynomials');
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const display = document.getElementById('windflowPolynomialsDisplay');
+                    display.style.display = 'block';
+                    
+                    const dataDisplay = document.getElementById('polynomialData');
+                    dataDisplay.textContent = JSON.stringify(result.polynomials, null, 2);
+                    
+                    addLog('Windflow polynomials loaded', 'success');
+                } else {
+                    addLog(result.message, 'warning');
+                }
+            } catch (error) {
+                addLog(`Error loading windflow polynomials: ${error}`, 'error');
+            }
+        });
+        
+        // Poll calibration status
+        function startPolling() {
+            if (calibrationInterval) {
+                clearInterval(calibrationInterval);
+            }
+            
+            calibrationInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/calibration/status');
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        const session = result.session;
+                        
+                        // Update progress
+                        progressBar.style.width = `${result.progress}%`;
+                        progressPercent.textContent = `${Math.round(result.progress)}%`;
+                        currentStep.textContent = session.current_step;
+                        totalSteps.textContent = session.total_steps;
+                        estimatedTime.textContent = formatTime(result.estimated_remaining_time);
+                        sessionId.textContent = session.session_id;
+                        
+                        // Update step type if available
+                        if (session.steps && session.steps.length > 0) {
+                            const lastStep = session.steps[session.steps.length - 1];
+                            if (lastStep) {
+                                stepType.textContent = lastStep.step_type || '--';
+                            }
+                        }
+                        
+                        // Update status
+                        updateStatus(session.status);
+                        
+                        // Check if completed
+                        if (session.status === 'completed' || session.status === 'failed') {
+                            stopPolling();
+                            resetUI();
+                            
+                            if (session.status === 'completed') {
+                                addLog('Calibration completed successfully!', 'success');
+                            } else {
+                                addLog(`Calibration failed: ${session.error_message}`, 'error');
+                            }
+                        }
+                    } else if (result.status === 'idle') {
+                        // No active session
+                        stopPolling();
+                        resetUI();
+                    }
+                } catch (error) {
+                    addLog(`Error polling status: ${error}`, 'error');
+                }
+            }, 2000); // Poll every 2 seconds
+        }
+        
+        function stopPolling() {
+            if (calibrationInterval) {
+                clearInterval(calibrationInterval);
+                calibrationInterval = null;
+            }
+        }
+        
+        function resetUI() {
+            isCalibrating = false;
+            updateStatus('idle');
+            
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            resumeBtn.disabled = true;
+            stopBtn.disabled = true;
+            
+            progressBar.style.width = '0%';
+            progressPercent.textContent = '0%';
+            currentStep.textContent = '0';
+            totalSteps.textContent = '0';
+            estimatedTime.textContent = '--:--:--';
+            stepType.textContent = '--';
+        }
+        
+        // Initial status check
+        async function checkInitialStatus() {
+            try {
+                const response = await fetch('/api/calibration/status');
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    isCalibrating = true;
+                    updateStatus(result.session.status);
+                    sessionId.textContent = result.session.session_id;
+                    currentStep.textContent = result.session.current_step;
+                    totalSteps.textContent = result.session.total_steps;
+                    
+                    startBtn.disabled = true;
+                    pauseBtn.disabled = result.session.status !== 'paused';
+                    resumeBtn.disabled = result.session.status !== 'paused';
+                    stopBtn.disabled = false;
+                    
+                    startPolling();
+                    addLog('Active calibration session detected', 'info');
+                }
+            } catch (error) {
+                addLog(`Error checking initial status: ${error}`, 'error');
+            }
+        }
+        
+        // Check for existing calibration on page load
+        checkInitialStatus();
+    </script>
+</body>
+</html>

@@ -71,7 +71,8 @@
 #define NUM_FLOW_SENSORS 4
 #define MAX_TEMP 120.0
 #define MIN_TEMP 0.0
-#define UPDATE_INTERVAL 2000  // 2 seconds
+#define UPDATE_INTERVAL 1000  // 1 seconds
+#define DHT_UPDATE_INTERVAL 10000  // 10 seconds for DHT sensors
 
 // Global Variables
 OneWire oneWire(ONE_WIRE_BUS);
@@ -119,6 +120,7 @@ FlowSensorCoefficients flowCoefficients[NUM_FLOW_SENSORS] = {
 };
 
 unsigned long lastUpdateTime = 0;
+unsigned long lastDHTUpdateTime = 0;
 bool systemReady = false;
 
 // PID Variables (simplified)
@@ -127,7 +129,7 @@ float integral[NUM_HOT_PLATES] = {0, 0};
 float previousError[NUM_HOT_PLATES] = {0, 0};
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(250000);
   while (!Serial) delay(10);
   
   // Initialize pins
@@ -218,9 +220,12 @@ void setup() {
   }
   
   systemReady = true;
-  
-  // Set resolution
-  sensors.setResolution(12);
+
+  // Set resolution to 10-bit for faster conversion (0.25°C resolution, 187.5ms)
+  sensors.setResolution(10);
+
+  // Initialize DHT update timer
+  lastDHTUpdateTime = millis();
   
   // Initialize BME280 sensors using SPI
   initializeBME280Sensors();
@@ -342,10 +347,10 @@ void loop() {
 
 void updateTemperatures() {
   sensors.requestTemperatures();
-  
+
   for (int i = 0; i < NUM_SENSORS; i++) {
     float temp = sensors.getTempC(tempDeviceAddresses[i]);
-    
+
     if (temp == DEVICE_DISCONNECTED_C) {
       Serial.print("Sensor ");
       Serial.print(i);
@@ -355,13 +360,17 @@ void updateTemperatures() {
       currentTemperatures[i] = temp;
     }
   }
-  
+
   // Update BME280 sensors
   updateBME280Sensors();
-  
-  // Update DHT sensors
-  updateDHTSensors();
-  
+
+  // Update DHT sensors only every 10 seconds (ambient conditions change slowly)
+  unsigned long currentTime = millis();
+  if (currentTime - lastDHTUpdateTime >= DHT_UPDATE_INTERVAL) {
+    updateDHTSensors();
+    lastDHTUpdateTime = currentTime;
+  }
+
   // Update Air Flow sensors
   updateFlowSensors();
 }
