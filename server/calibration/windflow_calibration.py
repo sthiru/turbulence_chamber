@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Fan-to-Windflow Sensor Polynomial Calibration
+Fan-to-Windflow Sensor Calibration
 Establishes polynomial relationship between fan PWM and windflow sensor readings
+Each windflow sensor is placed 40cm directly in front of its corresponding fan
 """
 
 import numpy as np
 import logging
-from typing import List, Tuple, Optional
+import json
+import os
+from typing import List, Tuple, Optional, Dict
 from datetime import datetime
 from .models import FanWindflowPolynomial, WindflowCalibrationResult
 
@@ -15,15 +18,16 @@ logger = logging.getLogger(__name__)
 class WindflowCalibrator:
     """Calibrates fan-to-windflow sensor relationships"""
     
-    def __init__(self, polynomial_degree: int = 3):
+    def __init__(self, polynomial_degree: int = 2):
         """
         Initialize windflow calibrator
         
         Args:
-            polynomial_degree: Degree of polynomial to fit (default: 3)
+            polynomial_degree: Degree of polynomial to fit (default: 2 for quadratic)
         """
         self.polynomial_degree = polynomial_degree
         self.calibration_results: Optional[WindflowCalibrationResult] = None
+        self.sensor_distance_cm = 40.0  # Distance from fan to windflow sensor
     
     def fit_polynomial(self, fan_speeds: List[int], flow_rates: List[float], 
                        fan_id: int, windflow_sensor_id: int) -> FanWindflowPolynomial:
@@ -49,7 +53,7 @@ class WindflowCalibrator:
         x = np.array(fan_speeds, dtype=float)
         y = np.array(flow_rates, dtype=float)
         
-        # Fit polynomial
+        # Fit polynomial: flow_rate = f(fan_speed)
         coefficients = np.polyfit(x, y, self.polynomial_degree)
         coefficients_list = coefficients.tolist()
         
@@ -71,12 +75,12 @@ class WindflowCalibrator:
             data_points=data_points
         )
     
-    def predict_flow_rate(self, fan_speed: int, polynomial: FanWindflowPolynomial) -> float:
+    def predict_flow_rate(self, fan_speed: float, polynomial: FanWindflowPolynomial) -> float:
         """
         Predict flow rate for a given fan speed using fitted polynomial
         
         Args:
-            fan_speed: Fan PWM value
+            fan_speed: Fan PWM value (0-255)
             polynomial: Fitted polynomial coefficients
             
         Returns:
@@ -84,14 +88,49 @@ class WindflowCalibrator:
         """
         coefficients = np.array(polynomial.coefficients)
         flow_rate = np.polyval(coefficients, fan_speed)
-        return float(flow_rate)
+        return float(max(0, flow_rate))  # Ensure non-negative
     
-    def calibrate_all_fans(self, calibration_data: List[Tuple[int, List[Tuple[int, float]]]]) -> WindflowCalibrationResult:
+    def predict_fan_speed(self, target_flow_rate: float, polynomial: FanWindflowPolynomial) -> float:
+        """
+        Predict fan speed for a given target flow rate (inverse mapping)
+        
+        Args:
+            target_flow_rate: Desired flow rate
+            polynomial: Fitted polynomial coefficients
+            
+        Returns:
+            Required fan PWM value (0-255)
+        """
+        coefficients = np.array(polynomial.coefficients)
+        
+        # Create polynomial equation: flow_rate - target = 0
+        poly_coeffs = coefficients.copy()
+        poly_coeffs[-1] -= target_flow_rate  # Subtract target from constant term
+        
+        # Find roots
+        roots = np.roots(poly_coeffs)
+        
+        # Filter for real, positive roots in valid PWM range [0, 255]
+        valid_roots = [r.real for r in roots if abs(r.imag) < 1e-6 and 0 <= r.real <= 255]
+        
+        if valid_roots:
+            return float(min(valid_roots))  # Return lowest valid root
+        else:
+            # If no valid root, return closest boundary
+            return 255.0 if target_flow_rate > self.predict_flow_rate(255, polynomial) else 0.0
+    
+    def calibrate_all_fans(self, calibration_data: List[Tuple[int, List[Tuple[int, float]]]], 
+                           ambient_temperature: Optional[float] = None,
+                           ambient_pressure: Optional[float] = None,
+                           ambient_humidity: Optional[float] = None) -> WindflowCalibrationResult:
         """
         Calibrate all fan-to-windflow sensor pairs
         
         Args:
             calibration_data: List of (fan_id, [(fan_speed, flow_rate), ...]) tuples
+            ambient_temperature: Ambient temperature in °C
+            ambient_pressure: Ambient pressure in hPa or mbar
+            ambient_humidity: Ambient humidity in %
             
         Returns:
             WindflowCalibrationResult with all fitted polynomials
@@ -99,7 +138,7 @@ class WindflowCalibrator:
         polynomials = []
         
         for fan_id, data_points in calibration_data:
-            windflow_sensor_id = fan_id  # Assume 1:1 mapping (Fan N → Windflow Sensor N)
+            windflow_sensor_id = fan_id  # 1:1 mapping (Fan N → Windflow Sensor N)
             
             fan_speeds = [dp[0] for dp in data_points]
             flow_rates = [dp[1] for dp in data_points]
@@ -107,14 +146,17 @@ class WindflowCalibrator:
             try:
                 polynomial = self.fit_polynomial(fan_speeds, flow_rates, fan_id, windflow_sensor_id)
                 polynomials.append(polynomial)
-                logger.info(f"Fan {fan_id} → Windflow {windflow_sensor_id}: R² = {polynomial.r_squared:.4f}")
+                logger.info(f"Fan {fan_id} → Windflow {windflow_sensor_id} @ {self.sensor_distance_cm}cm: R² = {polynomial.r_squared:.4f}")
             except Exception as e:
                 logger.error(f"Failed to calibrate Fan {fan_id}: {e}")
         
         calibration_result = WindflowCalibrationResult(
             calibration_id=f"windflow_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             timestamp=datetime.now(),
-            polynomials=polynomials
+            polynomials=polynomials,
+            ambient_temperature=ambient_temperature,
+            ambient_pressure=ambient_pressure,
+            ambient_humidity=ambient_humidity
         )
         
         self.calibration_results = calibration_result
@@ -132,24 +174,27 @@ class WindflowCalibrator:
     
     def export_polynomials(self, filepath: str):
         """Export polynomials to JSON file"""
-        import json
-        
         if not self.calibration_results:
             raise ValueError("No calibration results to export")
         
         data = self.calibration_results.dict()
+        data['sensor_distance_cm'] = self.sensor_distance_cm
+        
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
         
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=2)
         
-        logger.info(f"Polynomials exported to {filepath}")
+        logger.info(f"Windflow polynomials exported to {filepath}")
     
     def import_polynomials(self, filepath: str):
         """Import polynomials from JSON file"""
-        import json
-        
         with open(filepath, 'r') as f:
             data = json.load(f)
         
+        # Extract sensor distance if available
+        if 'sensor_distance_cm' in data:
+            self.sensor_distance_cm = data.pop('sensor_distance_cm')
+        
         self.calibration_results = WindflowCalibrationResult(**data)
-        logger.info(f"Polynomials imported from {filepath}")
+        logger.info(f"Windflow polynomials imported from {filepath}")

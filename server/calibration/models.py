@@ -133,3 +133,6 @@ class WindflowCalibrationResult(BaseModel):
     calibration_id: str
     timestamp: datetime
     polynomials: List[FanWindflowPolynomial]
+    ambient_temperature: Optional[float] = None  # °C
+    ambient_pressure: Optional[float] = None  # hPa or mbar
+    ambient_humidity: Optional[float] = None  # %

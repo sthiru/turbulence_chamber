@@ -64,8 +64,12 @@
 
     <div class="calibration-container mt-4">
         <h2 class="mb-4">
-            <i class="fas fa-sliders-h me-2"></i>Chamber Calibration
+            <i class="fas fa-wind me-2"></i>Fan-to-Windflow Sensor Calibration
         </h2>
+        <p class="text-muted mb-4">
+            Establishes polynomial relationship between fan PWM and windflow sensor readings.
+            Each windflow sensor is placed 40cm directly in front of its corresponding fan.
+        </p>
 
         <!-- Status Section -->
         <div class="progress-section">
@@ -118,76 +122,32 @@
             <form id="calibrationForm">
                 <div class="row">
                     <div class="col-md-6">
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="calibrateFans" checked>
-                            <label class="form-check-label" for="calibrateFans">
-                                Calibrate Fans
-                            </label>
-                        </div>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="calibrateHotplates" checked>
-                            <label class="form-check-label" for="calibrateHotplates">
-                                Calibrate Hot Plates
-                            </label>
-                        </div>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="calibrateCombined">
-                            <label class="form-check-label" for="calibrateCombined">
-                                Combined Calibration (Fans + Hot Plates)
-                            </label>
-                        </div>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="runPreCalibration" checked>
-                            <label class="form-check-label" for="runPreCalibration">
-                                Run Fan-to-Windflow Pre-Calibration
-                            </label>
+                        <div class="mb-3">
+                            <label for="fanSpeedStep" class="form-label">Fan Speed Step (PWM)</label>
+                            <input type="number" class="form-control" id="fanSpeedStep" value="5" min="1" max="50">
+                            <small class="form-text text-muted">
+                                Step size for fan speed variation (e.g., 5 = 0, 5, 10, 15, ..., 255)
+                            </small>
                         </div>
                     </div>
                     
                     <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="fanSpeedMin" class="form-label">Fan Speed Min (PWM)</label>
-                            <input type="number" class="form-control" id="fanSpeedMin" value="0" min="0" max="255">
-                        </div>
-                        <div class="mb-3">
-                            <label for="fanSpeedMax" class="form-label">Fan Speed Max (PWM)</label>
-                            <input type="number" class="form-control" id="fanSpeedMax" value="255" min="0" max="255">
-                        </div>
-                        <div class="mb-3">
-                            <label for="fanSpeedStep" class="form-label">Fan Speed Step</label>
-                            <input type="number" class="form-control" id="fanSpeedStep" value="25" min="1" max="50">
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="hotplateTempMin" class="form-label">Hot Plate Temp Min (°C)</label>
-                            <input type="number" class="form-control" id="hotplateTempMin" value="25" min="20" max="100">
-                        </div>
-                        <div class="mb-3">
-                            <label for="hotplateTempMax" class="form-label">Hot Plate Temp Max (°C)</label>
-                            <input type="number" class="form-control" id="hotplateTempMax" value="80" min="20" max="120">
-                        </div>
-                        <div class="mb-3">
-                            <label for="hotplateTempStep" class="form-label">Hot Plate Temp Step (°C)</label>
-                            <input type="number" class="form-control" id="hotplateTempStep" value="5" min="1" max="20">
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="stabilizationTime" class="form-label">Stabilization Time (s)</label>
-                            <input type="number" class="form-control" id="stabilizationTime" value="60" min="30" max="300">
-                        </div>
-                        <div class="mb-3">
-                            <label for="measurementDuration" class="form-label">Measurement Duration (s)</label>
-                            <input type="number" class="form-control" id="measurementDuration" value="30" min="10" max="300">
-                        </div>
                         <div class="mb-3">
                             <label for="notes" class="form-label">Notes</label>
                             <textarea class="form-control" id="notes" rows="2" placeholder="Optional calibration notes..."></textarea>
                         </div>
                     </div>
+                </div>
+                
+                <div class="alert alert-info" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Calibration Process:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Each fan will be tested at multiple speed levels</li>
+                        <li>Windflow sensor readings will be recorded at each level</li>
+                        <li>A polynomial curve will be fitted for each fan-sensor pair</li>
+                        <li>Estimated duration: ~5-10 minutes for all 4 fans</li>
+                    </ul>
                 </div>
                 
                 <hr>
@@ -318,37 +278,25 @@
         
         // Start calibration
         startBtn.addEventListener('click', async () => {
-            const request = {
-                calibrate_fans: document.getElementById('calibrateFans').checked,
-                calibrate_hotplates: document.getElementById('calibrateHotplates').checked,
-                calibrate_combined: document.getElementById('calibrateCombined').checked,
-                run_pre_calibration: document.getElementById('runPreCalibration').checked,
-                fan_speed_min: parseInt(document.getElementById('fanSpeedMin').value),
-                fan_speed_max: parseInt(document.getElementById('fanSpeedMax').value),
-                fan_speed_step: parseInt(document.getElementById('fanSpeedStep').value),
-                hotplate_temp_min: parseFloat(document.getElementById('hotplateTempMin').value),
-                hotplate_temp_max: parseFloat(document.getElementById('hotplateTempMax').value),
-                hotplate_temp_step: parseFloat(document.getElementById('hotplateTempStep').value),
-                stabilization_time: parseInt(document.getElementById('stabilizationTime').value),
-                measurement_duration: parseInt(document.getElementById('measurementDuration').value),
-                notes: document.getElementById('notes').value
-            };
+            const fanSpeedStep = parseInt(document.getElementById('fanSpeedStep').value);
             
             try {
-                addLog('Starting calibration...', 'info');
-                const response = await fetch('/api/calibration/start', {
+                addLog('Starting windflow calibration...', 'info');
+                const response = await fetch(`/api/calibration/windflow/start?fan_speed_step=${fanSpeedStep}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(request)
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
                 const result = await response.json();
                 
                 if (result.status === 'success') {
-                    addLog(`Calibration started: ${result.session_id}`, 'success');
+                    addLog(`Windflow calibration started: ${result.session_id}`, 'success');
+                    addLog(`Fan speed step: ${result.fan_speed_step} PWM`, 'info');
+                    addLog(`Estimated duration: ${result.estimated_duration}`, 'info');
+                    
                     sessionId.textContent = result.session_id;
                     totalSteps.textContent = result.total_steps;
-                    estimatedTime.textContent = formatTime(result.estimated_duration);
+                    estimatedTime.textContent = result.estimated_duration;
                     
                     isCalibrating = true;
                     updateStatus('running');

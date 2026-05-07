@@ -854,17 +854,18 @@ async def diagnose_camera():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Calibration API endpoints
-@app.post("/api/calibration/start")
-async def start_calibration(request: CalibrationRequest):
-    """Start a new calibration session"""
+@app.post("/api/calibration/windflow/start")
+async def start_windflow_calibration(fan_speed_step: int = 5):
+    """Start fan-to-windflow sensor calibration"""
     try:
-        session = await calibration_agent.start_calibration(request)
+        session = await calibration_agent.start_windflow_calibration(fan_speed_step)
         return {
             "status": "success",
-            "message": "Calibration started",
+            "message": "Windflow calibration started",
             "session_id": session.session_id,
             "total_steps": session.total_steps,
-            "estimated_duration": session.get_estimated_remaining_time()
+            "fan_speed_step": fan_speed_step,
+            "estimated_duration": "~5-10 minutes (4 fans × {session.total_steps} steps × 2.2s per step)"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

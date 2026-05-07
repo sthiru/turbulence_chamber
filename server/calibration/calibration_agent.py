@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Calibration Agent for Turbulence Chamber
-Implements automated calibration routine for fan speeds and hot plate temperatures
+Implements automated fan-to-windflow sensor calibration
 """
 
 import asyncio
@@ -11,7 +11,7 @@ import json
 import csv
 import time
 from datetime import datetime
-from typing import Optional, List, Dict, Callable
+from typing import Optional, List, Dict, Callable, Tuple
 import numpy as np
 
 from .config import CalibrationConfig, DEFAULT_CONFIG
@@ -25,7 +25,7 @@ from .windflow_calibration import WindflowCalibrator
 logger = logging.getLogger(__name__)
 
 class CalibrationAgent:
-    """Agent for automated chamber calibration"""
+    """Agent for fan-to-windflow sensor calibration"""
     
     def __init__(self, arduino_comm, config: Optional[CalibrationConfig] = None):
         """
@@ -48,8 +48,8 @@ class CalibrationAgent:
         self.status_callback: Optional[Callable] = None
         self.progress_callback: Optional[Callable] = None
         
-        # Windflow calibrator
-        self.windflow_calibrator = WindflowCalibrator(polynomial_degree=3)
+        # Windflow calibrator (polynomial degree 2 for quadratic fit)
+        self.windflow_calibrator = WindflowCalibrator(polynomial_degree=2)
         self.windflow_calibration_result: Optional[WindflowCalibrationResult] = None
         
         # Ensure calibration data folder exists
@@ -63,12 +63,12 @@ class CalibrationAgent:
         """Set callback for progress updates"""
         self.progress_callback = callback
     
-    async def start_calibration(self, request: CalibrationRequest) -> CalibrationSession:
+    async def start_windflow_calibration(self, fan_speed_step: int = 5) -> CalibrationSession:
         """
-        Start a new calibration session
+        Start fan-to-windflow sensor calibration
         
         Args:
-            request: Calibration request with parameters
+            fan_speed_step: Step size for fan speed variation (default: 5 PWM units)
             
         Returns:
             CalibrationSession object
@@ -76,32 +76,26 @@ class CalibrationAgent:
         if self.is_running:
             raise RuntimeError("Calibration already in progress")
         
-        # Update configuration from request
-        config = self._update_config_from_request(request)
-        
         # Create session
-        session_id = f"calib_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        session_id = f"windflow_calib_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         session = CalibrationSession(
             session_id=session_id,
             start_time=datetime.now(),
             status=CalibrationStatus.RUNNING,
-            total_steps=config.get_total_calibration_steps(),
-            config=config.__dict__,
-            notes=request.notes
+            total_steps=4,  # 4 fans to calibrate
+            config={"fan_speed_step": fan_speed_step},
+            notes=f"Fan-to-Windflow calibration with {fan_speed_step} PWM step"
         )
-        
-        # Generate calibration steps
-        session.steps = self._generate_calibration_steps(config)
         
         self.current_session = session
         self.is_running = True
         self.is_paused = False
         self.stop_requested = False
         
-        logger.info(f"Starting calibration session {session_id} with {len(session.steps)} steps")
+        logger.info(f"Starting windflow calibration session {session_id}")
         
         # Start calibration in background
-        asyncio.create_task(self._run_calibration())
+        asyncio.create_task(self._run_windflow_calibration(fan_speed_step))
         
         return session
     
@@ -138,6 +132,156 @@ class CalibrationAgent:
             config.measurement_duration = request.measurement_duration
         
         return config
+    
+    async def _run_windflow_calibration(self, fan_speed_step: int = 5):
+        """Main windflow calibration loop"""
+        try:
+            calibration_data: List[Tuple[int, List[Tuple[int, float]]]] = []
+            
+            # Capture ambient conditions at start
+            ambient_temp = None
+            ambient_pressure = None
+            ambient_humidity = None
+            try:
+                response = await self.arduino_comm.get_status()
+                if response.status == "ok" and response.data:
+                    # Get ambient temperature from BME280 sensor
+                    if response.data.temperature_bmp and len(response.data.temperature_bmp) > 0:
+                        ambient_temp = response.data.temperature_bmp[0]
+                    # Get pressure from BME280 sensor
+                    if response.data.pressure and len(response.data.pressure) > 0:
+                        ambient_pressure = response.data.pressure[0]
+                    # Get humidity from DHT22 sensor
+                    if response.data.humidity and len(response.data.humidity) > 0:
+                        ambient_humidity = response.data.humidity[0]
+                    logger.info(f"Ambient conditions: {ambient_temp}°C, {ambient_pressure} hPa, {ambient_humidity}% RH")
+            except Exception as e:
+                logger.warning(f"Could not capture ambient conditions: {e}")
+            
+            # Calibrate each fan
+            for fan_id in range(4):
+                if self.stop_requested:
+                    break
+                
+                logger.info(f"Calibrating Fan {fan_id}...")
+                self.current_session.current_step = fan_id + 1
+                
+                fan_data = await self._calibrate_single_fan(fan_id, fan_speed_step)
+                calibration_data.append((fan_id, fan_data))
+                
+                # Update progress
+                if self.progress_callback:
+                    self.progress_callback((fan_id + 1) / 4 * 100)
+            
+            if not self.stop_requested:
+                # Fit polynomials
+                logger.info("Fitting polynomial curves for all fans...")
+                self.windflow_calibration_result = self.windflow_calibrator.calibrate_all_fans(
+                    calibration_data,
+                    ambient_temperature=ambient_temp,
+                    ambient_pressure=ambient_pressure,
+                    ambient_humidity=ambient_humidity
+                )
+                
+                # Save results
+                self._save_windflow_calibration()
+                
+                self.current_session.status = CalibrationStatus.COMPLETED
+                self.current_session.end_time = datetime.now()
+                logger.info("Windflow calibration completed successfully")
+            else:
+                self.current_session.status = CalibrationStatus.FAILED
+                self.current_session.error_message = "Stopped by user"
+                self.current_session.end_time = datetime.now()
+        
+        except Exception as e:
+            logger.error(f"Calibration error: {e}")
+            self.current_session.status = CalibrationStatus.FAILED
+            self.current_session.error_message = str(e)
+            self.current_session.end_time = datetime.now()
+        
+        finally:
+            self.is_running = False
+            await self._reset_hardware()
+            
+            if self.status_callback:
+                self.status_callback(self.current_session)
+    
+    async def _calibrate_single_fan(self, fan_id: int, fan_speed_step: int) -> List[Tuple[int, float]]:
+        """
+        Calibrate a single fan-to-windflow sensor pair
+        
+        Args:
+            fan_id: Fan identifier (0-3)
+            fan_speed_step: Step size for fan speed variation
+            
+        Returns:
+            List of (fan_speed, flow_rate) tuples
+        """
+        fan_data = []
+        
+        # Generate fan speed steps (0, step, 2*step, ..., 255)
+        fan_speeds = list(range(0, 256, fan_speed_step))
+        if fan_speeds[-1] != 255:
+            fan_speeds.append(255)
+        
+        logger.info(f"Fan {fan_id}: Testing {len(fan_speeds)} speed levels")
+        
+        for fan_speed in fan_speeds:
+            if self.stop_requested:
+                break
+            
+            # Set fan speed
+            await self.arduino_comm.set_fan_speed(fan_id, fan_speed)
+            
+            # Wait for stabilization (2 seconds for windflow)
+            await asyncio.sleep(2)
+            
+            # Record multiple readings for averaging
+            flow_readings = []
+            for _ in range(5):
+                response = await self.arduino_comm.get_status()
+                if response.status == "ok" and response.data:
+                    flow_rates = response.data.flow_rates
+                    if fan_id < len(flow_rates):
+                        flow_readings.append(flow_rates[fan_id])
+                await asyncio.sleep(0.2)
+            
+            # Calculate average flow rate
+            if flow_readings:
+                avg_flow = np.mean(flow_readings)
+                fan_data.append((fan_speed, avg_flow))
+                logger.debug(f"Fan {fan_id} @ {fan_speed} PWM → Flow: {avg_flow:.3f}")
+        
+        return fan_data
+    
+    def _save_windflow_calibration(self):
+        """Save windflow calibration results to file"""
+        if not self.windflow_calibration_result:
+            return
+        
+        try:
+            # Create timestamped filename
+            calib_id = self.windflow_calibration_result.calibration_id
+            
+            # Save to calibration data folder
+            filepath = os.path.join(
+                self.config.calibration_data_folder,
+                f"{calib_id}.json"
+            )
+            self.windflow_calibrator.export_polynomials(filepath)
+            
+            # Also save to root as latest
+            latest_filepath = os.path.join(
+                os.path.dirname(self.config.calibration_data_folder),
+                "windflow_polynomials_latest.json"
+            )
+            self.windflow_calibrator.export_polynomials(latest_filepath)
+            
+            logger.info(f"Windflow calibration saved to {filepath}")
+            
+        except Exception as e:
+            logger.error(f"Error saving windflow calibration: {e}")
     
     def _generate_calibration_steps(self, config: CalibrationConfig) -> List[CalibrationStep]:
         """Generate calibration steps based on configuration"""
