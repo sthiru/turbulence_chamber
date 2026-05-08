@@ -664,13 +664,20 @@ async def calibration():
 @app.get("/api/status")
 async def get_system_status():
     """Get current system status"""
+    import time
+    start_time = time.time()
     try:
         response = await arduino_comm.get_status()
+        elapsed = time.time() - start_time
+        logger.info(f"/api/status endpoint took {elapsed:.3f}s")
+        
         if response.status == "ok":
             return response.data
         else:
             raise HTTPException(status_code=500, detail=response.msg)
     except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"/api/status endpoint failed after {elapsed:.3f}s: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/temperature/set")
@@ -855,17 +862,19 @@ async def diagnose_camera():
 
 # Calibration API endpoints
 @app.post("/api/calibration/windflow/start")
-async def start_windflow_calibration(fan_speed_step: int = 5):
+async def start_windflow_calibration(fan_speed_step: int = 5, settling_time_ms: int = 1000, num_samples: int = 3):
     """Start fan-to-windflow sensor calibration"""
     try:
-        session = await calibration_agent.start_windflow_calibration(fan_speed_step)
+        session = await calibration_agent.start_windflow_calibration(fan_speed_step, settling_time_ms, num_samples)
         return {
             "status": "success",
             "message": "Windflow calibration started",
             "session_id": session.session_id,
             "total_steps": session.total_steps,
             "fan_speed_step": fan_speed_step,
-            "estimated_duration": "~5-10 minutes (4 fans × {session.total_steps} steps × 2.2s per step)"
+            "settling_time_ms": settling_time_ms,
+            "num_samples": num_samples,
+            "estimated_duration": f"~{(session.total_steps * (settling_time_ms/1000 + num_samples * 0.2) / 60):.1f} minutes"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -885,26 +894,6 @@ async def control_calibration(control: CalibrationControl):
             return {"status": "success", "message": "Calibration stopped"}
         else:
             raise HTTPException(status_code=400, detail=f"Invalid action: {control.action}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/calibration/status")
-async def get_calibration_status():
-    """Get current calibration session status"""
-    try:
-        session = calibration_agent.get_session_status()
-        if session:
-            return {
-                "status": "success",
-                "session": session.dict(),
-                "progress": session.get_progress(),
-                "estimated_remaining_time": session.get_estimated_remaining_time()
-            }
-        else:
-            return {
-                "status": "idle",
-                "message": "No active calibration session"
-            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1555,6 +1544,73 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
             break
     
     video_manager.disconnect(client_id)
+
+# Calibration WebSocket connection manager
+class CalibrationConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"Calibration WebSocket client connected. Total: {len(self.active_connections)}")
+    
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+            logger.info(f"Calibration WebSocket client disconnected. Total: {len(self.active_connections)}")
+    
+    async def broadcast(self, message: dict):
+        """Broadcast calibration status to all connected clients"""
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(json.dumps(message))
+            except Exception as e:
+                logger.error(f"Error sending calibration status to client: {e}")
+                self.disconnect(connection)
+
+calibration_ws_manager = CalibrationConnectionManager()
+
+def calibration_status_callback(session):
+    """Callback to broadcast calibration status updates to all WebSocket clients"""
+    # Broadcast directly when session updates
+    asyncio.create_task(calibration_ws_manager.broadcast({
+        "type": "calibration_status",
+        "session": session.model_dump(mode='json'),
+        "progress": session.get_progress(),
+        "estimated_remaining_time": session.get_estimated_remaining_time()
+    }))
+
+@app.websocket("/ws/calibration")
+async def calibration_websocket(websocket: WebSocket):
+    """WebSocket endpoint for real-time calibration status updates"""
+    await calibration_ws_manager.connect(websocket)
+    
+    # Set status callback (only set once globally, but safe to set again)
+    calibration_agent.set_status_callback(calibration_status_callback)
+    
+    # Send current status immediately
+    session = calibration_agent.get_session_status()
+    if session:
+        await websocket.send_text(json.dumps({
+            "type": "calibration_status",
+            "session": session.model_dump(mode='json'),
+            "progress": session.get_progress(),
+            "estimated_remaining_time": session.get_estimated_remaining_time()
+        }))
+    
+    # Keep connection alive
+    try:
+        while True:
+            await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+    except asyncio.TimeoutError:
+        await websocket.send_text('{"type":"ping"}')
+    except WebSocketDisconnect:
+        logger.info("Calibration WebSocket client disconnected")
+    except Exception as e:
+        logger.error(f"Calibration WebSocket error: {e}")
+    finally:
+        calibration_ws_manager.disconnect(websocket)
 
 # Initialize camera system
 camera_images_folder = os.path.join(os.path.dirname(__file__), "..", "camera_images")

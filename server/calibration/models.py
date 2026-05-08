@@ -74,6 +74,15 @@ class CalibrationSession(BaseModel):
     steps: List[CalibrationStep] = []
     lookup_table: Optional[Dict] = None
     
+    # Current state (for real-time status updates)
+    current_fan_id: Optional[int] = None
+    current_fan_speed: Optional[int] = None
+    current_flow_rates: List[float] = []
+    
+    # Granular progress tracking (for accurate time estimation)
+    total_speed_steps: int = 0  # Total number of speed levels across all fans
+    current_speed_step: int = 0  # Current speed level being calibrated
+    
     # Metadata
     notes: Optional[str] = None
     error_message: Optional[str] = None
@@ -86,17 +95,31 @@ class CalibrationSession(BaseModel):
     
     def get_estimated_remaining_time(self) -> Optional[float]:
         """Estimate remaining time in seconds"""
-        if self.start_time is None or self.current_step == 0:
+        if self.start_time is None:
             return None
         
         if self.status == CalibrationStatus.COMPLETED:
             return 0.0
         
         elapsed = (datetime.now() - self.start_time).total_seconds()
-        if self.current_step > 0:
-            avg_time_per_step = elapsed / self.current_step
-            remaining_steps = self.total_steps - self.current_step
-            return avg_time_per_step * remaining_steps
+        
+        # Use granular speed step tracking if available for more accurate estimation
+        # Only use after at least 10 speed steps have completed for meaningful average
+        if self.total_speed_steps > 0 and self.current_speed_step >= 10:
+            avg_time_per_speed_step = elapsed / self.current_speed_step
+            remaining_speed_steps = self.total_speed_steps - self.current_speed_step
+            return avg_time_per_speed_step * remaining_speed_steps
+        # Use fan-level tracking if available
+        elif self.current_step > 0:
+            avg_time_per_fan = elapsed / self.current_step
+            remaining_fans = self.total_steps - self.current_step
+            return avg_time_per_fan * remaining_fans
+        
+        # Default estimate: ~2.5 seconds per speed step
+        if self.total_speed_steps > 0:
+            remaining_speed_steps = self.total_speed_steps - self.current_speed_step
+            return remaining_speed_steps * 2.5
+        
         return None
 
 class CalibrationRequest(BaseModel):

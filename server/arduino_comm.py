@@ -92,11 +92,16 @@ class ArduinoCommunicator:
     
     async def send_command(self, command: ArduinoCommand) -> ArduinoResponse:
         """Send command to Arduino and return response"""
+        import time
         async with self._lock:
+            total_start = time.time()
+            
             # Check connection before sending
             if not self.is_connected or not self.serial_conn:
                 logger.warning("Arduino not connected, attempting to reconnect...")
+                reconnect_start = time.time()
                 await self.connect()
+                logger.info(f"Reconnect took {time.time() - reconnect_start:.3f}s")
                 
                 if not self.is_connected:
                     return ArduinoResponse(
@@ -106,6 +111,7 @@ class ArduinoCommunicator:
             
             try:
                 # Convert command to JSON and send
+                cmd_start = time.time()
                 cmd_json = json.dumps(command.dict(exclude_none=True))
                 
                 # Clear any pending input first
@@ -114,15 +120,19 @@ class ArduinoCommunicator:
                 # Send command
                 self.serial_conn.write((cmd_json + '\n').encode())
                 self.serial_conn.flush()
-                logger.debug(f"Command sent to Arduino on {self.port}")
+                logger.debug(f"Command sent to Arduino on {self.port}, took {time.time() - cmd_start:.3f}s")
                 
                 # Check if data was actually written
                 bytes_written = self.serial_conn.out_waiting
                 logger.debug(f"Bytes waiting to be written: {bytes_written}")
                 
                 # Wait for response
+                read_start = time.time()
                 response_line = await self._read_line()
-                logger.debug(f"Raw response from Arduino: {response_line}")
+                read_time = time.time() - read_start
+                logger.debug(f"Read line took {read_time:.3f}s, Raw response from Arduino: {response_line}")
+                
+                logger.info(f"Total command time: {time.time() - total_start:.3f}s (read: {read_time:.3f}s)")
                 
                 if response_line:
                     try:
@@ -133,6 +143,15 @@ class ArduinoCommunicator:
                         logger.error(f"Raw response: '{response_line}'")
                         logger.error(f"Response length: {len(response_line)}")
                         logger.error(f"Response bytes: {[ord(c) for c in response_line]}")
+                        
+                        # Check if this is a sensor error message (not a connection issue)
+                        if 'disconnected' in response_line.lower() or 'sensor' in response_line.lower():
+                            # Sensor error - do not disconnect, just return error
+                            logger.warning("Sensor error detected, returning error without disconnecting")
+                            return ArduinoResponse(
+                                status="error",
+                                msg=response_line
+                            )
                         
                         # Connection might be unstable, mark as disconnected
                         logger.warning("Connection appears unstable, disconnecting...")
@@ -160,41 +179,58 @@ class ArduinoCommunicator:
                     msg=f"Communication error: {str(e)}"
                 )
     
-    async def _read_line(self, timeout: float = 10.0) -> Optional[str]:
-        """Read a line from serial port with timeout"""
+    async def _read_line(self, timeout: float = 5.0) -> Optional[str]:
+        """Read a line from serial port with timeout - hybrid batch/char reading"""
+        import time
         if not self.serial_conn:
             return None
             
         buffer = ""
         start_time = asyncio.get_event_loop().time()
+        loop_start = time.time()
         
         while (asyncio.get_event_loop().time() - start_time) < timeout:
+            # Read all available bytes at once (batch reading)
             if self.serial_conn.in_waiting > 0:
                 try:
-                    char_bytes = self.serial_conn.read(1)
-                    if char_bytes:
-                        char = char_bytes.decode('utf-8', errors='ignore')
-                        buffer += char
+                    bytes_available = self.serial_conn.in_waiting
+                    # Limit read size to avoid blocking
+                    read_size = min(bytes_available, 1024)
+                    chunk = self.serial_conn.read(read_size)
+                    
+                    if chunk:
+                        chunk_str = chunk.decode('utf-8', errors='ignore')
+                        buffer += chunk_str
                         
-                        if char == '\n':
-                            result = buffer.strip()
-                            logger.debug(f"Read line from Arduino: {result}")
+                        # Check for newline in the buffer
+                        if '\n' in buffer:
+                            # Extract the first complete line
+                            lines = buffer.split('\n', 1)
+                            result = lines[0].strip()
                             
-                            # Check if response is empty
+                            total_time = time.time() - loop_start
+                            logger.info(f"Read line completed in {total_time:.3f}s, {len(result)} chars, buffer size: {len(buffer)}")
+                            
                             if not result:
                                 logger.warning("Arduino sent empty response")
                                 return None
                             
                             return result
+                        else:
+                            # No newline yet, buffer the data and continue waiting
+                            logger.debug(f"Buffered {len(chunk)} bytes (total buffer: {len(buffer)})")
+                            await asyncio.sleep(0.001)
                 except UnicodeDecodeError as e:
                     logger.warning(f"Unicode decode error: {e}")
                     continue
-            
-            await asyncio.sleep(0.01)
+            else:
+                # No data available, short sleep
+                await asyncio.sleep(0.001)
         
-        logger.warning("Timeout waiting for Arduino response")
+        total_time = time.time() - loop_start
+        logger.warning(f"Read line timeout after {total_time:.3f}s, buffer content: {buffer[:100]}")
         return None
-    
+        
     async def get_status(self) -> ArduinoResponse:
         """Get current system status from Arduino"""
         command = ArduinoCommand(cmd="get_status")

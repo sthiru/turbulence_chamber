@@ -121,7 +121,7 @@
             
             <form id="calibrationForm">
                 <div class="row">
-                    <div class="col-md-6">
+                    <div class="col-md-3">
                         <div class="mb-3">
                             <label for="fanSpeedStep" class="form-label">Fan Speed Step (PWM)</label>
                             <input type="number" class="form-control" id="fanSpeedStep" value="5" min="1" max="50">
@@ -131,7 +131,27 @@
                         </div>
                     </div>
                     
-                    <div class="col-md-6">
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="settlingTime" class="form-label">Settling Time (ms)</label>
+                            <input type="number" class="form-control" id="settlingTime" value="1000" min="100" max="10000" step="100">
+                            <small class="form-text text-muted">
+                                Wait time after changing fan speed (default: 1000ms)
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="numSamples" class="form-label">Samples per Point</label>
+                            <input type="number" class="form-control" id="numSamples" value="3" min="1" max="20">
+                            <small class="form-text text-muted">
+                                Number of readings to average (default: 3)
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
                         <div class="mb-3">
                             <label for="notes" class="form-label">Notes</label>
                             <textarea class="form-control" id="notes" rows="2" placeholder="Optional calibration notes..."></textarea>
@@ -203,7 +223,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Calibration control script
-        let calibrationInterval = null;
         let isCalibrating = false;
         
         // DOM elements
@@ -278,11 +297,13 @@
         
         // Start calibration
         startBtn.addEventListener('click', async () => {
-            const fanSpeedStep = parseInt(document.getElementById('fanSpeedStep').value);
+            const fanSpeedStep = parseInt(document.getElementById('fanSpeedStep').value) || 5;
+            const settlingTime = parseInt(document.getElementById('settlingTime').value) || 1000;
+            const numSamples = parseInt(document.getElementById('numSamples').value) || 3;
             
             try {
                 addLog('Starting windflow calibration...', 'info');
-                const response = await fetch(`/api/calibration/windflow/start?fan_speed_step=${fanSpeedStep}`, {
+                const response = await fetch(`/api/calibration/windflow/start?fan_speed_step=${fanSpeedStep}&settling_time_ms=${settlingTime}&num_samples=${numSamples}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -290,25 +311,12 @@
                 const result = await response.json();
                 
                 if (result.status === 'success') {
-                    addLog(`Windflow calibration started: ${result.session_id}`, 'success');
-                    addLog(`Fan speed step: ${result.fan_speed_step} PWM`, 'info');
-                    addLog(`Estimated duration: ${result.estimated_duration}`, 'info');
-                    
-                    sessionId.textContent = result.session_id;
-                    totalSteps.textContent = result.total_steps;
-                    estimatedTime.textContent = result.estimated_duration;
-                    
                     isCalibrating = true;
-                    updateStatus('running');
-                    
-                    // Enable/disable buttons
                     startBtn.disabled = true;
                     pauseBtn.disabled = false;
                     resumeBtn.disabled = true;
                     stopBtn.disabled = false;
-                    
-                    // Start polling
-                    startPolling();
+                    addLog(`Calibration started (Step: ${fanSpeedStep} PWM, Settling time: ${settlingTime}ms, Samples: ${numSamples})`, 'success');
                 } else {
                     addLog(`Failed to start calibration: ${result.message}`, 'error');
                 }
@@ -374,7 +382,6 @@
                 
                 if (result.status === 'success') {
                     addLog('Calibration stopped', 'warning');
-                    stopPolling();
                     resetUI();
                 }
             } catch (error) {
@@ -423,42 +430,52 @@
             }
         });
         
-        // Poll calibration status
-        function startPolling() {
-            if (calibrationInterval) {
-                clearInterval(calibrationInterval);
+        // WebSocket connection for real-time calibration status - always connected
+        let calibrationWebSocket = null;
+        let reconnectAttempts = 0;
+        let reconnectDelay = 1000;
+        const maxReconnectDelay = 30000;
+        let wsConnected = false;
+        
+        function connectWebSocket() {
+            if (calibrationWebSocket && calibrationWebSocket.readyState === WebSocket.OPEN) {
+                return; // Already connected
             }
             
-            calibrationInterval = setInterval(async () => {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            calibrationWebSocket = new WebSocket(`${protocol}//${window.location.host}/ws/calibration`);
+            
+            calibrationWebSocket.onopen = () => {
+                wsConnected = true;
+                reconnectAttempts = 0;
+                reconnectDelay = 1000;
+                addLog('Connected to calibration status via WebSocket', 'info');
+            };
+            
+            calibrationWebSocket.onmessage = (event) => {
                 try {
-                    const response = await fetch('/api/calibration/status');
-                    const result = await response.json();
+                    const data = JSON.parse(event.data);
                     
-                    if (result.status === 'success') {
-                        const session = result.session;
+                    if (data.type === 'calibration_status') {
+                        const session = data.session;
                         
-                        // Update progress
-                        progressBar.style.width = `${result.progress}%`;
-                        progressPercent.textContent = `${Math.round(result.progress)}%`;
+                        // Update display
+                        sessionId.textContent = session.session_id;
                         currentStep.textContent = session.current_step;
                         totalSteps.textContent = session.total_steps;
-                        estimatedTime.textContent = formatTime(result.estimated_remaining_time);
-                        sessionId.textContent = session.session_id;
+                        progressBar.style.width = `${data.progress}%`;
+                        progressPercent.textContent = `${data.progress.toFixed(1)}%`;
                         
-                        // Update step type if available
-                        if (session.steps && session.steps.length > 0) {
-                            const lastStep = session.steps[session.steps.length - 1];
-                            if (lastStep) {
-                                stepType.textContent = lastStep.step_type || '--';
-                            }
+                        // Update estimated time
+                        if (data.estimated_remaining_time) {
+                            estimatedTime.textContent = formatTime(data.estimated_remaining_time);
                         }
                         
                         // Update status
                         updateStatus(session.status);
                         
-                        // Check if completed
+                        // Check if completed or failed
                         if (session.status === 'completed' || session.status === 'failed') {
-                            stopPolling();
                             resetUI();
                             
                             if (session.status === 'completed') {
@@ -467,23 +484,44 @@
                                 addLog(`Calibration failed: ${session.error_message}`, 'error');
                             }
                         }
-                    } else if (result.status === 'idle') {
-                        // No active session
-                        stopPolling();
-                        resetUI();
+                    } else if (data.type === 'ping') {
+                        calibrationWebSocket.send(JSON.stringify({ type: 'pong' }));
                     }
                 } catch (error) {
-                    addLog(`Error polling status: ${error}`, 'error');
+                    addLog(`Error processing WebSocket message: ${error}`, 'error');
                 }
-            }, 2000); // Poll every 2 seconds
+            };
+            
+            calibrationWebSocket.onerror = (error) => {
+                wsConnected = false;
+                addLog('WebSocket error', 'warning');
+                reconnectAttempts++;
+            };
+            
+            calibrationWebSocket.onclose = (event) => {
+                wsConnected = false;
+                calibrationWebSocket = null;
+                addLog(`WebSocket connection closed (code: ${event.code}), reconnecting...`, 'info');
+                
+                // Always reconnect
+                setTimeout(() => {
+                    if (!calibrationWebSocket) {
+                        reconnectAttempts++;
+                        reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
+                        reconnectDelay += Math.random() * 1000;
+                        connectWebSocket();
+                    }
+                }, reconnectDelay);
+            };
         }
         
-        function stopPolling() {
-            if (calibrationInterval) {
-                clearInterval(calibrationInterval);
-                calibrationInterval = null;
-            }
+        function disconnectWebSocket() {
+            // Keep WebSocket connected - do not disconnect
+            addLog('Keeping WebSocket connection active', 'info');
         }
+        
+        // Connect WebSocket on page load
+        connectWebSocket();
         
         function resetUI() {
             isCalibrating = false;
@@ -503,33 +541,7 @@
         }
         
         // Initial status check
-        async function checkInitialStatus() {
-            try {
-                const response = await fetch('/api/calibration/status');
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    isCalibrating = true;
-                    updateStatus(result.session.status);
-                    sessionId.textContent = result.session.session_id;
-                    currentStep.textContent = result.session.current_step;
-                    totalSteps.textContent = result.session.total_steps;
-                    
-                    startBtn.disabled = true;
-                    pauseBtn.disabled = result.session.status !== 'paused';
-                    resumeBtn.disabled = result.session.status !== 'paused';
-                    stopBtn.disabled = false;
-                    
-                    startPolling();
-                    addLog('Active calibration session detected', 'info');
-                }
-            } catch (error) {
-                addLog(`Error checking initial status: ${error}`, 'error');
-            }
-        }
-        
-        // Check for existing calibration on page load
-        checkInitialStatus();
+        // WebSocket is always connected, no need for initial status check
     </script>
 </body>
 </html>
