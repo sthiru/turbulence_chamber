@@ -1,0 +1,22 @@
+{
+  "session_id": "windflow_calib_20260508_171541",
+  "start_time": "2026-05-08T17:15:41.051171",
+  "end_time": null,
+  "status": "running",
+  "total_steps": 49,
+  "current_step": 0,
+  "config": {
+    "fan_speed_step": 5,
+    "settling_time_ms": 1000,
+    "num_samples": 3
+  },
+  "steps": [],
+  "lookup_table": null,
+  "current_fan_id": null,
+  "current_fan_speed": null,
+  "current_flow_rates": [],
+  "total_speed_steps": 196,
+  "current_speed_step": 0,
+  "notes": "Fan-to-Windflow calibration with 5 PWM step (parallel execution)",
+  "error_message": null
+}

@@ -1,3 +1,4 @@
 *.pyc
 camera_images/*
 __pycache__
+server/calibration_data/windflow_calib_*

@@ -177,7 +177,7 @@ class WindflowCalibrator:
         if not self.calibration_results:
             raise ValueError("No calibration results to export")
         
-        data = self.calibration_results.dict()
+        data = self.calibration_results.model_dump(mode='json')
         data['sensor_distance_cm'] = self.sensor_distance_cm
         
         os.makedirs(os.path.dirname(filepath), exist_ok=True)

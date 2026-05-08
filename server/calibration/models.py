@@ -97,29 +97,47 @@ class CalibrationSession(BaseModel):
         """Estimate remaining time in seconds"""
         if self.start_time is None:
             return None
-        
+
         if self.status == CalibrationStatus.COMPLETED:
             return 0.0
-        
+
         elapsed = (datetime.now() - self.start_time).total_seconds()
-        
+
+        # Calculate initial estimate based on configuration
+        # settling_time_ms + time for samples (assume 0.2s per sample)
+        config = self.config if hasattr(self, 'config') else {}
+        settling_time = config.get('settling_time_ms', 1000) / 1000.0  # Convert to seconds
+        num_samples = config.get('num_samples', 3)
+        sample_time = num_samples * 0.2  # ~0.2s per sample
+        initial_estimate_per_step = settling_time + sample_time
+
         # Use granular speed step tracking if available for more accurate estimation
-        # Only use after at least 10 speed steps have completed for meaningful average
-        if self.total_speed_steps > 0 and self.current_speed_step >= 10:
-            avg_time_per_speed_step = elapsed / self.current_speed_step
+        # Start using actual data after just 3 steps to avoid jumps
+        if self.total_speed_steps > 0 and self.current_speed_step >= 3:
+            actual_avg_time_per_step = elapsed / self.current_speed_step
             remaining_speed_steps = self.total_speed_steps - self.current_speed_step
-            return avg_time_per_speed_step * remaining_speed_steps
-        # Use fan-level tracking if available
+
+            # Use weighted average to smooth transition (70% actual, 30% estimate)
+            # This prevents sudden jumps when switching to actual data
+            if self.current_speed_step < 10:
+                weight = 0.3 + (self.current_speed_step - 3) * 0.1  # Gradually increase weight
+                weight = min(weight, 1.0)
+                avg_time = (weight * actual_avg_time_per_step) + ((1 - weight) * initial_estimate_per_step)
+            else:
+                avg_time = actual_avg_time_per_step
+
+            return avg_time * remaining_speed_steps
+        # Use fan-level tracking if available (fallback)
         elif self.current_step > 0:
             avg_time_per_fan = elapsed / self.current_step
             remaining_fans = self.total_steps - self.current_step
             return avg_time_per_fan * remaining_fans
-        
-        # Default estimate: ~2.5 seconds per speed step
+
+        # Use configuration-based estimate before any steps complete
         if self.total_speed_steps > 0:
             remaining_speed_steps = self.total_speed_steps - self.current_speed_step
-            return remaining_speed_steps * 2.5
-        
+            return remaining_speed_steps * initial_estimate_per_step
+
         return None
 
 class CalibrationRequest(BaseModel):

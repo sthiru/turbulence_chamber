@@ -1,4 +1,72 @@
-<svg viewBox="0 0 1200 600" xmlns="http://www.w3.org/2000/svg">
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 600" width="100%" height="100%">
+    <script type="text/javascript"><![CDATA[
+        // Fan slider drag handling
+        let draggingFan = null;
+        let startY = 0;
+        let startCy = 0;
+        
+        function initFanSliders() {
+            for (let i = 1; i <= 4; i++) {
+                const slider = document.getElementById(`fan${i}-slider`);
+                const knob = document.getElementById(`fan${i}-slider-knob`);
+                
+                if (slider && knob) {
+                    knob.addEventListener('mousedown', function(e) {
+                        draggingFan = i;
+                        startY = e.clientY;
+                        startCy = parseFloat(knob.getAttribute('cy')) || 10;
+                        e.preventDefault();
+                        e.stopPropagation();
+                    });
+                    
+                    slider.addEventListener('mousedown', function(e) {
+                        draggingFan = i;
+                        startY = e.clientY;
+                        startCy = parseFloat(knob.getAttribute('cy')) || 10;
+                        e.preventDefault();
+                        e.stopPropagation();
+                    });
+                }
+            }
+        }
+        
+        document.addEventListener('mousemove', function(e) {
+            if (!draggingFan) return;
+            
+            const knob = document.getElementById(`fan${draggingFan}-slider-knob`);
+            if (!knob) return;
+            
+            const deltaY = e.clientY - startY;
+            let newCy = startCy + deltaY;
+            
+            // Clamp to slider range (-20 to 40)
+            if (newCy < -20) newCy = -20;
+            if (newCy > 40) newCy = 40;
+            
+            knob.setAttribute('cy', newCy);
+            
+            // Calculate speed
+            const speed = Math.round(((40 - newCy) / 60) * 255);
+            
+            // Send to parent window
+            window.parent.postMessage({
+                type: 'fan_speed_change',
+                fan: draggingFan - 1,
+                speed: speed
+            }, '*');
+        });
+        
+        document.addEventListener('mouseup', function() {
+            if (draggingFan) {
+                draggingFan = null;
+            }
+        });
+        
+        // Initialize on load
+        window.addEventListener('load', initFanSliders);
+        ]]>
+    </script>
     <!-- Define gradients and patterns -->
     <defs>
         <linearGradient id="chamberGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -40,7 +108,7 @@
     <polygon points="690,460 730,460 750,485 730,510 690,510 670,485" fill="#ffffff" stroke="#1976d2" stroke-width="2"/>
     
     <!-- CN² Title Display -->
-    <text x="80" y="80" text-anchor="middle" font-size="28" font-weight="bold" fill="#1976d2">
+    <text x="100" y="100" text-anchor="middle" font-size="28" font-weight="bold" fill="#1976d2">
         C<tspan baseline-shift="sub" font-size="20">n</tspan><tspan baseline-shift="super" font-size="20">2</tspan> = <tspan id="cn2TitleValue">0.00e+0</tspan>
     </text>
 
@@ -196,62 +264,74 @@
         </g>
     </g>   
     
-    <!-- Temperature Sensors - 4 Columns (1, 4, 4, 1) -->
+    <!-- Temperature Sensors - 4 Columns (1, 5, 5, 1) -->
     <!-- Column 1: 1 sensor (T1) - close to laser path on left -->
     <g id="sensor1" transform="translate(375, 305)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T1</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp1">--°C</text>
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T1</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp1">--°C</text>
     </g>
 
-    <!-- Column 2: 4 sensors (T2, T3, T4, T5) - equal separation -->
-    <g id="sensor2" transform="translate(490, 230)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T2</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp2">--°C</text>
+    <!-- Column 2: 5 sensors (T2, T3, T4, T5, T6) - equal separation -->
+    <g id="sensor2" transform="translate(490, 200)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T2</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp2">--°C</text>
     </g>
 
-    <g id="sensor3" transform="translate(490, 300)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T3</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp3">--°C</text>
+    <g id="sensor3" transform="translate(490, 267)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T3</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp3">--°C</text>
     </g>
 
-    <g id="sensor4" transform="translate(490, 370)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T4</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp4">--°C</text>
+    <g id="sensor4" transform="translate(490, 334)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T4</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp4">--°C</text>
     </g>
 
-    <g id="sensor5" transform="translate(490, 440)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T5</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp5">--°C</text>
+    <g id="sensor5" transform="translate(490, 401)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T5</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp5">--°C</text>
     </g>
 
-    <!-- Column 3: 4 sensors (T6, T7, T8, T9) - equal separation -->
-    <g id="sensor6" transform="translate(710, 230)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T6</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp6">--°C</text>
+    <g id="sensor6" transform="translate(490, 468)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T6</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp6">--°C</text>
     </g>
 
-    <g id="sensor7" transform="translate(710, 300)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T7</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp7">--°C</text>
+    <!-- Column 3: 5 sensors (T7, T8, T9, T10, T11) - equal separation -->
+    <g id="sensor7" transform="translate(710, 200)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T7</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp7">--°C</text>
     </g>
 
-    <g id="sensor8" transform="translate(710, 370)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T8</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp8">--°C</text>
+    <g id="sensor8" transform="translate(710, 267)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T8</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp8">--°C</text>
     </g>
 
-    <g id="sensor9" transform="translate(710, 440)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T9</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp9">--°C</text>
+    <g id="sensor9" transform="translate(710, 334)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T9</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp9">--°C</text>
+    </g>
+
+    <g id="sensor10" transform="translate(710, 401)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T10</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp10">--°C</text>
+    </g>
+
+    <g id="sensor11" transform="translate(710, 468)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T11</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp11">--°C</text>
     </g>
 
     <!-- Windflow Sensors -->
@@ -283,24 +363,11 @@
         <text x="0" y="-18" text-anchor="middle" font-size="8" fill="#666" id="flow4">-- m/s</text>
     </g>
 
-    <!-- Column 4: 1 sensor (T10) - close to laser path on right -->
-    <g id="sensor10" transform="translate(825, 345)">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T10</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp10">--°C</text>
-    </g>
-
-    <!-- Remaining sensors (T11, T12) - hide or remove as per 1,4,4,1 arrangement -->
-    <g id="sensor11" transform="translate(1000, 1000)" style="display: none;">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T11</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp11">--°C</text>
-    </g>
-
-    <g id="sensor12" transform="translate(1100, 1000)" style="display: none;">
-        <circle cx="0" cy="0" r="15" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="5" text-anchor="middle" font-size="12" fill="#fff" font-weight="bold">T12</text>
-        <text x="0" y="-25" text-anchor="middle" class="temperature-display" id="temp12">--°C</text>
+    <!-- Column 4: 1 sensor (T12) - close to laser path on right -->
+    <g id="sensor12" transform="translate(825, 345)">
+        <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T12</text>
+        <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp12">--°C</text>
     </g>
     
     <!-- Flow arrows (indicating air movement) -->

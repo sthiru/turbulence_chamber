@@ -917,19 +917,124 @@ async def get_calibration_lookup_table():
 
 @app.get("/api/calibration/windflow-polynomials")
 async def get_windflow_polynomials():
-    """Get the latest fan-to-windflow polynomial calibration results"""
+    """Get the latest fan-to-windflow polynomial calibration results from calibration_data root folder"""
     try:
-        result = calibration_agent.get_windflow_calibration_result()
-        if result:
+        import json
+        import os
+        from calibration.config import DEFAULT_CONFIG
+
+        # Load from calibration_data root folder
+        calib_folder = os.path.abspath(DEFAULT_CONFIG.calibration_data_folder)
+        filepath = os.path.join(calib_folder, "windflow_polynomials.json")
+
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as f:
+                data = json.load(f)
             return {
                 "status": "success",
-                "polynomials": result.dict()
+                "polynomials": data.get('polynomials', [])
             }
         else:
             return {
                 "status": "info",
-                "message": "No windflow polynomials available. Run calibration with pre-calibration enabled."
+                "message": "No windflow polynomials available. Run calibration to generate polynomial curves."
             }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calibration/latest-data")
+async def get_latest_calibration_data():
+    """Get the latest calibration data CSV from calibration_data root folder"""
+    try:
+        import csv
+        import os
+        from calibration.config import DEFAULT_CONFIG
+
+        # Load from calibration_data root folder
+        calib_folder = os.path.abspath(DEFAULT_CONFIG.calibration_data_folder)
+        filepath = os.path.join(calib_folder, "calibration_data.csv")
+
+        if os.path.exists(filepath):
+            data = []
+            with open(filepath, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    data.append(row)
+            return {
+                "status": "success",
+                "data": data
+            }
+        else:
+            return {
+                "status": "info",
+                "message": "No calibration data available. Run calibration to generate data."
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calibration/latest-metadata")
+async def get_latest_calibration_metadata():
+    """Get the latest session metadata from calibration_data root folder"""
+    try:
+        import json
+        import os
+        from calibration.config import DEFAULT_CONFIG
+
+        # Load from calibration_data root folder
+        calib_folder = os.path.abspath(DEFAULT_CONFIG.calibration_data_folder)
+        filepath = os.path.join(calib_folder, "session_metadata.json")
+
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            return {
+                "status": "success",
+                "metadata": data
+            }
+        else:
+            return {
+                "status": "info",
+                "message": "No session metadata available. Run calibration to generate metadata."
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calibration/data/{session_id}")
+async def get_calibration_data(session_id: str):
+    """Get calibration data for a specific session"""
+    import csv
+    import os
+    from calibration.config import DEFAULT_CONFIG
+    
+    try:
+        # Construct path to session CSV file
+        session_folder = os.path.join(DEFAULT_CONFIG.calibration_data_folder, session_id)
+        csv_file = os.path.join(session_folder, "calibration_data.csv")
+        
+        if not os.path.exists(csv_file):
+            return {
+                "status": "error",
+                "message": f"Calibration data not found for session {session_id}"
+            }
+        
+        # Read CSV data
+        data = []
+        with open(csv_file, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                data.append({
+                    "timestamp": row.get("timestamp", ""),
+                    "fan_speed": int(row.get("fan_speed", 0)),
+                    "sensor_0_avg": float(row.get("sensor_0_avg", 0)) if row.get("sensor_0_avg") else None,
+                    "sensor_1_avg": float(row.get("sensor_1_avg", 0)) if row.get("sensor_1_avg") else None,
+                    "sensor_2_avg": float(row.get("sensor_2_avg", 0)) if row.get("sensor_2_avg") else None,
+                    "sensor_3_avg": float(row.get("sensor_3_avg", 0)) if row.get("sensor_3_avg") else None
+                })
+        
+        return {
+            "status": "success",
+            "data": data
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1599,12 +1704,10 @@ async def calibration_websocket(websocket: WebSocket):
             "estimated_remaining_time": session.get_estimated_remaining_time()
         }))
     
-    # Keep connection alive
+    # Keep connection alive without timeout - client will disconnect when calibration completes
     try:
         while True:
-            await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
-    except asyncio.TimeoutError:
-        await websocket.send_text('{"type":"ping"}')
+            await websocket.receive_text()
     except WebSocketDisconnect:
         logger.info("Calibration WebSocket client disconnected")
     except Exception as e:

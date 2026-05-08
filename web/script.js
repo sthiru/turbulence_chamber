@@ -352,7 +352,17 @@ function updateFanDisplay(fanId, speed) {
 
 // Initialize temperature chart
 function initChart() {
-    const ctx = document.getElementById('tempChart').getContext('2d');
+    const canvas = document.getElementById('tempChart');
+    if (!canvas) {
+        console.log('Chart canvas not found, skipping chart initialization');
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        console.error('Failed to get canvas context');
+        return;
+    }
     
     tempChart = new Chart(ctx, {
         type: 'line',

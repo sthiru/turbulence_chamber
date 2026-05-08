@@ -6,6 +6,7 @@
     <title>Chamber Calibration - Turbulence Controller</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         .calibration-container {
             max-width: 1200px;
@@ -71,54 +72,15 @@
             Each windflow sensor is placed 40cm directly in front of its corresponding fan.
         </p>
 
-        <!-- Status Section -->
-        <div class="progress-section">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <h5>Calibration Status</h5>
-                    <span id="calibrationStatus" class="badge bg-secondary status-badge">Idle</span>
-                </div>
-                <div class="col-md-6">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span>Progress</span>
-                        <span id="progressPercent">0%</span>
-                    </div>
-                    <div class="progress" style="height: 25px;">
-                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                             role="progressbar" style="width: 0%"></div>
-                    </div>
-                    <div class="mt-2 text-muted">
-                        <small>Step <span id="currentStep">0</span> of <span id="totalSteps">0</span></small>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="row mt-3">
-                <div class="col-md-4">
-                    <div class="text-center">
-                        <h6>Estimated Remaining Time</h6>
-                        <h4 id="estimatedTime">--:--:--</h4>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="text-center">
-                        <h6>Session ID</h6>
-                        <h4 id="sessionId">--</h4>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="text-center">
-                        <h6>Current Step Type</h6>
-                        <h4 id="stepType">--</h4>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Control Section -->
         <div class="control-section">
-            <h5 class="mb-4">Calibration Configuration</h5>
-            
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#controlSection">
+                    <i class="fas fa-chevron-down me-2"></i>Calibration Configuration
+                </button>
+            </h5>
+            <div class="collapse show" id="controlSection">
+
             <form id="calibrationForm">
                 <div class="row">
                     <div class="col-md-3">
@@ -158,72 +120,219 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="alert alert-info" role="alert">
+                    <button type="button" class="btn btn-link text-decoration-none p-0 ms-auto float-end" data-bs-toggle="collapse" data-bs-target="#calibrationProcessInfo">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
                     <i class="fas fa-info-circle me-2"></i>
                     <strong>Calibration Process:</strong>
-                    <ul class="mb-0 mt-2">
-                        <li>Each fan will be tested at multiple speed levels</li>
-                        <li>Windflow sensor readings will be recorded at each level</li>
-                        <li>A polynomial curve will be fitted for each fan-sensor pair</li>
-                        <li>Estimated duration: ~5-10 minutes for all 4 fans</li>
-                    </ul>
+                    <div class="collapse mt-2" id="calibrationProcessInfo">
+                        <ul class="mb-0">
+                            <li>Each fan will be tested at multiple speed levels</li>
+                            <li>Windflow sensor readings will be recorded at each level</li>
+                            <li>A polynomial curve will be fitted for each fan-sensor pair</li>
+                            <li>Estimated duration: ~5-10 minutes for all 4 fans</li>
+                        </ul>
+                    </div>
                 </div>
-                
+
                 <hr>
                 
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-success btn-lg" id="startCalibration">
                         <i class="fas fa-play me-2"></i>Start Calibration
                     </button>
-                    <button type="button" class="btn btn-warning btn-lg" id="pauseCalibration" disabled>
-                        <i class="fas fa-pause me-2"></i>Pause
-                    </button>
-                    <button type="button" class="btn btn-info btn-lg" id="resumeCalibration" disabled>
-                        <i class="fas fa-play me-2"></i>Resume
-                    </button>
                     <button type="button" class="btn btn-danger btn-lg" id="stopCalibration" disabled>
                         <i class="fas fa-stop me-2"></i>Stop
                     </button>
                 </div>
+
+                <!-- Calibration Status Section (hidden by default) -->
+                <div class="progress-section mt-4" id="statusSection" style="display: none;">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <span id="calibrationStatus" class="badge bg-secondary status-badge">Idle</span>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Progress</span>
+                                <span id="progressPercent">0%</span>
+                            </div>
+                            <div class="progress" style="height: 25px;">
+                                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="mt-2 text-muted">
+                                <small>Step <span id="currentStep">0</span> of <span id="totalSteps">0</span></small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h6>Estimated Remaining Time</h6>
+                                <h4 id="estimatedTime">--:--:--</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h6>Session ID</h6>
+                                <h4 id="sessionId">--</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h6>Current Step Type</h6>
+                                <h4 id="stepType">--</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </form>
+            </div>
         </div>
 
         <!-- Log Section -->
         <div class="control-section mt-4">
-            <h5 class="mb-3">Calibration Log</h5>
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#logSection">
+                    <i class="fas fa-chevron-down me-2"></i>Calibration Log
+                </button>
+            </h5>
+            <div class="collapse show" id="logSection">
             <div class="calibration-log" id="calibrationLog">
                 <div class="log-entry log-info">[INFO] Calibration system initialized</div>
             </div>
-        </div>
-
-        <!-- Lookup Table Section -->
-        <div class="control-section mt-4">
-            <h5 class="mb-3">Lookup Table</h5>
-            <button class="btn btn-primary mb-3" id="loadLookupTable">
-                <i class="fas fa-download me-2"></i>Load Latest Lookup Table
-            </button>
-            <pre id="lookupTableDisplay" class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto; display: none;"></pre>
-        </div>
-
-        <!-- Windflow Polynomial Section -->
-        <div class="control-section mt-4">
-            <h5 class="mb-3">Fan-to-Windflow Polynomial Calibration</h5>
-            <button class="btn btn-primary mb-3" id="loadWindflowPolynomials">
-                <i class="fas fa-chart-line me-2"></i>Load Windflow Polynomials
-            </button>
-            <div id="windflowPolynomialsDisplay" class="bg-light p-3 rounded" style="display: none;">
-                <h6>Fan-to-Windflow Polynomial Coefficients</h6>
-                <div id="polynomialCharts" class="row mt-3"></div>
-                <pre id="polynomialData" class="mt-3" style="max-height: 300px; overflow-y: auto;"></pre>
             </div>
         </div>
-    </div>
+
+        <!-- Calibration Data Table Section -->
+        <div class="control-section mt-4" id="tableSection">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#dataTableSection">
+                    <i class="fas fa-table me-2"></i>Calibration Data Table
+                </button>
+            </h5>
+            <div class="collapse" id="dataTableSection">
+            <!-- No Data Message -->
+            <div class="alert alert-warning" id="noDataMessage" style="display: none;">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>No data available...</strong> Run calibration to generate data table.
+            </div>
+
+            <!-- Results Summary -->
+            <div class="alert alert-success" id="resultsSummary" style="display: none;">
+                <i class="fas fa-check-circle me-2"></i>
+                <strong>Calibration completed successfully!</strong>
+                <div class="mt-2">
+                    <span id="resultsSessionId">Session ID: --</span>
+                </div>
+            </div>
+
+            <!-- Calibration Data Table -->
+            <div class="table-responsive" id="dataTableContainer" style="display: none;">
+                <table class="table table-striped table-hover" id="calibrationDataTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Fan Speed (PWM)</th>
+                            <th>Sensor 0 Flow</th>
+                            <th>Sensor 1 Flow</th>
+                            <th>Sensor 2 Flow</th>
+                            <th>Sensor 3 Flow</th>
+                        </tr>
+                    </thead>
+                    <tbody id="calibrationDataBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Download Buttons -->
+            <div class="mt-4" id="downloadButtons" style="display: none;">
+                <button class="btn btn-outline-primary" id="downloadCSV">
+                    <i class="fas fa-file-csv me-2"></i>Download CSV
+                </button>
+                <button class="btn btn-outline-secondary" id="downloadPolynomials">
+                    <i class="fas fa-file-code me-2"></i>Download Polynomials
+                </button>
+            </div>
+            </div>
+        </div>
+
+        <!-- Polynomial Graphs Section -->
+        <div class="control-section mt-4" id="graphsSection">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#polynomialGraphSection">
+                    <i class="fas fa-chart-line me-2"></i>Polynomial Fit Curves
+                </button>
+            </h5>
+            <div class="collapse" id="polynomialGraphSection">
+            <!-- No Data Message -->
+            <div class="alert alert-warning" id="noGraphDataMessage" style="display: none;">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>No data available...</strong> Run calibration to generate polynomial curves.
+            </div>
+
+            <!-- Polynomial Fit Graphs -->
+            <div class="row" id="graphsContainer" style="display: none;">
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <strong>Fan 0 → Sensor 0</strong>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="chartFan0"></canvas>
+                            <div id="polyFan0" class="mt-2 text-muted small"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <strong>Fan 1 → Sensor 1</strong>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="chartFan1"></canvas>
+                            <div id="polyFan1" class="mt-2 text-muted small"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-warning text-white">
+                            <strong>Fan 2 → Sensor 2</strong>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="chartFan2"></canvas>
+                            <div id="polyFan2" class="mt-2 text-muted small"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-info text-white">
+                            <strong>Fan 3 → Sensor 3</strong>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="chartFan3"></canvas>
+                            <div id="polyFan3" class="mt-2 text-muted small"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </div>
+        </div>
+
+            </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Calibration control script
         let isCalibrating = false;
+        let currentSessionId = null;
+        let calibrationData = [];
+        let polynomialCharts = {};
         
         // DOM elements
         const statusBadge = document.getElementById('calibrationStatus');
@@ -238,12 +347,314 @@
         
         // Buttons
         const startBtn = document.getElementById('startCalibration');
-        const pauseBtn = document.getElementById('pauseCalibration');
-        const resumeBtn = document.getElementById('resumeCalibration');
         const stopBtn = document.getElementById('stopCalibration');
-        const loadLookupBtn = document.getElementById('loadLookupTable');
-        const loadWindflowBtn = document.getElementById('loadWindflowPolynomials');
         
+        // Load calibration data from CSV
+        async function loadCalibrationData(sessionId) {
+            try {
+                const response = await fetch(`/api/calibration/data/${sessionId}`);
+                const result = await response.json();
+                
+                if (result.status === 'success' && Array.isArray(result.data)) {
+                    return result.data;
+                } else {
+                    addLog(result.message || 'Failed to load calibration data', 'error');
+                    return [];
+                }
+            } catch (error) {
+                addLog(`Error loading calibration data: ${error}`, 'error');
+                return [];
+            }
+        }
+
+        // Load polynomial coefficients
+        async function loadPolynomials() {
+            try {
+                const response = await fetch('/api/calibration/windflow-polynomials');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    return result.polynomials;
+                }
+                return null;
+            } catch (error) {
+                addLog(`Error loading polynomials: ${error}`, 'error');
+                return null;
+            }
+        }
+
+        // Load latest calibration data from root folder
+        async function loadLatestCalibrationData() {
+            try {
+                const response = await fetch('/api/calibration/latest-data');
+                const result = await response.json();
+
+                if (result.status === 'success' && Array.isArray(result.data)) {
+                    calibrationData = result.data;
+                    populateCalibrationTable(result.data);
+                    document.getElementById('noDataMessage').style.display = 'none';
+                    document.getElementById('dataTableContainer').style.display = 'block';
+                    document.getElementById('downloadButtons').style.display = 'block';
+
+                    // Load session metadata to get session ID
+                    const metadataResponse = await fetch('/api/calibration/latest-metadata');
+                    const metadataResult = await metadataResponse.json();
+
+                    if (metadataResult.status === 'success' && metadataResult.metadata) {
+                        document.getElementById('resultsSummary').style.display = 'block';
+                        document.getElementById('resultsSessionId').textContent = `Session ID: ${metadataResult.metadata.session_id}`;
+                        currentSessionId = metadataResult.metadata.session_id;
+                        addLog('Latest calibration data loaded', 'success');
+                    } else if (result.data.length > 0) {
+                        document.getElementById('resultsSummary').style.display = 'block';
+                        addLog('Latest calibration data loaded', 'success');
+                    }
+                } else {
+                    document.getElementById('noDataMessage').style.display = 'block';
+                    document.getElementById('dataTableContainer').style.display = 'none';
+                    document.getElementById('downloadButtons').style.display = 'none';
+                    document.getElementById('resultsSummary').style.display = 'none';
+                }
+            } catch (error) {
+                document.getElementById('noDataMessage').style.display = 'block';
+                document.getElementById('dataTableContainer').style.display = 'none';
+                document.getElementById('downloadButtons').style.display = 'none';
+                document.getElementById('resultsSummary').style.display = 'none';
+                addLog('No calibration data available', 'warning');
+            }
+        }
+
+        // Populate calibration data table
+        function populateCalibrationTable(data) {
+            const tbody = document.getElementById('calibrationDataBody');
+            tbody.innerHTML = '';
+
+            if (!Array.isArray(data)) {
+                addLog('Invalid calibration data format', 'error');
+                return;
+            }
+
+            if (data.length === 0) {
+                addLog('No calibration data available', 'warning');
+                return;
+            }
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                const fanSpeed = parseFloat(row.fan_speed);
+                const sensor0 = parseFloat(row.sensor_0_avg);
+                const sensor1 = parseFloat(row.sensor_1_avg);
+                const sensor2 = parseFloat(row.sensor_2_avg);
+                const sensor3 = parseFloat(row.sensor_3_avg);
+
+                tr.innerHTML = `
+                    <td>${fanSpeed}</td>
+                    <td>${!isNaN(sensor0) ? sensor0.toFixed(3) : '-'}</td>
+                    <td>${!isNaN(sensor1) ? sensor1.toFixed(3) : '-'}</td>
+                    <td>${!isNaN(sensor2) ? sensor2.toFixed(3) : '-'}</td>
+                    <td>${!isNaN(sensor3) ? sensor3.toFixed(3) : '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Calculate polynomial value
+        function calculatePolynomial(x, coefficients) {
+            if (!coefficients || coefficients.length === 0) return 0;
+            let result = 0;
+            for (let i = 0; i < coefficients.length; i++) {
+                result += coefficients[i] * Math.pow(x, i);
+            }
+            return result;
+        }
+
+        // Render polynomial fit chart
+        function renderFanChart(fanId, data, polynomial) {
+            const canvasId = `chartFan${fanId}`;
+            const polyDivId = `polyFan${fanId}`;
+            const canvas = document.getElementById(canvasId);
+            const polyDiv = document.getElementById(polyDivId);
+            
+            if (!canvas) return;
+            
+            // Destroy existing chart if it exists
+            if (polynomialCharts[fanId]) {
+                polynomialCharts[fanId].destroy();
+            }
+            
+            // Extract data points for this fan
+            const dataPoints = data.map(row => ({
+                x: row.fan_speed,
+                y: row[`sensor_${fanId}_avg`] || 0
+            })).filter(p => p.y > 0);
+            
+            // Generate polynomial curve points
+            const curvePoints = [];
+            if (polynomial && polynomial[fanId] && polynomial[fanId].coefficients) {
+                const coeffs = polynomial[fanId].coefficients;
+                for (let x = 15; x <= 255; x += 5) {
+                    curvePoints.push({
+                        x: x,
+                        y: calculatePolynomial(x, coeffs)
+                    });
+                }
+                
+                // Display polynomial equation
+                const polyStr = coeffs.map((c, i) => {
+                    if (i === 0) return `${c.toFixed(6)}`;
+                    if (i === 1) return `${c.toFixed(6)}x`;
+                    return `${c.toFixed(6)}x^${i}`;
+                }).reverse().join(' + ');
+                polyDiv.innerHTML = `<strong>R²:</strong> ${polynomial[fanId].r_squared.toFixed(4)}<br><strong>Polynomial:</strong> ${polyStr}`;
+            } else {
+                polyDiv.innerHTML = 'No polynomial data available';
+            }
+            
+            // Create chart
+            const ctx = canvas.getContext('2d');
+            polynomialCharts[fanId] = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Data Points',
+                            data: dataPoints,
+                            backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            showLine: false
+                        },
+                        {
+                            label: 'Polynomial Fit',
+                            data: curvePoints,
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            pointRadius: 0,
+                            borderWidth: 2,
+                            tension: 0.4,
+                            showLine: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: (${context.parsed.x}, ${context.parsed.y.toFixed(3)})`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'Fan Speed (PWM)'
+                            },
+                            min: 0,
+                            max: 260
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Flow Rate'
+                            },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Display calibration results
+        async function displayCalibrationResults(sessionId) {
+            currentSessionId = sessionId;
+
+            // Show table section and expand it
+            document.getElementById('dataTableSection').classList.add('show');
+            document.getElementById('noDataMessage').style.display = 'none';
+            document.getElementById('dataTableContainer').style.display = 'block';
+            document.getElementById('downloadButtons').style.display = 'block';
+            document.getElementById('resultsSummary').style.display = 'block';
+            document.getElementById('resultsSessionId').textContent = `Session ID: ${sessionId}`;
+
+            // Load calibration data
+            const data = await loadCalibrationData(sessionId);
+            if (data) {
+                calibrationData = data;
+                populateCalibrationTable(data);
+            }
+
+            // Load and display polynomials in graphs section
+            const polynomials = await loadPolynomials();
+            if (polynomials) {
+                document.getElementById('polynomialGraphSection').classList.add('show');
+                document.getElementById('noGraphDataMessage').style.display = 'none';
+                document.getElementById('graphsContainer').style.display = 'flex';
+
+                for (let i = 0; i < 4; i++) {
+                    renderFanChart(i, calibrationData, polynomials);
+                }
+            }
+
+            // Scroll to table section
+            document.getElementById('tableSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Download CSV
+        document.getElementById('downloadCSV').addEventListener('click', () => {
+            if (!currentSessionId || !Array.isArray(calibrationData) || calibrationData.length === 0) {
+                addLog('No calibration data to download', 'warning');
+                return;
+            }
+            
+            const csvContent = [
+                ['timestamp', 'fan_speed', 'sensor_0_avg', 'sensor_1_avg', 'sensor_2_avg', 'sensor_3_avg'],
+                ...calibrationData.map(row => [
+                    row.timestamp,
+                    row.fan_speed,
+                    row.sensor_0_avg || '',
+                    row.sensor_1_avg || '',
+                    row.sensor_2_avg || '',
+                    row.sensor_3_avg || ''
+                ])
+            ].map(row => row.join(',')).join('\n');
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `calibration_${currentSessionId}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            addLog('CSV downloaded', 'success');
+        });
+
+        // Download Polynomials
+        document.getElementById('downloadPolynomials').addEventListener('click', async () => {
+            const polynomials = await loadPolynomials();
+            if (polynomials) {
+                const jsonContent = JSON.stringify(polynomials, null, 2);
+                const blob = new Blob([jsonContent], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `polynomials_${currentSessionId}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                addLog('Polynomials downloaded', 'success');
+            }
+        });
+
         // Log function
         function addLog(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString();
@@ -313,59 +724,19 @@
                 if (result.status === 'success') {
                     isCalibrating = true;
                     startBtn.disabled = true;
-                    pauseBtn.disabled = false;
-                    resumeBtn.disabled = true;
                     stopBtn.disabled = false;
                     addLog(`Calibration started (Step: ${fanSpeedStep} PWM, Settling time: ${settlingTime}ms, Samples: ${numSamples})`, 'success');
+
+                    // Show status section
+                    document.getElementById('statusSection').style.display = 'block';
+
+                    // Connect WebSocket for real-time updates
+                    connectWebSocket();
                 } else {
                     addLog(`Failed to start calibration: ${result.message}`, 'error');
                 }
             } catch (error) {
                 addLog(`Error starting calibration: ${error}`, 'error');
-            }
-        });
-        
-        // Pause calibration
-        pauseBtn.addEventListener('click', async () => {
-            try {
-                const response = await fetch('/api/calibration/control', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'pause' })
-                });
-                
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    addLog('Calibration paused', 'warning');
-                    updateStatus('paused');
-                    pauseBtn.disabled = true;
-                    resumeBtn.disabled = false;
-                }
-            } catch (error) {
-                addLog(`Error pausing calibration: ${error}`, 'error');
-            }
-        });
-        
-        // Resume calibration
-        resumeBtn.addEventListener('click', async () => {
-            try {
-                const response = await fetch('/api/calibration/control', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'resume' })
-                });
-                
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    addLog('Calibration resumed', 'success');
-                    updateStatus('running');
-                    pauseBtn.disabled = false;
-                    resumeBtn.disabled = true;
-                }
-            } catch (error) {
-                addLog(`Error resuming calibration: ${error}`, 'error');
             }
         });
         
@@ -382,6 +753,7 @@
                 
                 if (result.status === 'success') {
                     addLog('Calibration stopped', 'warning');
+                    disconnectWebSocket();
                     resetUI();
                 }
             } catch (error) {
@@ -389,52 +761,8 @@
             }
         });
         
-        // Load lookup table
-        loadLookupBtn.addEventListener('click', async () => {
-            try {
-                const response = await fetch('/api/calibration/lookup-table');
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    const display = document.getElementById('lookupTableDisplay');
-                    display.style.display = 'block';
-                    display.textContent = JSON.stringify(result.lookup_table, null, 2);
-                    addLog('Lookup table loaded', 'success');
-                } else {
-                    addLog(result.message, 'warning');
-                }
-            } catch (error) {
-                addLog(`Error loading lookup table: ${error}`, 'error');
-            }
-        });
-        
-        // Load windflow polynomials
-        loadWindflowBtn.addEventListener('click', async () => {
-            try {
-                const response = await fetch('/api/calibration/windflow-polynomials');
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    const display = document.getElementById('windflowPolynomialsDisplay');
-                    display.style.display = 'block';
-                    
-                    const dataDisplay = document.getElementById('polynomialData');
-                    dataDisplay.textContent = JSON.stringify(result.polynomials, null, 2);
-                    
-                    addLog('Windflow polynomials loaded', 'success');
-                } else {
-                    addLog(result.message, 'warning');
-                }
-            } catch (error) {
-                addLog(`Error loading windflow polynomials: ${error}`, 'error');
-            }
-        });
-        
-        // WebSocket connection for real-time calibration status - always connected
+        // WebSocket connection for real-time calibration status - only connect on start
         let calibrationWebSocket = null;
-        let reconnectAttempts = 0;
-        let reconnectDelay = 1000;
-        const maxReconnectDelay = 30000;
         let wsConnected = false;
         
         function connectWebSocket() {
@@ -447,8 +775,6 @@
             
             calibrationWebSocket.onopen = () => {
                 wsConnected = true;
-                reconnectAttempts = 0;
-                reconnectDelay = 1000;
                 addLog('Connected to calibration status via WebSocket', 'info');
             };
             
@@ -477,9 +803,12 @@
                         // Check if completed or failed
                         if (session.status === 'completed' || session.status === 'failed') {
                             resetUI();
+                            disconnectWebSocket();
                             
                             if (session.status === 'completed') {
                                 addLog('Calibration completed successfully!', 'success');
+                                // Automatically display results
+                                displayCalibrationResults(session.session_id);
                             } else {
                                 addLog(`Calibration failed: ${session.error_message}`, 'error');
                             }
@@ -495,53 +824,100 @@
             calibrationWebSocket.onerror = (error) => {
                 wsConnected = false;
                 addLog('WebSocket error', 'warning');
-                reconnectAttempts++;
             };
             
             calibrationWebSocket.onclose = (event) => {
                 wsConnected = false;
                 calibrationWebSocket = null;
-                addLog(`WebSocket connection closed (code: ${event.code}), reconnecting...`, 'info');
-                
-                // Always reconnect
-                setTimeout(() => {
-                    if (!calibrationWebSocket) {
-                        reconnectAttempts++;
-                        reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
-                        reconnectDelay += Math.random() * 1000;
-                        connectWebSocket();
-                    }
-                }, reconnectDelay);
+                addLog('WebSocket connection closed', 'info');
             };
         }
         
         function disconnectWebSocket() {
-            // Keep WebSocket connected - do not disconnect
-            addLog('Keeping WebSocket connection active', 'info');
+            if (calibrationWebSocket && calibrationWebSocket.readyState === WebSocket.OPEN) {
+                calibrationWebSocket.close();
+                calibrationWebSocket = null;
+                wsConnected = false;
+                addLog('WebSocket disconnected', 'info');
+            }
         }
-        
-        // Connect WebSocket on page load
-        connectWebSocket();
         
         function resetUI() {
             isCalibrating = false;
             updateStatus('idle');
-            
+
             startBtn.disabled = false;
-            pauseBtn.disabled = true;
-            resumeBtn.disabled = true;
             stopBtn.disabled = true;
-            
+
             progressBar.style.width = '0%';
             progressPercent.textContent = '0%';
             currentStep.textContent = '0';
             totalSteps.textContent = '0';
             estimatedTime.textContent = '--:--:--';
             stepType.textContent = '--';
+
+            // Hide status section
+            document.getElementById('statusSection').style.display = 'none';
         }
         
-        // Initial status check
-        // WebSocket is always connected, no need for initial status check
+        // Load latest polynomials on page load
+        async function loadLatestPolynomials() {
+            try {
+                const response = await fetch('/api/calibration/windflow-polynomials');
+                const result = await response.json();
+
+                if (result.status === 'success' && result.polynomials && result.polynomials.length > 0) {
+                    // Show graphs section and expand it
+                    document.getElementById('polynomialGraphSection').classList.add('show');
+                    document.getElementById('noGraphDataMessage').style.display = 'none';
+                    document.getElementById('graphsContainer').style.display = 'flex';
+
+                    // Update session ID in table section summary
+                    if (result.polynomials[0].calibration_id) {
+                        document.getElementById('resultsSummary').style.display = 'block';
+                        document.getElementById('resultsSessionId').textContent = `Session ID: ${result.polynomials[0].calibration_id}`;
+                        currentSessionId = result.polynomials[0].calibration_id;
+                    }
+
+                    // Render charts for each fan
+                    for (let i = 0; i < 4; i++) {
+                        if (result.polynomials[i] && result.polynomials[i].data_points) {
+                            const dataPoints = result.polynomials[i].data_points.map(dp => ({
+                                fan_speed: dp[0],
+                                [`sensor_${i}_avg`]: dp[1]
+                            }));
+                            calibrationData = dataPoints;
+                            renderFanChart(i, dataPoints, result.polynomials);
+                        }
+                    }
+
+                    addLog('Latest calibration data loaded', 'success');
+                } else {
+                    // Show no data message and hide graphs
+                    document.getElementById('polynomialGraphSection').classList.remove('show');
+                    document.getElementById('noGraphDataMessage').style.display = 'block';
+                    document.getElementById('graphsContainer').style.display = 'none';
+                    document.getElementById('resultsSummary').style.display = 'none';
+                }
+            } catch (error) {
+                // Show no data message on error
+                document.getElementById('polynomialGraphSection').classList.remove('show');
+                document.getElementById('noGraphDataMessage').style.display = 'block';
+                document.getElementById('graphsContainer').style.display = 'none';
+                document.getElementById('resultsSummary').style.display = 'none';
+                addLog('No calibration data available', 'warning');
+            }
+        }
+
+        // Load calibration data when table section is expanded
+        document.getElementById('dataTableSection').addEventListener('show.bs.collapse', function () {
+            loadLatestCalibrationData();
+        });
+
+        // Load latest polynomials on page initialization
+        loadLatestPolynomials();
+
+        // WebSocket is not auto-connected anymore
     </script>
 </body>
 </html>

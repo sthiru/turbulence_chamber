@@ -199,7 +199,8 @@ class CalibrationAgent:
                 self._save_incremental_data(session_folder, fan_speed, avg_flows, all_flow_readings)
                 
                 # Call status callback
-                self.status_callback(self.current_session)
+                if self.status_callback:
+                    self.status_callback(self.current_session)
             
             # Update current step to indicate all steps completed
             self.current_session.current_step = self.current_session.total_steps
@@ -215,8 +216,8 @@ class CalibrationAgent:
                     ambient_humidity=ambient_humidity
                 )
                 
-                # Save results
-                self._save_windflow_calibration()
+                # Save results to session folder
+                self._save_windflow_calibration(session_folder)
                 
                 self.current_session.status = CalibrationStatus.COMPLETED
                 self.current_session.end_time = datetime.now()
@@ -291,31 +292,39 @@ class CalibrationAgent:
         except Exception as e:
             logger.error(f"Error saving incremental data: {e}")
     
-    def _save_windflow_calibration(self):
-        """Save windflow calibration results to file"""
+    def _save_windflow_calibration(self, session_folder: str):
+        """Save windflow calibration results to session-specific folder"""
         if not self.windflow_calibration_result:
             return
-        
+
         try:
-            # Create timestamped filename
-            calib_id = self.windflow_calibration_result.calibration_id
-            
-            # Save to calibration data folder
-            filepath = os.path.join(
-                self.config.calibration_data_folder,
-                f"{calib_id}.json"
-            )
+            # Save to session folder
+            filepath = os.path.join(session_folder, "windflow_polynomials.json")
             self.windflow_calibrator.export_polynomials(filepath)
-            
-            # Also save to root as latest
-            latest_filepath = os.path.join(
-                os.path.dirname(self.config.calibration_data_folder),
-                "windflow_polynomials_latest.json"
-            )
+            logger.info(f"Windflow calibration saved to session: {filepath}")
+
+            # Also save to calibration_data folder root (latest)
+            calib_folder_abs = os.path.abspath(self.config.calibration_data_folder)
+            latest_filepath = os.path.join(calib_folder_abs, "windflow_polynomials.json")
             self.windflow_calibrator.export_polynomials(latest_filepath)
-            
-            logger.info(f"Windflow calibration saved to {filepath}")
-            
+            logger.info(f"Windflow calibration saved to calibration_data root: {latest_filepath}")
+
+            # Copy session metadata to root
+            session_metadata_src = os.path.join(session_folder, "session_metadata.json")
+            session_metadata_dst = os.path.join(calib_folder_abs, "session_metadata.json")
+            if os.path.exists(session_metadata_src):
+                import shutil
+                shutil.copy2(session_metadata_src, session_metadata_dst)
+                logger.info(f"Session metadata copied to calibration_data root: {session_metadata_dst}")
+
+            # Copy calibration CSV to root
+            csv_src = os.path.join(session_folder, "calibration_data.csv")
+            csv_dst = os.path.join(calib_folder_abs, "calibration_data.csv")
+            if os.path.exists(csv_src):
+                import shutil
+                shutil.copy2(csv_src, csv_dst)
+                logger.info(f"Calibration CSV copied to calibration_data root: {csv_dst}")
+
         except Exception as e:
             logger.error(f"Error saving windflow calibration: {e}")
      

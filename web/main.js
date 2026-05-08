@@ -566,75 +566,44 @@ function showNotification(message, type = 'info') {
 // Initialize fan controls
 function initFanControls() {
     const svgObject = document.querySelector('object[data="/static/main.svg"]');
-    let svgDoc = null;
     
-    if (svgObject && svgObject.contentDocument) {
-        svgDoc = svgObject.contentDocument;
-    } else if (svgObject && svgObject.getSVGDocument) {
-        svgDoc = svgObject.getSVGDocument();
-    }
-    
-    if (!svgDoc) {
+    if (!svgObject) {
         return;
     }
     
-    // Initialize controls for each fan
-    for (let i = 1; i <= 4; i++) {
-        initFanControl(svgDoc, i);
-    }
+    // Listen for postMessage from SVG
+    window.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'fan_speed_change') {
+            const fanNumber = event.data.fan;
+            const speed = event.data.speed;
+            sendFanCommand(fanNumber, speed);
+        }
+    });
     
-    // Initialize hot plate controls
-    initHotPlateControl(svgDoc, 1);
-    initHotPlateControl(svgDoc, 2);
+    // Wait for SVG to load
+    svgObject.addEventListener('load', function() {
+        let svgDoc = null;
+        
+        if (svgObject.contentDocument) {
+            svgDoc = svgObject.contentDocument;
+        } else if (svgObject.getSVGDocument) {
+            svgDoc = svgObject.getSVGDocument();
+        }
+    });
+    
+    // Also try immediately in case SVG is already loaded
+    try {
+        if (svgObject.contentDocument) {
+            // SVG already loaded
+        }
+    } catch (error) {
+        // Error in immediate SVG initialization
+    }
 }
 
-// Initialize individual fan control
+// Initialize individual fan control (no longer used - replaced by SVG-internal handling)
 function initFanControl(svgDoc, fanNumber) {
-    const controlsGroup = svgDoc.getElementById(`fan${fanNumber}-controls`);
-    if (!controlsGroup) return;
-    
-    const sliderElement = svgDoc.getElementById(`fan${fanNumber}-slider`);
-    const sliderKnob = svgDoc.getElementById(`fan${fanNumber}-slider-knob`);
-    
-    let isDragging = false;
-    let currentSpeed = 0;
-    
-    // Slider drag handlers
-    if (sliderElement && sliderKnob) {
-        
-        sliderKnob.addEventListener('mousedown', function(e) {
-            isDragging = true;
-            e.preventDefault();
-            e.stopPropagation();
-        });
-        
-        document.addEventListener('mousemove', function(e) {
-            if (!isDragging) return;
-            
-            const sliderRect = sliderElement.getBoundingClientRect();
-            const svgRect = svgDoc.ownerSVGElement.getBoundingClientRect();
-            
-            // Calculate relative position
-            const relativeY = e.clientY - svgRect.top - (sliderRect.top - svgRect.top);
-            const clampedY = Math.max(-20, Math.min(40, relativeY));
-            
-            // Update knob position
-            sliderKnob.setAttribute('cy', clampedY);
-            
-            // Calculate speed (0-255)
-            currentSpeed = Math.round(((40 - clampedY) / 60) * 255);
-            
-            // Send speed command
-            sendFanCommand(fanNumber, currentSpeed);
-        });
-        
-        document.addEventListener('mouseup', function() {
-            if (isDragging) {
-                isDragging = false;
-            }
-        });
-        
-    }
+    // This function is no longer used as slider handling is now done within the SVG
 }
 
 // Update switch visual state
