@@ -16,7 +16,7 @@ from models import ArduinoCommand, ArduinoResponse, SystemStatus, DeviceStatus
 logger = logging.getLogger(__name__)
 
 class ArduinoCommunicator:
-    def __init__(self, port: str = None, baudrate: int = 250000):
+    def __init__(self, port: str = None, baudrate: int = 1000000):
         # Try to load configuration from config file first
         self.port = self._load_config_port() or port
         self.baudrate = baudrate
@@ -141,8 +141,23 @@ class ArduinoCommunicator:
                     except json.JSONDecodeError as e:
                         logger.error(f"JSON decode error: {e}")
                         logger.error(f"Raw response: '{response_line}'")
-                        logger.error(f"Response length: {len(response_line)}")
-                        logger.error(f"Response bytes: {[ord(c) for c in response_line]}")
+                        
+                        # Try reading additional lines to find valid JSON (up to 5 attempts)
+                        for attempt in range(12):
+                            logger.warning(f"JSON decode attempt {attempt + 1}/5, trying to read next line...")
+                            next_line = await self._read_line(timeout=2.0)
+                            if next_line:
+                                logger.info(f"Read next line: '{next_line}'")
+                                try:
+                                    response_data = json.loads(next_line)
+                                    logger.info(f"Successfully parsed JSON on attempt {attempt + 1}")
+                                    return ArduinoResponse(**response_data)
+                                except json.JSONDecodeError:
+                                    logger.warning(f"Attempt {attempt + 1} failed to parse JSON")
+                                    continue
+                            else:
+                                logger.warning(f"No data read on attempt {attempt + 1}")
+                                continue
                         
                         # Check if this is a sensor error message (not a connection issue)
                         if 'disconnected' in response_line.lower() or 'sensor' in response_line.lower():
@@ -179,7 +194,7 @@ class ArduinoCommunicator:
                     msg=f"Communication error: {str(e)}"
                 )
     
-    async def _read_line(self, timeout: float = 5.0) -> Optional[str]:
+    async def _read_line(self, timeout: float = 10.0) -> Optional[str]:
         """Read a line from serial port with timeout - hybrid batch/char reading"""
         import time
         if not self.serial_conn:

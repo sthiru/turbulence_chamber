@@ -48,7 +48,7 @@ class CalibrationAgent:
         self.progress_callback: Optional[Callable] = None
         
         # Windflow calibrator (polynomial degree 2 for quadratic fit)
-        self.windflow_calibrator = WindflowCalibrator(polynomial_degree=2)
+        self.windflow_calibrator = WindflowCalibrator(polynomial_degree=1)
         self.windflow_calibration_result: Optional[WindflowCalibrationResult] = None
         
         # Ensure calibration data folder exists

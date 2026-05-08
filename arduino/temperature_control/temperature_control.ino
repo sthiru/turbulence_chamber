@@ -129,7 +129,7 @@ float integral[NUM_HOT_PLATES] = {0, 0};
 float previousError[NUM_HOT_PLATES] = {0, 0};
 
 void setup() {
-  Serial.begin(250000);
+  Serial.begin(1000000);
   while (!Serial) delay(10);
   
   // Initialize pins
@@ -151,6 +151,7 @@ void setup() {
   
   // Initialize temperature sensors
   sensors.begin();
+  sensors.setWaitForConversion(true);
   
   // Set hardcoded sensor addresses
   // Sensor 1 address: 28616434892D9476

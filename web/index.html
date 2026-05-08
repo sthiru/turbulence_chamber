@@ -10,80 +10,52 @@
     <link rel="stylesheet" href="/static/main.css">
 </head>
 <body>
-    <!-- Fixed Top Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm fixed-top" style="height: 50px;">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center" href="/" style="font-size: 1.1rem;">
-                <i class="fas fa-thermometer-half text-primary me-2"></i>
-                Turbulence Controller
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-wind me-2"></i>Turbulence Controller
             </a>
-            <div class="navbar-nav ms-auto d-flex align-items-center">
-                <!-- Data Capture Section -->
-                <div class="card bg-light me-3 py-1 px-2" style="border: 1px solid #dee2e6;">
-                    <div class="card-body py-0">
-                        <div class="row align-items-center">
-                            <div class="col-auto">
-                                <button id="startVideoBtn" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#cameraOverlay">
-                                    <i class="fas fa-video me-1"></i> Open Camera
-                                </button>
-                            </div>
-                            <div class="col-auto">
-                                <button id="startCaptureBtn" class="btn btn-primary btn-sm">
-                                    <i class="fas fa-play me-1"></i> Start Data Capture
-                                </button>
-                                <button id="stopCaptureBtn" class="btn btn-danger btn-sm d-none">
-                                    <i class="fas fa-stop me-1"></i> Stop Capture
-                                </button>
-                            </div>
-                            <div class="col-auto">
-                                <div class="text-muted">
-                                    <small>Data: </small>
-                                    <span id="dataCounter" class="badge bg-secondary">0</span>
-                                </div>
-                            </div>
-                            <div class="col-auto">
-                                <button id="downloadIconBtn" class="btn btn-outline-success btn-sm d-none" title="Download CSV">
-                                    <i class="fas fa-download"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Video Controls -->
-                <div class="d-flex align-items-center me-3">
-                    <button id="stopVideoBtn" class="btn btn-sm btn-outline-danger me-2 d-none" style="font-size: 0.8rem;">
-                        <i class="fas fa-stop me-1"></i> Stop Stream
-                    </button>
-                    <button id="refreshCameraBtn" class="btn btn-sm btn-outline-primary me-2 d-none" style="font-size: 0.8rem;">
-                        <i class="fas fa-sync-alt me-1"></i> Refresh Camera
-                    </button>
-                </div>
-                
-                <!-- Hamburger Menu -->
-                <div class="dropdown">
-                    <button class="btn btn-outline-secondary btn-sm" type="button" id="menuDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-bars"></i>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="menuDropdown">
-                        <li><a class="dropdown-item" href="#" id="showTemperatureGraph">
-                            <i class="fas fa-chart-line me-2"></i> Temperature Trend Graph
-                        </a></li>
-                        <li><a class="dropdown-item" href="#" id="showCamera">
-                            <i class="fas fa-video me-2"></i> Camera
-                        </a></li>
-                        <li><a class="dropdown-item" href="#" id="showControlPanel">
-                            <i class="fas fa-sliders-h me-2"></i> Control Panel
-                        </a></li>
-                    </ul>
-                </div>
+            <div class="navbar-nav">
+                <a class="nav-link active" href="/">Dashboard</a>
+                <a class="nav-link" href="/main">Control Panel</a>
+                <a class="nav-link" href="/calibration">Calibration</a>
             </div>
         </div>
     </nav>
+    
+    <!-- Data Capture Section -->
+    <div class="container-fluid py-2">
+        <div class="row justify-content-center align-items-center">
+            <div class="col-auto">
+                <button id="startVideoBtn" class="btn btn-outline-primary btn-sm me-2" data-bs-toggle="modal" data-bs-target="#cameraOverlay">
+                    <i class="fas fa-video me-1"></i> Open Camera
+                </button>
+                <button id="showTemperatureGraphBtn" class="btn btn-outline-info btn-sm me-2" data-bs-toggle="modal" data-bs-target="#temperatureGraphOverlay">
+                    <i class="fas fa-chart-line me-1"></i> Temperature Trend
+                </button>
+                <button id="startCaptureBtn" class="btn btn-primary btn-sm me-2">
+                    <i class="fas fa-play me-1"></i> Start Data Capture
+                </button>
+                <button id="stopCaptureBtn" class="btn btn-danger btn-sm me-2 d-none">
+                    <i class="fas fa-stop me-1"></i> Stop Capture
+                </button>
+                <span class="text-muted me-2">
+                    Data: <span id="dataCounter" class="badge bg-secondary">0</span>
+                </span>
+                <button id="downloadIconBtn" class="btn btn-outline-success btn-sm d-none" title="Download CSV">
+                    <i class="fas fa-download"></i>
+                </button>
+                <button id="stopVideoBtn" class="btn btn-sm btn-outline-danger me-2 d-none" style="font-size: 0.8rem;">
+                    <i class="fas fa-stop me-1"></i> Stop Stream
+                </button>
+                <button id="refreshCameraBtn" class="btn btn-sm btn-outline-primary d-none" style="font-size: 0.8rem;">
+                    <i class="fas fa-sync-alt me-1"></i> Refresh Camera
+                </button>
+            </div>
+        </div>
+    </div>
 
-    <!-- Add padding to account for fixed navbar -->
-    <div style="padding-top: 60px;">
-        <!-- Main Content -->
+    <!-- Main Content -->
         <div class="system-container">
             <!-- SVG System Model -->
             <div class="svg-container">
@@ -96,21 +68,6 @@
         <!-- Connection Status Bottom Right -->
         <div id="connectionStatus" class="connection-status disconnected">
             <i class="fas fa-wifi"></i> Connecting...
-        </div>
-    </div>
-
-    <!-- Control Panel Overlay -->
-    <div id="controlPanelOverlay" class="modal fade" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-sliders-h me-2"></i>Control Panel</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <iframe src="/main" style="width: 100%; height: 600px; border: none;"></iframe>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -156,12 +113,6 @@
     <script src="/static/camera.js"></script>
     <script src="/static/main.js"></script>
     <script>
-        // Initialize control panel overlay
-        document.getElementById('showControlPanel').addEventListener('click', function(e) {
-            e.preventDefault();
-            new bootstrap.Modal(document.getElementById('controlPanelOverlay')).show();
-        });
-
         // Initialize temperature graph overlay
         document.getElementById('showTemperatureGraph').addEventListener('click', function(e) {
             e.preventDefault();

@@ -1,12 +1,7 @@
 /* Beta Page Styles */
 body {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.container-fluid {
-    padding: 20px;
 }
 
 .system-container {
@@ -168,19 +163,6 @@ body {
 
 .camera-status-simulation {
     color: #ffc107;
-}
-
-.nav-link {
-    color: #2c3e50 !important;
-    font-weight: 600;
-    padding: 10px 20px;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-}
-
-.nav-link:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px);
 }
 
 /* Fan and Hot Plate Controls */

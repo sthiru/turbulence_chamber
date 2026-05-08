@@ -457,12 +457,13 @@
             });
         }
 
-        // Calculate polynomial value
+        // Calculate polynomial value (coefficients in descending order from numpy polyfit)
         function calculatePolynomial(x, coefficients) {
             if (!coefficients || coefficients.length === 0) return 0;
             let result = 0;
             for (let i = 0; i < coefficients.length; i++) {
-                result += coefficients[i] * Math.pow(x, i);
+                // coefficients are in descending order: [a, b, c] for ax² + bx + c
+                result += coefficients[i] * Math.pow(x, coefficients.length - 1 - i);
             }
             return result;
         }
