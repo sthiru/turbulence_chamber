@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Fan-to-Windflow Sensor Calibration
-Establishes polynomial relationship between fan PWM and windflow sensor readings
+Establishes linear relationship between fan PWM and windflow sensor readings
 Each windflow sensor is placed 40cm directly in front of its corresponding fan
 """
 
@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 
 class WindflowCalibrator:
     """Calibrates fan-to-windflow sensor relationships"""
-    
-    def __init__(self, polynomial_degree: int = 2):
+
+    def __init__(self, polynomial_degree: int = 1):
         """
         Initialize windflow calibrator
-        
+
         Args:
-            polynomial_degree: Degree of polynomial to fit (default: 2 for quadratic)
+            polynomial_degree: Degree of polynomial to fit (default: 1 for linear)
         """
         self.polynomial_degree = polynomial_degree
         self.calibration_results: Optional[WindflowCalibrationResult] = None

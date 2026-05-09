@@ -218,30 +218,43 @@ function updateSensorData(data) {
     }
     
     // Update hot plates
-    const hotPlateStates = data.hot_plate_states || [];
+    const hotPlateStates = data[0].hot_plate_states || [];
     hotPlateStates.forEach((state, index) => {
         const hotplateElement = svgDoc.getElementById(`hotplate${index + 1}`);
-        const statusElement = document.getElementById(`hotplate${index + 1}Status`);
+        const switchKnob = svgDoc.getElementById(`hotplate${index + 1}-switch-knob`);
         
         if (hotplateElement) {
-            hotplateElement.classList.remove('hot-plate-on', 'hot-plate-off');
             if (state) {
-                hotplateElement.classList.add('hot-plate-on');
+                // Directly set SVG attributes for ON state
+                hotplateElement.setAttribute('fill', '#ff6b6b');
+                hotplateElement.setAttribute('stroke', '#ff4444');
+                hotplateElement.setAttribute('stroke-width', '3');
             } else {
-                hotplateElement.classList.add('hot-plate-off');
+                // Directly set SVG attributes for OFF state
+                hotplateElement.setAttribute('fill', '#c0c0c0');
+                hotplateElement.setAttribute('stroke', '#333');
+                hotplateElement.setAttribute('stroke-width', '2');
             }
         }
         
-        if (statusElement) {
-            statusElement.textContent = state ? 'ON' : 'OFF';
+        // Update switch knob position
+        if (switchKnob) {
+            if (state) {
+                // ON position - move knob to the right
+                switchKnob.setAttribute('cx', '30');
+                switchKnob.setAttribute('fill', '#28a745');
+            } else {
+                // OFF position - move knob to the left
+                switchKnob.setAttribute('cx', '10');
+                switchKnob.setAttribute('fill', '#fff');
+            }
         }
     });
     
     // Update fans
-    const fanSpeeds = data.fan_speeds || [];
+    const fanSpeeds = data[0].fan_speeds || [];
     fanSpeeds.forEach((speed, index) => {
         const fanElement = svgDoc.getElementById(`fan${index + 1}`);
-        const speedElement = document.getElementById(`fan${index + 1}Speed`);
         const sliderKnob = svgDoc.getElementById(`fan${index + 1}-slider-knob`);
 
         if (fanElement) {
@@ -286,10 +299,6 @@ function updateSensorData(data) {
             const sliderRange = 60; // From -20 to 40
             const knobPosition = -20 + (speed / 255) * sliderRange;
             sliderKnob.setAttribute('cy', knobPosition);
-        }
-
-        if (speedElement) {
-            speedElement.textContent = speed;
         }
     });
     
@@ -564,6 +573,8 @@ function showNotification(message, type = 'info') {
 }
 
 // Initialize fan controls
+let hotplateControlsInitialized = false;
+
 function initFanControls() {
     const svgObject = document.querySelector('object[data="/static/main.svg"]');
     
@@ -589,12 +600,21 @@ function initFanControls() {
         } else if (svgObject.getSVGDocument) {
             svgDoc = svgObject.getSVGDocument();
         }
+        
+        if (svgDoc) {
+            initHotPlateControl(svgDoc, 0); // Hotplate 1 (Arduino ID 0)
+            initHotPlateControl(svgDoc, 1); // Hotplate 2 (Arduino ID 1)
+            hotplateControlsInitialized = true;
+        }
     });
     
     // Also try immediately in case SVG is already loaded
     try {
         if (svgObject.contentDocument) {
-            // SVG already loaded
+            // SVG already loaded - initialize hotplate controls
+            const svgDoc = svgObject.contentDocument;
+            initHotPlateControl(svgDoc, 0); // Hotplate 1 (Arduino ID 0)
+            initHotPlateControl(svgDoc, 1); // Hotplate 2 (Arduino ID 1)
         }
     } catch (error) {
         // Error in immediate SVG initialization
@@ -637,21 +657,24 @@ function sendFanCommand(fanNumber, speed) {
 
 // Initialize individual hot plate control
 function initHotPlateControl(svgDoc, plateNumber) {
-    const switchElement = svgDoc.getElementById(`hotplate${plateNumber}-switch`);
-    const switchKnob = svgDoc.getElementById(`hotplate${plateNumber}-switch-knob`);
-    const hotPlateElement = svgDoc.getElementById(`hotplate${plateNumber}`);
+    if (hotplateControlsInitialized) return;
+    // Map 0-based Arduino ID to 1-based SVG element ID
+    const svgPlateNumber = plateNumber + 1;
+    const switchElement = svgDoc.getElementById(`hotplate${svgPlateNumber}-switch`);
+    const switchKnob = svgDoc.getElementById(`hotplate${svgPlateNumber}-switch-knob`);
+    const hotPlateElement = svgDoc.getElementById(`hotplate${svgPlateNumber}`);
     
     let isOn = false;
     
     // Switch click handler
     if (switchElement) {
-        switchElement.addEventListener('click', function() {
+        switchElement.addEventListener('click', async function() {
             isOn = !isOn;
             updateHotPlateSwitchVisual(switchKnob, isOn);
             updateHotPlateVisual(hotPlateElement, isOn);
             
-            // Send hot plate control command
-            sendHotPlateCommand(plateNumber, isOn);
+            // Send hot plate control command (use 0-based Arduino ID)
+            await sendHotPlateCommand(plateNumber, isOn);
         });
     }
 }
@@ -685,15 +708,24 @@ function updateHotPlateVisual(hotPlateElement, isOn) {
 }
 
 // Send hot plate command to server
-function sendHotPlateCommand(plateNumber, isOn) {
-    const command = {
-        type: 'hotplate_control',
-        hotplate: plateNumber,
-        state: isOn
-    };
-
-    // Send via WebSocket if connected
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(command));
+async function sendHotPlateCommand(plateNumber, isOn) {
+    try {
+        const response = await fetch(`/api/hotplate/${plateNumber}/toggle`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                state: isOn
+            })
+        });
+        
+        if (!response.ok) {
+            console.error('Failed to toggle hot plate:', response.statusText);
+        } else {
+            console.log(`Hot plate ${plateNumber} toggled to ${isOn ? 'ON' : 'OFF'}`);
+        }
+    } catch (error) {
+        console.error('Error sending hot plate command:', error);
     }
 }

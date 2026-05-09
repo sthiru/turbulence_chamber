@@ -132,7 +132,7 @@ class ArduinoCommunicator:
                 read_time = time.time() - read_start
                 logger.debug(f"Read line took {read_time:.3f}s, Raw response from Arduino: {response_line}")
                 
-                logger.info(f"Total command time: {time.time() - total_start:.3f}s (read: {read_time:.3f}s)")
+                logger.debug(f"Total command time: {time.time() - total_start:.3f}s (read: {read_time:.3f}s)")
                 
                 if response_line:
                     try:
@@ -143,7 +143,7 @@ class ArduinoCommunicator:
                         logger.error(f"Raw response: '{response_line}'")
                         
                         # Try reading additional lines to find valid JSON (up to 5 attempts)
-                        for attempt in range(12):
+                        for attempt in range(3):
                             logger.warning(f"JSON decode attempt {attempt + 1}/5, trying to read next line...")
                             next_line = await self._read_line(timeout=2.0)
                             if next_line:
@@ -224,7 +224,7 @@ class ArduinoCommunicator:
                             result = lines[0].strip()
                             
                             total_time = time.time() - loop_start
-                            logger.info(f"Read line completed in {total_time:.3f}s, {len(result)} chars, buffer size: {len(buffer)}")
+                            logger.debug(f"Read line completed in {total_time:.3f}s, {len(result)} chars, buffer size: {len(buffer)}")
                             
                             if not result:
                                 logger.warning("Arduino sent empty response")
@@ -243,7 +243,7 @@ class ArduinoCommunicator:
                 await asyncio.sleep(0.001)
         
         total_time = time.time() - loop_start
-        logger.warning(f"Read line timeout after {total_time:.3f}s, buffer content: {buffer[:100]}")
+        logger.debug(f"Read line timeout after {total_time:.3f}s, buffer content: {buffer[:100]}")
         return None
         
     async def get_status(self) -> ArduinoResponse:

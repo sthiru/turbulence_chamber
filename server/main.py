@@ -10,6 +10,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Back
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 from functools import lru_cache
@@ -897,21 +898,132 @@ async def control_calibration(control: CalibrationControl):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/calibration/hotplate/start")
+async def start_hotplate_calibration(
+    temp_min: float = 80.0,
+    temp_max: float = 120.0,
+    temp_step: float = 2.0,
+    fan_speeds: str = "255,191,128,64",
+    recording_duration: int = 900,
+    sampling_interval: int = 10
+):
+    """Start hot plate 4D calibration (temperature × fan speed)"""
+    try:
+        # Parse fan speeds string to list
+        fan_speeds_list = [int(x.strip()) for x in fan_speeds.split(",") if x.strip()]
+
+        session = await calibration_agent.start_hotplate_calibration(
+            temp_min, temp_max, temp_step, fan_speeds_list, recording_duration, sampling_interval
+        )
+        num_temp_steps = int((temp_max - temp_min) / temp_step) + 1
+        total_steps = num_temp_steps * len(fan_speeds_list)
+        total_duration_hours = (total_steps * recording_duration) / 3600
+        return {
+            "status": "success",
+            "message": "Hot plate 4D calibration started",
+            "session_id": session.session_id,
+            "total_steps": session.total_steps,
+            "temp_min": temp_min,
+            "temp_max": temp_max,
+            "temp_step": temp_step,
+            "fan_speeds": fan_speeds_list,
+            "recording_duration": recording_duration,
+            "sampling_interval": sampling_interval,
+            "estimated_duration": f"~{total_duration_hours:.1f} hours"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/calibration/combined/start")
+async def start_combined_calibration(
+    temp_min: float = 80.0,
+    temp_max: float = 120.0,
+    temp_step: float = 2.0,
+    fan_speeds: str = "255,191,128,64",
+    recording_duration: int = 900,
+    sampling_interval: int = 10
+):
+    """Start combined hot plate and fan calibration"""
+    try:
+        # Parse fan speeds from comma-separated string
+        fan_speed_list = [int(x.strip()) for x in fan_speeds.split(",")]
+
+        session = await calibration_agent.start_combined_calibration(
+            temp_min, temp_max, temp_step, fan_speed_list, recording_duration, sampling_interval
+        )
+        num_temp_steps = int((temp_max - temp_min) / temp_step) + 1
+        total_steps = num_temp_steps * len(fan_speed_list)
+        total_duration_hours = (total_steps * recording_duration) / 3600
+        return {
+            "status": "success",
+            "message": "Combined calibration started",
+            "session_id": session.session_id,
+            "total_steps": session.total_steps,
+            "temp_min": temp_min,
+            "temp_max": temp_max,
+            "temp_step": temp_step,
+            "fan_speeds": fan_speed_list,
+            "recording_duration": recording_duration,
+            "sampling_interval": sampling_interval,
+            "estimated_duration": f"~{total_duration_hours:.1f} hours"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/calibration/lookup-table")
 async def get_calibration_lookup_table():
-    """Get the latest calibration lookup table"""
+    """Get the latest combined calibration lookup table"""
     try:
-        lookup_table = calibration_agent.get_latest_lookup_table()
-        if lookup_table:
+        # Load from calibration_data folder
+        calib_folder = calibration_agent.config.calibration_data_folder
+        calib_folder_abs = os.path.abspath(calib_folder)
+        lookup_table_path = os.path.join(calib_folder_abs, "combined_calibration.json")
+
+        if os.path.exists(lookup_table_path):
+            import json
+            with open(lookup_table_path, 'r') as f:
+                data = json.load(f)
             return {
                 "status": "success",
-                "lookup_table": lookup_table
+                "lookup_table": data.get("lookup_table"),
+                "calibration_id": data.get("calibration_id"),
+                "timestamp": data.get("timestamp")
             }
         else:
             return {
-                "status": "info",
-                "message": "No lookup table available. Run calibration first."
+                "status": "error",
+                "message": "No combined calibration lookup table found"
             }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calibration/lookup-table/interpolate")
+async def interpolate_lookup_table(hotplate_temp: float, fan_speed: int):
+    """Interpolate lookup table for given temperature and fan speed"""
+    try:
+        # Load lookup table
+        calib_folder = calibration_agent.config.calibration_data_folder
+        calib_folder_abs = os.path.abspath(calib_folder)
+        lookup_table_path = os.path.join(calib_folder_abs, "combined_calibration.json")
+
+        if not os.path.exists(lookup_table_path):
+            raise HTTPException(status_code=404, detail="No lookup table found")
+
+        import json
+        from server.calibration.combined_calibration import CombinedLookupTable, CombinedCalibrator
+
+        with open(lookup_table_path, 'r') as f:
+            data = json.load(f)
+
+        lookup_table = CombinedLookupTable(**data['lookup_table'])
+        calibrator = CombinedCalibrator()
+
+        result = calibrator.interpolate_lookup_table(lookup_table, hotplate_temp, fan_speed)
+
+        return {
+            "status": "success",
+            "result": result
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

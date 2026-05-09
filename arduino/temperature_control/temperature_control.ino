@@ -90,9 +90,11 @@ bool dhtFound[NUM_DHT_SENSORS] = {false, false};
 
 // System State
 float currentTemperatures[NUM_SENSORS];
-float targetTemperatures[NUM_HOT_PLATES] = {35.0, 35.0};
+float hotplateTemperatures[NUM_HOT_PLATES];
+float targetTemperatures[NUM_HOT_PLATES] = {80.0, 80.0};
 int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
+bool manualHotPlateControl[NUM_HOT_PLATES] = {false, false}; // Manual override flags
 
 // BME280 Data arrays
 float bmpTemperatures[NUM_BMP280_SENSORS];
@@ -463,7 +465,8 @@ void updateControl() {
   for (int i = 0; i < NUM_HOT_PLATES; i++) {      
     int controlSensor = i == 0 ? 0 : 4;      
     float error = targetTemperatures[i] - currentTemperatures[controlSensor];
-    // Apply safety limits
+    
+    // Apply safety limits (always active, even in manual mode)
     if (currentTemperatures[controlSensor] > MAX_TEMP) {
       digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2, LOW);
       hotPlateStates[i] = false;
@@ -471,7 +474,13 @@ void updateControl() {
       Serial.print(i + 1);
       Serial.println(" turned off due to over-temperature");
     } 
+    else if (manualHotPlateControl[i]) {
+      // Manual control mode - respect manual toggle state
+      digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2, hotPlateStates[i] ? HIGH : LOW);
+      // Don't change hotPlateStates[i] - keep manual state
+    } 
     else {
+      // Automatic temperature control mode
       // Simple on/off control based on PID output
       if (currentTemperatures[controlSensor] > targetTemperatures[i]) {
         digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2,  LOW );
@@ -542,6 +551,7 @@ void processCommand(String command) {
     bool state = doc["state"] | false;
     
     if (plate >= 0 && plate < NUM_HOT_PLATES) {
+      manualHotPlateControl[plate] = true; // Enable manual override
       hotPlateStates[plate] = state;
       sendStatusResponse();
     } else {

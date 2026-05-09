@@ -47,6 +47,31 @@
         .log-warning { color: #dcdcaa; }
         .log-error { color: #f14c4c; }
         .log-success { color: #6a9955; }
+        
+        /* Connection Status Styles */
+        .connection-status {
+            position: fixed !important;
+            bottom: 20px !important;
+            right: 20px !important;
+            top: auto !important;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            z-index: 1000;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        .connection-status.connected {
+            background: #28a745;
+            color: white;
+        }
+        .connection-status.disconnected {
+            background: #dc3545;
+            color: white;
+        }
+        .connection-status.connecting {
+            background: #ffc107;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -65,12 +90,37 @@
 
     <div class="calibration-container mt-4">
         <h2 class="mb-4">
-            <i class="fas fa-wind me-2"></i>Fan-to-Windflow Sensor Calibration
+            <i class="fas fa-wind me-2"></i>Calibration System
         </h2>
         <p class="text-muted mb-4">
-            Establishes polynomial relationship between fan PWM and windflow sensor readings.
-            Each windflow sensor is placed 40cm directly in front of its corresponding fan.
+            Comprehensive calibration system for turbulence chamber control.
+            Select a calibration type below to begin.
         </p>
+
+        <!-- Calibration Type Tabs -->
+        <ul class="nav nav-tabs mb-4" id="calibrationTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="windflow-tab" data-bs-toggle="tab" data-bs-target="#windflow" type="button" role="tab">
+                    <i class="fas fa-wind me-2"></i>Fan-to-Windflow
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="hotplate-tab" data-bs-toggle="tab" data-bs-target="#hotplate" type="button" role="tab">
+                    <i class="fas fa-fire me-2"></i>Hot Plate (4D Calibration)
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="calibrationTabContent">
+
+        <!-- Fan-to-Windflow Calibration Tab -->
+        <div class="tab-pane fade show active" id="windflow" role="tabpanel">
+            <h5 class="mb-3">Fan-to-Windflow Sensor Calibration</h5>
+            <p class="text-muted mb-4">
+                Establishes linear relationship between fan PWM and windflow sensor readings.
+                Each windflow sensor is placed 40cm directly in front of its corresponding fan.
+            </p>
 
         <!-- Control Section -->
         <div class="control-section">
@@ -323,8 +373,110 @@
             </div>
             </div>
         </div>
+        </div> <!-- End Windflow Tab -->
 
+        <!-- Hot Plate Calibration Tab -->
+        <div class="tab-pane fade" id="hotplate" role="tabpanel">
+            <h5 class="mb-3">Hot Plate 4D Calibration</h5>
+            <p class="text-muted mb-4">
+                Establishes 4D lookup table mapping hot plate temperature × fan speed → chamber temperature/Cn².
+                Varies both hot plate temperature and fan speed in nested loops to generate comprehensive calibration data.
+            </p>
+
+        <div class="control-section">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#hotplateControlSection">
+                    <i class="fas fa-chevron-down me-2"></i>Calibration Configuration
+                </button>
+            </h5>
+            <div class="collapse show" id="hotplateControlSection">
+
+            <form id="hotplateForm">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="hotplateTempMin" class="form-label">Min Temperature (°C)</label>
+                            <input type="number" class="form-control" id="hotplateTempMin" value="80" min="50" max="150">
+                            <small class="form-text text-muted">Starting temperature</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="hotplateTempMax" class="form-label">Max Temperature (°C)</label>
+                            <input type="number" class="form-control" id="hotplateTempMax" value="120" min="50" max="150">
+                            <small class="form-text text-muted">Ending temperature</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="hotplateTempStep" class="form-label">Temperature Step (°C)</label>
+                            <input type="number" class="form-control" id="hotplateTempStep" value="5" min="1" max="10" step="0.5">
+                            <small class="form-text text-muted">Increment per step</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="hotplateFanSpeeds" class="form-label">Fan Speeds</label>
+                            <select class="form-select" id="hotplateFanSpeeds">
+                                <option value="255" selected>255 PWM (100%)</option>
+                                <option value="191">191 PWM (75%)</option>
+                                <option value="128">128 PWM (50%)</option>
+                                <option value="64">64 PWM (25%)</option>
+                            </select>
+                            <small class="form-text text-muted">Select fan speed to test</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="hotplateDuration" class="form-label">Recording Duration (seconds)</label>
+                            <input type="number" class="form-control" id="hotplateDuration" value="900" min="300" max="3600" step="60">
+                            <small class="form-text text-muted">Duration per data point (default: 900s = 15min)</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="hotplateInterval" class="form-label">Sampling Interval (seconds)</label>
+                            <input type="number" class="form-control" id="hotplateInterval" value="10" min="1" max="60">
+                            <small class="form-text text-muted">Time between samples (default: 10s)</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> This is a long-running calibration. For 1 fan speed and 9 temperature steps (80-120°C), this could take ~2.4 hours. Additional fan speeds will multiply this duration.
+                </div>
+
+                <div class="alert alert-info" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Calibration Process:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Nested loops: fan speeds × hot plate temperatures</li>
+                        <li>4D lookup table will be generated (temperature × fan speed → chamber temp, Cn²)</li>
+                        <li>Enables interpolation for any temperature/fan speed combination</li>
+                        <li>Supports Cn² control system lookup</li>
+                    </ul>
+                </div>
+
+                <hr>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-success btn-lg" id="startHotplateCalibration">
+                        <i class="fas fa-play me-2"></i>Start 4D Calibration
+                    </button>
+                    <button type="button" class="btn btn-danger btn-lg" id="stopHotplateCalibration" disabled>
+                        <i class="fas fa-stop me-2"></i>Stop
+                    </button>
+                </div>
+            </form>
             </div>
+        </div>
+        </div> <!-- End Hot Plate Tab -->
+
+        </div> <!-- End Tab Content -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -749,23 +901,93 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'stop' })
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (result.status === 'success') {
                     addLog('Calibration stopped', 'warning');
-                    disconnectWebSocket();
-                    resetUI();
+                } else {
+                    addLog(`Failed to stop calibration: ${result.message}`, 'error');
                 }
             } catch (error) {
                 addLog(`Error stopping calibration: ${error}`, 'error');
             }
         });
-        
+
+        // Hot plate calibration handlers
+        const hotplateStartBtn = document.getElementById('startHotplateCalibration');
+        const hotplateStopBtn = document.getElementById('stopHotplateCalibration');
+
+        hotplateStartBtn.addEventListener('click', async () => {
+            const tempMin = parseFloat(document.getElementById('hotplateTempMin').value) || 80;
+            const tempMax = parseFloat(document.getElementById('hotplateTempMax').value) || 120;
+            const tempStep = parseFloat(document.getElementById('hotplateTempStep').value) || 2;
+            const fanSpeeds = document.getElementById('hotplateFanSpeeds').value || "255,191,128,64";
+            const duration = parseInt(document.getElementById('hotplateDuration').value) || 900;
+            const interval = parseInt(document.getElementById('hotplateInterval').value) || 10;
+
+            try {
+                // Confirm long-running calibration
+                const confirmCalibration = confirm('This is a long-running calibration that could take many hours. Are you sure you want to proceed?');
+                if (!confirmCalibration) {
+                    addLog('Hot plate calibration cancelled by user', 'warning');
+                    return;
+                }
+
+                addLog('Starting 4D calibration...', 'info');
+                const response = await fetch(`/api/calibration/hotplate/start?temp_min=${tempMin}&temp_max=${tempMax}&temp_step=${tempStep}&fan_speeds=${fanSpeeds}&recording_duration=${duration}&sampling_interval=${interval}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    isCalibrating = true;
+                    hotplateStartBtn.disabled = true;
+                    hotplateStopBtn.disabled = false;
+                    addLog(`4D calibration started (Temp: ${tempMin}-${tempMax}°C, Fans: ${result.fan_speeds})`, 'success');
+                    addLog(`Estimated duration: ${result.estimated_duration}`, 'info');
+
+                    // Show status section
+                    document.getElementById('statusSection').style.display = 'block';
+
+                    // Connect WebSocket for real-time updates
+                    connectWebSocket();
+                } else {
+                    addLog(`Failed to start hot plate calibration: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                addLog(`Error starting hot plate calibration: ${error}`, 'error');
+            }
+        });
+
+        hotplateStopBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/calibration/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'stop' })
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    addLog('Hot plate calibration stopped', 'warning');
+                    hotplateStartBtn.disabled = false;
+                    hotplateStopBtn.disabled = true;
+                } else {
+                    addLog(`Failed to stop calibration: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                addLog(`Error stopping calibration: ${error}`, 'error');
+            }
+        });
+
         // WebSocket connection for real-time calibration status - only connect on start
         let calibrationWebSocket = null;
         let wsConnected = false;
-        
+
         function connectWebSocket() {
             if (calibrationWebSocket && calibrationWebSocket.readyState === WebSocket.OPEN) {
                 return; // Already connected
@@ -918,7 +1140,30 @@
         // Load latest polynomials on page initialization
         loadLatestPolynomials();
 
+        // Update system ready status display
+        function updateSystemReadyStatus(systemReady) {
+            const statusElement = document.getElementById('connectionStatus');
+            
+            if (statusElement) {
+                if (systemReady) {
+                    statusElement.className = 'connection-status connected';
+                    statusElement.innerHTML = '<i class="fas fa-check-circle"></i> System Ready';
+                } else {
+                    statusElement.className = 'connection-status disconnected';
+                    statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> System Not Ready';
+                }
+            }
+        }
+
+        // Initialize connection status
+        updateSystemReadyStatus(false);
+
         // WebSocket is not auto-connected anymore
     </script>
+    
+    <!-- Connection Status Bottom Right -->
+    <div id="connectionStatus" class="connection-status disconnected">
+        <i class="fas fa-wifi"></i> Connecting...
+    </div>
 </body>
 </html>
