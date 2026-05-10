@@ -77,6 +77,9 @@ class CalibrationSession(BaseModel):
     # Current state (for real-time status updates)
     current_fan_id: Optional[int] = None
     current_fan_speed: Optional[int] = None
+    current_temperature: Optional[float] = None
+    phase: Optional[str] = None
+    phase_details: Optional[str] = None
     current_flow_rates: List[float] = []
     
     # Granular progress tracking (for accurate time estimation)

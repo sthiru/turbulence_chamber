@@ -27,6 +27,10 @@ class CombinedCalibrationConfig:
     def __post_init__(self):
         if self.fan_speeds is None:
             self.fan_speeds = [255, 191, 128, 64]  # 100%, 75%, 50%, 25%
+        # Ensure fan_speeds is always a list
+        elif isinstance(self.fan_speeds, str):
+            # Handle case where fan_speeds might be passed as string
+            self.fan_speeds = [int(x.strip()) for x in self.fan_speeds.split(",") if x.strip()]
 
 @dataclass
 class CombinedDataPoint:

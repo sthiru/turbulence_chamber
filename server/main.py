@@ -835,6 +835,38 @@ async def control_calibration(control: CalibrationControl):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/calibration/session")
+async def get_current_calibration_session():
+    """Get information about the current calibration session"""
+    try:
+        session_info = calibration_agent.get_current_session_info()
+        if session_info:
+            return {
+                "status": "success",
+                "has_session": True,
+                "session": session_info
+            }
+        else:
+            return {
+                "status": "success",
+                "has_session": False,
+                "message": "No active calibration session"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/calibration/session/clear")
+async def clear_calibration_session():
+    """Clear the current calibration session"""
+    try:
+        calibration_agent.clear_session()
+        return {
+            "status": "success",
+            "message": "Calibration session cleared"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/calibration/hotplate/start")
 async def start_hotplate_calibration(
     temp_min: float = 80.0,
@@ -846,8 +878,12 @@ async def start_hotplate_calibration(
 ):
     """Start hot plate 4D calibration (temperature × fan speed)"""
     try:
-        # Parse fan speeds string to list
-        fan_speeds_list = [int(x.strip()) for x in fan_speeds.split(",") if x.strip()]
+        # Parse fan speeds string to list - handle both single values and comma-separated lists
+        if "," in fan_speeds:
+            fan_speeds_list = [int(x.strip()) for x in fan_speeds.split(",") if x.strip()]
+        else:
+            # Handle single value
+            fan_speeds_list = [int(fan_speeds.strip()) if fan_speeds.strip() else 255]
 
         session = await calibration_agent.start_hotplate_calibration(
             temp_min, temp_max, temp_step, fan_speeds_list, recording_duration, sampling_interval

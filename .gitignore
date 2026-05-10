@@ -2,3 +2,4 @@
 camera_images/*
 __pycache__
 server/calibration_data/windflow_calib_*
+server/calibration_data/hotplate_*

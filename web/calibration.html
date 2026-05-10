@@ -196,6 +196,9 @@
                     <button type="button" class="btn btn-danger btn-lg" id="stopCalibration" disabled>
                         <i class="fas fa-stop me-2"></i>Stop
                     </button>
+                    <button type="button" class="btn btn-outline-warning btn-lg" id="clearSessionBtn" onclick="clearCurrentSession()">
+                        <i class="fas fa-trash me-2"></i>Clear Session
+                    </button>
                 </div>
 
                 <!-- Calibration Status Section (hidden by default) -->
@@ -470,6 +473,74 @@
                     <button type="button" class="btn btn-danger btn-lg" id="stopHotplateCalibration" disabled>
                         <i class="fas fa-stop me-2"></i>Stop
                     </button>
+                    <button type="button" class="btn btn-outline-warning btn-lg" id="clearHotplateSessionBtn" onclick="clearCurrentSession()">
+                        <i class="fas fa-trash me-2"></i>Clear Session
+                    </button>
+                </div>
+
+                <!-- Hot Plate Calibration Progress Section (hidden by default) -->
+                <div class="progress-section mt-4" id="hotplateStatusSection" style="display: none;">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <span id="hotplateCalibrationStatus" class="badge bg-secondary status-badge">Idle</span>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Progress</span>
+                                <span id="hotplateProgressPercent">0%</span>
+                            </div>
+                            <div class="progress" style="height: 25px;">
+                                <div id="hotplateProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="mt-2 text-muted">
+                                <small>Step <span id="hotplateCurrentStep">0</span> of <span id="hotplateTotalSteps">0</span></small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Current Temperature</h6>
+                                <h4 id="hotplateCurrentTemp">--°C</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Current Fan Speed</h6>
+                                <h4 id="hotplateCurrentFan">-- PWM</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Time Remaining</h6>
+                                <h4 id="hotplateEstimatedTime">--:--:--</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Session ID</h6>
+                                <h4 id="hotplateSessionId">--</h4>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-info text-white">
+                                    <strong>Current Phase</strong>
+                                </div>
+                                <div class="card-body">
+                                    <h5 id="hotplatePhase" class="text-center mb-0">Initializing...</h5>
+                                    <div class="mt-2">
+                                        <small class="text-muted" id="hotplatePhaseDetails">Preparing calibration setup</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </form>
             </div>
@@ -653,11 +724,11 @@
                 
                 // Display polynomial equation
                 const polyStr = coeffs.map((c, i) => {
-                    if (i === 0) return `${c.toFixed(6)}`;
-                    if (i === 1) return `${c.toFixed(6)}x`;
-                    return `${c.toFixed(6)}x^${i}`;
+                    if (i === 0) return `${(c || 0).toFixed(6)}`;
+                    if (i === 1) return `${(c || 0).toFixed(6)}x`;
+                    return `${(c || 0).toFixed(6)}x^${i}`;
                 }).reverse().join(' + ');
-                polyDiv.innerHTML = `<strong>R²:</strong> ${polynomial[fanId].r_squared.toFixed(4)}<br><strong>Polynomial:</strong> ${polyStr}`;
+                polyDiv.innerHTML = `<strong>R²:</strong> ${(polynomial[fanId]?.r_squared || 0).toFixed(4)}<br><strong>Polynomial:</strong> ${polyStr}`;
             } else {
                 polyDiv.innerHTML = 'No polynomial data available';
             }
@@ -700,7 +771,7 @@
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return `${context.dataset.label}: (${context.parsed.x}, ${context.parsed.y.toFixed(3)})`;
+                                    return `${context.dataset.label}: (${context.parsed.x}, ${(context.parsed.y || 0).toFixed(3)})`;
                                 }
                             }
                         }
@@ -858,6 +929,45 @@
                     statusBadge.textContent = status;
             }
         }
+
+        // Update hot plate status display
+        function updateHotplateStatus(status) {
+            const hotplateStatusBadge = document.getElementById('hotplateCalibrationStatus');
+            
+            if (hotplateStatusBadge) {
+                hotplateStatusBadge.className = 'badge status-badge';
+                
+                switch(status) {
+                    case 'idle':
+                        hotplateStatusBadge.classList.add('bg-secondary');
+                        hotplateStatusBadge.textContent = 'Idle';
+                        break;
+                    case 'running':
+                        hotplateStatusBadge.classList.add('bg-warning');
+                        hotplateStatusBadge.textContent = 'Running';
+                        break;
+                    case 'heating':
+                        hotplateStatusBadge.classList.add('bg-danger');
+                        hotplateStatusBadge.textContent = 'Heating';
+                        break;
+                    case 'recording':
+                        hotplateStatusBadge.classList.add('bg-info');
+                        hotplateStatusBadge.textContent = 'Recording';
+                        break;
+                    case 'completed':
+                        hotplateStatusBadge.classList.add('bg-success');
+                        hotplateStatusBadge.textContent = 'Completed';
+                        break;
+                    case 'failed':
+                        hotplateStatusBadge.classList.add('bg-danger');
+                        hotplateStatusBadge.textContent = 'Failed';
+                        break;
+                    default:
+                        hotplateStatusBadge.classList.add('bg-secondary');
+                        hotplateStatusBadge.textContent = status;
+                }
+            }
+        }
         
         // Start calibration
         startBtn.addEventListener('click', async () => {
@@ -949,8 +1059,14 @@
                     addLog(`4D calibration started (Temp: ${tempMin}-${tempMax}°C, Fans: ${result.fan_speeds})`, 'success');
                     addLog(`Estimated duration: ${result.estimated_duration}`, 'info');
 
-                    // Show status section
-                    document.getElementById('statusSection').style.display = 'block';
+                    // Show hot plate status section
+                    document.getElementById('hotplateStatusSection').style.display = 'block';
+                    
+                    // Initialize hot plate progress display
+                    updateHotplateStatus('running');
+                    document.getElementById('hotplateSessionId').textContent = result.session_id || '--';
+                    document.getElementById('hotplatePhase').textContent = 'Initializing';
+                    document.getElementById('hotplatePhaseDetails').textContent = 'Starting hot plate calibration...';
 
                     // Connect WebSocket for real-time updates
                     connectWebSocket();
@@ -988,6 +1104,64 @@
         let calibrationWebSocket = null;
         let wsConnected = false;
 
+        // System status WebSocket connection
+        let systemWebSocket = null;
+        let systemWsConnected = false;
+
+        function connectSystemWebSocket() {
+            if (systemWebSocket && systemWebSocket.readyState === WebSocket.OPEN) {
+                return; // Already connected
+            }
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            systemWebSocket = new WebSocket(`${protocol}//${window.location.host}/ws/status`);
+            
+            systemWebSocket.onopen = () => {
+                systemWsConnected = true;
+                updateSystemReadyStatus(true);
+            };
+            
+            systemWebSocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'system_status') {
+                        // Update system status based on device status
+                        const isReady = data.device_status === 'online' && data.system_ready;
+                        updateSystemReadyStatus(isReady);
+                    }
+                } catch (error) {
+                    console.error('Error processing system status message:', error);
+                }
+            };
+            
+            systemWebSocket.onerror = (error) => {
+                systemWsConnected = false;
+                updateSystemReadyStatus(false);
+            };
+            
+            systemWebSocket.onclose = (event) => {
+                systemWsConnected = false;
+                systemWebSocket = null;
+                updateSystemReadyStatus(false);
+                
+                // Auto-reconnect after 3 seconds
+                setTimeout(() => {
+                    if (!systemWsConnected) {
+                        connectSystemWebSocket();
+                    }
+                }, 3000);
+            };
+        }
+
+        function disconnectSystemWebSocket() {
+            if (systemWebSocket && systemWebSocket.readyState === WebSocket.OPEN) {
+                systemWebSocket.close();
+                systemWebSocket = null;
+                systemWsConnected = false;
+            }
+        }
+
         function connectWebSocket() {
             if (calibrationWebSocket && calibrationWebSocket.readyState === WebSocket.OPEN) {
                 return; // Already connected
@@ -1008,32 +1182,84 @@
                     if (data.type === 'calibration_status') {
                         const session = data.session;
                         
-                        // Update display
-                        sessionId.textContent = session.session_id;
-                        currentStep.textContent = session.current_step;
-                        totalSteps.textContent = session.total_steps;
-                        progressBar.style.width = `${data.progress}%`;
-                        progressPercent.textContent = `${data.progress.toFixed(1)}%`;
+                        // Check if this is hot plate calibration (has temperature info)
+                        const isHotplateCalibration = session.current_temperature !== undefined || session.current_fan_speed !== undefined;
                         
-                        // Update estimated time
-                        if (data.estimated_remaining_time) {
-                            estimatedTime.textContent = formatTime(data.estimated_remaining_time);
-                        }
-                        
-                        // Update status
-                        updateStatus(session.status);
-                        
-                        // Check if completed or failed
-                        if (session.status === 'completed' || session.status === 'failed') {
-                            resetUI();
-                            disconnectWebSocket();
+                        if (isHotplateCalibration) {
+                            // Update hot plate calibration display
+                            document.getElementById('hotplateSessionId').textContent = session.session_id || '--';
+                            document.getElementById('hotplateCurrentStep').textContent = session.current_step || '0';
+                            document.getElementById('hotplateTotalSteps').textContent = session.total_steps || '0';
+                            document.getElementById('hotplateProgressBar').style.width = `${(data.progress || 0)}%`;
+                            document.getElementById('hotplateProgressPercent').textContent = `${(data.progress || 0).toFixed(1)}%`;
                             
-                            if (session.status === 'completed') {
-                                addLog('Calibration completed successfully!', 'success');
-                                // Automatically display results
-                                displayCalibrationResults(session.session_id);
-                            } else {
-                                addLog(`Calibration failed: ${session.error_message}`, 'error');
+                            // Update temperature and fan speed
+                            if (session.current_temperature !== undefined && session.current_temperature !== null) {
+                                document.getElementById('hotplateCurrentTemp').textContent = `${session.current_temperature.toFixed(1)}°C`;
+                            }
+                            if (session.current_fan_speed !== undefined && session.current_fan_speed !== null) {
+                                document.getElementById('hotplateCurrentFan').textContent = `${session.current_fan_speed} PWM`;
+                            }
+                            
+                            // Update estimated time
+                            if (data.estimated_remaining_time) {
+                                document.getElementById('hotplateEstimatedTime').textContent = formatTime(data.estimated_remaining_time);
+                            }
+                            
+                            // Update phase information
+                            if (session.phase) {
+                                document.getElementById('hotplatePhase').textContent = session.phase;
+                            }
+                            if (session.phase_details) {
+                                document.getElementById('hotplatePhaseDetails').textContent = session.phase_details;
+                            }
+                            
+                            // Update status
+                            updateHotplateStatus(session.status);
+                            
+                            // Check if completed or failed
+                            if (session.status === 'completed' || session.status === 'failed') {
+                                resetHotplateUI();
+                                disconnectWebSocket();
+                                
+                                if (session.status === 'completed') {
+                                    addLog('Hot plate calibration completed successfully!', 'success');
+                                    // Display results if available
+                                    if (session.session_id) {
+                                        displayCalibrationResults(session.session_id);
+                                    }
+                                } else {
+                                    addLog(`Hot plate calibration failed: ${session.error_message}`, 'error');
+                                }
+                            }
+                        } else {
+                            // Update windflow calibration display
+                            sessionId.textContent = session.session_id;
+                            currentStep.textContent = session.current_step;
+                            totalSteps.textContent = session.total_steps;
+                            progressBar.style.width = `${(data.progress || 0)}%`;
+                            progressPercent.textContent = `${(data.progress || 0).toFixed(1)}%`;
+                            
+                            // Update estimated time
+                            if (data.estimated_remaining_time) {
+                                estimatedTime.textContent = formatTime(data.estimated_remaining_time);
+                            }
+                            
+                            // Update status
+                            updateStatus(session.status);
+                            
+                            // Check if completed or failed
+                            if (session.status === 'completed' || session.status === 'failed') {
+                                resetUI();
+                                disconnectWebSocket();
+                                
+                                if (session.status === 'completed') {
+                                    addLog('Calibration completed successfully!', 'success');
+                                    // Automatically display results
+                                    displayCalibrationResults(session.session_id);
+                                } else {
+                                    addLog(`Calibration failed: ${session.error_message}`, 'error');
+                                }
                             }
                         }
                     } else if (data.type === 'ping') {
@@ -1081,6 +1307,27 @@
 
             // Hide status section
             document.getElementById('statusSection').style.display = 'none';
+        }
+
+        function resetHotplateUI() {
+            isCalibrating = false;
+            updateHotplateStatus('idle');
+
+            hotplateStartBtn.disabled = false;
+            hotplateStopBtn.disabled = true;
+
+            document.getElementById('hotplateProgressBar').style.width = '0%';
+            document.getElementById('hotplateProgressPercent').textContent = '0%';
+            document.getElementById('hotplateCurrentStep').textContent = '0';
+            document.getElementById('hotplateTotalSteps').textContent = '0';
+            document.getElementById('hotplateEstimatedTime').textContent = '--:--:--';
+            document.getElementById('hotplateCurrentTemp').textContent = '--°C';
+            document.getElementById('hotplateCurrentFan').textContent = '-- PWM';
+            document.getElementById('hotplatePhase').textContent = 'Initializing...';
+            document.getElementById('hotplatePhaseDetails').textContent = 'Preparing calibration setup';
+
+            // Hide hot plate status section
+            document.getElementById('hotplateStatusSection').style.display = 'none';
         }
         
         // Load latest polynomials on page load
@@ -1140,12 +1387,18 @@
         // Load latest polynomials on page initialization
         loadLatestPolynomials();
 
+        // Check for existing calibration sessions on page load
+        checkExistingSession();
+
         // Update system ready status display
         function updateSystemReadyStatus(systemReady) {
             const statusElement = document.getElementById('connectionStatus');
             
             if (statusElement) {
-                if (systemReady) {
+                if (systemReady === 'connecting') {
+                    statusElement.className = 'connection-status connecting';
+                    statusElement.innerHTML = '<i class="fas fa-wifi"></i> Connecting...';
+                } else if (systemReady) {
                     statusElement.className = 'connection-status connected';
                     statusElement.innerHTML = '<i class="fas fa-check-circle"></i> System Ready';
                 } else {
@@ -1155,8 +1408,152 @@
             }
         }
 
+        // Check for existing calibration session
+        async function checkExistingSession() {
+            try {
+                const response = await fetch('/api/calibration/session');
+                const result = await response.json();
+                
+                if (result.status === 'success' && result.has_session) {
+                    const session = result.session;
+                    addLog(`Found existing calibration session: ${session.session_id}`, 'info');
+                    addLog(`Status: ${session.status}, Type: ${session.calibration_type}`, 'info');
+                    
+                    // Display session based on type
+                    if (session.calibration_type === 'hotplate') {
+                        displayExistingHotplateSession(session);
+                    } else if (session.calibration_type === 'windflow') {
+                        displayExistingWindflowSession(session);
+                    }
+                    
+                    // Connect WebSocket for real-time updates if session is running
+                    if (session.is_running) {
+                        connectWebSocket();
+                    }
+                }
+            } catch (error) {
+                addLog(`Error checking existing session: ${error}`, 'warning');
+            }
+        }
+
+        // Display existing hot plate session
+        function displayExistingHotplateSession(session) {
+            // Switch to hot plate tab
+            const hotplateTab = document.getElementById('hotplate-tab');
+            if (hotplateTab) {
+                hotplateTab.click();
+            }
+            
+            // Show hot plate progress section
+            document.getElementById('hotplateStatusSection').style.display = 'block';
+            
+            // Update session info
+            document.getElementById('hotplateSessionId').textContent = session.session_id || '--';
+            document.getElementById('hotplateCurrentStep').textContent = session.current_step || '0';
+            document.getElementById('hotplateTotalSteps').textContent = session.total_steps || '0';
+            document.getElementById('hotplateProgressBar').style.width = `${session.progress || 0}%`;
+            document.getElementById('hotplateProgressPercent').textContent = `${(session.progress || 0).toFixed(1)}%`;
+            
+            // Update temperature and fan speed
+            if (session.current_temperature !== undefined && session.current_temperature !== null) {
+                document.getElementById('hotplateCurrentTemp').textContent = `${session.current_temperature.toFixed(1)}°C`;
+            }
+            if (session.current_fan_speed !== undefined && session.current_fan_speed !== null) {
+                document.getElementById('hotplateCurrentFan').textContent = `${session.current_fan_speed} PWM`;
+            }
+            
+            // Update phase information
+            if (session.phase) {
+                document.getElementById('hotplatePhase').textContent = session.phase;
+            }
+            if (session.phase_details) {
+                document.getElementById('hotplatePhaseDetails').textContent = session.phase_details;
+            }
+            
+            // Update status
+            updateHotplateStatus(session.status);
+            
+            // Update buttons based on session status
+            if (session.is_running) {
+                hotplateStartBtn.disabled = true;
+                hotplateStopBtn.disabled = false;
+                isCalibrating = true;
+            } else {
+                hotplateStartBtn.disabled = false;
+                hotplateStopBtn.disabled = true;
+                isCalibrating = false;
+            }
+            
+            addLog(`Hot plate calibration session restored: ${(session.progress || 0).toFixed(1)}% complete`, 'success');
+        }
+
+        // Display existing windflow session
+        function displayExistingWindflowSession(session) {
+            // Switch to windflow tab
+            const windflowTab = document.getElementById('windflow-tab');
+            if (windflowTab) {
+                windflowTab.click();
+            }
+            
+            // Show windflow progress section
+            document.getElementById('statusSection').style.display = 'block';
+            
+            // Update session info
+            sessionId.textContent = session.session_id || '--';
+            currentStep.textContent = session.current_step || '0';
+            totalSteps.textContent = session.total_steps || '0';
+            progressBar.style.width = `${session.progress || 0}%`;
+            progressPercent.textContent = `${(session.progress || 0).toFixed(1)}%`;
+            
+            // Update status
+            updateStatus(session.status);
+            
+            // Update buttons based on session status
+            if (session.is_running) {
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                isCalibrating = true;
+            } else {
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                isCalibrating = false;
+            }
+            
+            addLog(`Windflow calibration session restored: ${(session.progress || 0).toFixed(1)}% complete`, 'success');
+        }
+
+        // Clear session button functionality
+        async function clearCurrentSession() {
+            if (!confirm('Are you sure you want to clear the current calibration session? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/calibration/session/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    addLog('Calibration session cleared', 'success');
+                    resetUI();
+                    resetHotplateUI();
+                    disconnectWebSocket();
+                } else {
+                    addLog(`Failed to clear session: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                addLog(`Error clearing session: ${error}`, 'error');
+            }
+        }
+
         // Initialize connection status
-        updateSystemReadyStatus(false);
+        updateSystemReadyStatus('connecting');
+
+        // Connect to system status WebSocket on page load
+        connectSystemWebSocket();
 
         // WebSocket is not auto-connected anymore
     </script>

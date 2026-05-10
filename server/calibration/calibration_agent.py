@@ -56,6 +56,12 @@ class CalibrationAgent:
 
         # Hotplate calibrator
         self.hotplate_calibrator = HotplateCalibrator()
+        
+        # Session persistence
+        self.session_file = os.path.join(self.config.calibration_data_folder, "current_session.json")
+        
+        # Try to recover existing session on startup
+        self._recover_session()
         self.hotplate_calibration_result: Optional = None
 
         # Combined calibrator
@@ -64,6 +70,196 @@ class CalibrationAgent:
 
         # Ensure calibration data folder exists
         os.makedirs(self.config.calibration_data_folder, exist_ok=True)
+    
+    def _save_session(self):
+        """Save current session state to file"""
+        if self.current_session:
+            try:
+                session_data = {
+                    "session": self.current_session.dict(),
+                    "is_running": self.is_running,
+                    "is_paused": self.is_paused,
+                    "stop_requested": self.stop_requested,
+                    "calibration_type": self._get_calibration_type(),
+                    "timestamp": datetime.now().isoformat()
+                }
+                with open(self.session_file, 'w') as f:
+                    json.dump(session_data, f, indent=2, default=str)
+                logger.info(f"Session saved to {self.session_file}")
+            except Exception as e:
+                logger.error(f"Failed to save session: {e}")
+    
+    def _recover_session(self):
+        """Recover session state from file"""
+        try:
+            if os.path.exists(self.session_file):
+                with open(self.session_file, 'r') as f:
+                    session_data = json.load(f)
+                
+                # Check if session is still valid (not too old)
+                session_time = datetime.fromisoformat(session_data.get("timestamp", ""))
+                if (datetime.now() - session_time).total_seconds() > 86400:  # 24 hours
+                    logger.info("Session file is too old, ignoring")
+                    os.remove(self.session_file)
+                    return
+                
+                # Recover session
+                session_dict = session_data.get("session", {})
+                if session_dict:
+                    self.current_session = CalibrationSession(**session_dict)
+                    self.is_running = session_data.get("is_running", False)
+                    self.is_paused = session_data.get("is_paused", False)
+                    self.stop_requested = session_data.get("stop_requested", False)
+                    
+                    # If session was running, mark it as stopped (server restart)
+                    if self.is_running:
+                        self.is_running = False
+                        self.current_session.status = CalibrationStatus.FAILED
+                        self.current_session.error_message = "Server restarted during calibration"
+                        self._save_session()  # Update with stopped status
+                    
+                    logger.info(f"Session recovered: {self.current_session.session_id}")
+            else:
+                logger.info("No existing session file found")
+        except Exception as e:
+            logger.error(f"Failed to recover session: {e}")
+            # Remove corrupted session file
+            if os.path.exists(self.session_file):
+                os.remove(self.session_file)
+    
+    def _get_calibration_type(self) -> str:
+        """Determine the type of current calibration"""
+        if not self.current_session:
+            return "none"
+        
+        session_id = self.current_session.session_id.lower()
+        if "hotplate" in session_id or "4d" in session_id:
+            return "hotplate"
+        elif "windflow" in session_id:
+            return "windflow"
+        elif "combined" in session_id:
+            return "combined"
+        else:
+            return "unknown"
+    
+    def get_current_session_info(self) -> Optional[Dict]:
+        """Get information about the current session"""
+        if not self.current_session:
+            return None
+        
+        return {
+            "session_id": self.current_session.session_id,
+            "status": self.current_session.status.value,
+            "calibration_type": self._get_calibration_type(),
+            "current_step": self.current_session.current_step,
+            "total_steps": self.current_session.total_steps,
+            "progress": self.current_session.get_progress(),
+            "start_time": self.current_session.start_time.isoformat() if self.current_session.start_time else None,
+            "is_running": self.is_running,
+            "current_temperature": self.current_session.current_temperature,
+            "current_fan_speed": self.current_session.current_fan_speed,
+            "phase": self.current_session.phase,
+            "phase_details": self.current_session.phase_details,
+            "error_message": self.current_session.error_message
+        }
+    
+    def clear_session(self):
+        """Clear current session and remove session file"""
+        self.current_session = None
+        self.is_running = False
+        self.is_paused = False
+        self.stop_requested = False
+        
+        try:
+            if os.path.exists(self.session_file):
+                os.remove(self.session_file)
+                logger.info("Session file removed")
+        except Exception as e:
+            logger.error(f"Failed to remove session file: {e}")
+    
+    def _init_csv_file(self, session_folder: str, calibration_type: str) -> str:
+        """Initialize CSV file for data capture"""
+        csv_filename = f"{calibration_type}_data.csv"
+        csv_filepath = os.path.join(session_folder, csv_filename)
+        
+        try:
+            # Create CSV file with headers based on calibration type
+            if calibration_type == "hotplate":
+                headers = [
+                    'timestamp', 'step', 'fan_speed', 'target_temperature', 
+                    'sensor_temp_0', 'sensor_temp_1', 'sensor_temp_2', 'sensor_temp_3',
+                    'sensor_temp_4', 'sensor_temp_5', 'sensor_temp_6', 'sensor_temp_7',
+                    'sensor_temp_8', 'sensor_temp_9', 'sensor_temp_10', 'sensor_temp_11',
+                    'sensor_temp_12', 'sensor_temp_13',
+                    'pressure_bmp_0', 'pressure_bmp_1', 'humidity_dht_0', 'humidity_dht_1',
+                    'air_flow_0', 'air_flow_1', 'air_flow_2', 'air_flow_3',
+                    'cn2_thermal', 'chamber_temp_avg', 'phase', 'phase_details'
+                ]
+            elif calibration_type == "windflow":
+                headers = [
+                    'timestamp', 'step', 'fan_id', 'fan_speed',
+                    'flow_rate_sensor_0', 'flow_rate_sensor_1', 'flow_rate_sensor_2', 'flow_rate_sensor_3',
+                    'sensor_temp_0', 'sensor_temp_1', 'sensor_temp_2', 'sensor_temp_3',
+                    'sensor_temp_4', 'sensor_temp_5', 'sensor_temp_6', 'sensor_temp_7',
+                    'sensor_temp_8', 'sensor_temp_9', 'sensor_temp_10', 'sensor_temp_11',
+                    'sensor_temp_12', 'sensor_temp_13',
+                    'pressure_bmp_0', 'pressure_bmp_1', 'humidity_dht_0', 'humidity_dht_1',
+                    'air_flow_0', 'air_flow_1', 'air_flow_2', 'air_flow_3'
+                ]
+            else:
+                # Default headers for combined calibration
+                headers = [
+                    'timestamp', 'step', 'fan_speed', 'target_temperature',
+                    'sensor_temp_0', 'sensor_temp_1', 'sensor_temp_2', 'sensor_temp_3',
+                    'sensor_temp_4', 'sensor_temp_5', 'sensor_temp_6', 'sensor_temp_7',
+                    'sensor_temp_8', 'sensor_temp_9', 'sensor_temp_10', 'sensor_temp_11',
+                    'sensor_temp_12', 'sensor_temp_13',
+                    'pressure_bmp_0', 'pressure_bmp_1', 'humidity_dht_0', 'humidity_dht_1',
+                    'air_flow_0', 'air_flow_1', 'air_flow_2', 'air_flow_3',
+                    'cn2_thermal', 'chamber_temp_avg', 'phase', 'phase_details'
+                ]
+            
+            with open(csv_filepath, 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(headers)
+            
+            logger.info(f"CSV file initialized: {csv_filepath}")
+            return csv_filepath
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize CSV file: {e}")
+            return None
+    
+    def _append_to_csv(self, csv_filepath: str, data: Dict):
+        """Append data row to CSV file"""
+        try:
+            with open(csv_filepath, 'a', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                
+                # Prepare row data based on available keys
+                row = []
+                for key in self._get_csv_keys(csv_filepath):
+                    value = data.get(key, '')
+                    # Convert numpy types to Python native types
+                    if hasattr(value, 'item'):
+                        value = value.item()
+                    row.append(value)
+                
+                writer.writerow(row)
+                
+        except Exception as e:
+            logger.error(f"Failed to append to CSV file: {e}")
+    
+    def _get_csv_keys(self, csv_filepath: str) -> List[str]:
+        """Get CSV column keys from file header"""
+        try:
+            with open(csv_filepath, 'r') as csvfile:
+                reader = csv.reader(csvfile)
+                headers = next(reader)
+                return headers
+        except Exception as e:
+            logger.error(f"Failed to read CSV headers: {e}")
+            return []
     
     def set_status_callback(self, callback: Callable):
         """Set callback for status updates"""
@@ -111,6 +307,9 @@ class CalibrationAgent:
         logger.info(f"Starting windflow calibration session {session_id}")
         logger.info(f"Speed steps per fan: {num_speed_steps}, Total speed steps: {num_speed_steps * 4}")
         logger.info(f"Settling time: {settling_time_ms}ms, Samples per point: {num_samples}")
+        
+        # Save session state
+        self._save_session()
         
         # Start calibration in background
         asyncio.create_task(self._run_windflow_calibration(fan_speed_step, settling_time_ms, num_samples))
@@ -174,6 +373,9 @@ class CalibrationAgent:
 
         logger.info(f"Starting hot plate 4D calibration session {session_id}")
         logger.info(f"Total steps: {total_steps} ({len(fan_speeds)} fan speeds × {num_temp_steps} temperatures)")
+
+        # Save session state
+        self._save_session()
 
         # Start calibration in background
         asyncio.create_task(self._run_hotplate_calibration(
@@ -297,6 +499,11 @@ class CalibrationAgent:
             # Save session metadata
             self._save_session_metadata(session_folder)
             
+            # Initialize CSV file for data capture
+            csv_filepath = self._init_csv_file(session_folder, "windflow")
+            if not csv_filepath:
+                logger.error("Failed to initialize CSV file, calibration will continue without data logging")
+            
             for idx, fan_speed in enumerate(fan_speeds):
                 if self.stop_requested:
                     break
@@ -315,12 +522,19 @@ class CalibrationAgent:
                 
                 # Record multiple readings for all sensors
                 all_flow_readings = [[] for _ in range(4)]  # Store readings for each sensor
-                for _ in range(num_samples):
+                sensor_temps_data = []  # Store sensor temperature data for CSV
+                
+                for sample_idx in range(num_samples):
                     response = await self.arduino_comm.get_status()
                     if response.status == "ok" and response.data:
                         flow_rates = response.data.flow_rates
                         for sensor_id in range(min(4, len(flow_rates))):
                             all_flow_readings[sensor_id].append(flow_rates[sensor_id])
+                        
+                        # Store sensor temperatures for CSV (only once per fan speed)
+                        if sample_idx == 0:
+                            sensor_temps_data = response.data.temperatures if response.data.temperatures else []
+                    
                     #await asyncio.sleep(0.2)
                 
                 # Calculate averages for each sensor
@@ -330,6 +544,42 @@ class CalibrationAgent:
                     avg_flows.append(avg_flow)
                     fan_data[sensor_id].append((fan_speed, avg_flow))
                     logger.debug(f"Sensor {sensor_id} @ {fan_speed} PWM → Flow: {avg_flow:.3f}")
+                
+                # Save data to CSV
+                if csv_filepath and sensor_temps_data:
+                    csv_data = {
+                        'timestamp': datetime.now().isoformat(),
+                        'step': idx + 1,
+                        'fan_id': 'all',  # All fans set to same speed
+                        'fan_speed': fan_speed,
+                        'flow_rate_sensor_0': avg_flows[0] if len(avg_flows) > 0 else '',
+                        'flow_rate_sensor_1': avg_flows[1] if len(avg_flows) > 1 else '',
+                        'flow_rate_sensor_2': avg_flows[2] if len(avg_flows) > 2 else '',
+                        'flow_rate_sensor_3': avg_flows[3] if len(avg_flows) > 3 else '',
+                        'sensor_temp_0': sensor_temps_data[0] if len(sensor_temps_data) > 0 else '',
+                        'sensor_temp_1': sensor_temps_data[1] if len(sensor_temps_data) > 1 else '',
+                        'sensor_temp_2': sensor_temps_data[2] if len(sensor_temps_data) > 2 else '',
+                        'sensor_temp_3': sensor_temps_data[3] if len(sensor_temps_data) > 3 else '',
+                        'sensor_temp_4': sensor_temps_data[4] if len(sensor_temps_data) > 4 else '',
+                        'sensor_temp_5': sensor_temps_data[5] if len(sensor_temps_data) > 5 else '',
+                        'sensor_temp_6': sensor_temps_data[6] if len(sensor_temps_data) > 6 else '',
+                        'sensor_temp_7': sensor_temps_data[7] if len(sensor_temps_data) > 7 else '',
+                        'sensor_temp_8': sensor_temps_data[8] if len(sensor_temps_data) > 8 else '',
+                        'sensor_temp_9': sensor_temps_data[9] if len(sensor_temps_data) > 9 else '',
+                        'sensor_temp_10': sensor_temps_data[10] if len(sensor_temps_data) > 10 else '',
+                        'sensor_temp_11': sensor_temps_data[11] if len(sensor_temps_data) > 11 else '',
+                        'sensor_temp_12': sensor_temps_data[12] if len(sensor_temps_data) > 12 else '',
+                        'sensor_temp_13': sensor_temps_data[13] if len(sensor_temps_data) > 13 else '',
+                        'pressure_bmp_0': response.data.pressure[0] if response.data.pressure and len(response.data.pressure) > 0 else '',
+                        'pressure_bmp_1': response.data.pressure[1] if response.data.pressure and len(response.data.pressure) > 1 else '',
+                        'humidity_dht_0': response.data.humidity[0] if response.data.humidity and len(response.data.humidity) > 0 else '',
+                        'humidity_dht_1': response.data.humidity[1] if response.data.humidity and len(response.data.humidity) > 1 else '',
+                        'air_flow_0': response.data.air_flow[0] if response.data.air_flow and len(response.data.air_flow) > 0 else '',
+                        'air_flow_1': response.data.air_flow[1] if response.data.air_flow and len(response.data.air_flow) > 1 else '',
+                        'air_flow_2': response.data.air_flow[2] if response.data.air_flow and len(response.data.air_flow) > 2 else '',
+                        'air_flow_3': response.data.air_flow[3] if response.data.air_flow and len(response.data.air_flow) > 3 else ''
+                    }
+                    self._append_to_csv(csv_filepath, csv_data)
                 
                 # Update session with all flow rates
                 self.current_session = self.current_session.model_copy(update={
@@ -431,6 +681,11 @@ class CalibrationAgent:
             # Save session metadata
             self._save_session_metadata(session_folder)
 
+            # Initialize CSV file for data capture
+            csv_filepath = self._init_csv_file(session_folder, "hotplate")
+            if not csv_filepath:
+                logger.error("Failed to initialize CSV file, calibration will continue without data logging")
+
             # Generate temperature steps
             temp_steps = []
             current_temp = temp_min
@@ -470,6 +725,10 @@ class CalibrationAgent:
                     step_count += 1
                     self.current_session.current_step = step_count
                     self.current_session.current_speed_step = step_count
+                    self.current_session.current_fan_speed = fan_speed
+                    self.current_session.current_temperature = target_temp
+                    self.current_session.phase = "Heating"
+                    self.current_session.phase_details = f"Setting hot plates to {target_temp}°C"
 
                     logger.info(f"Step {step_count}: Fan {fan_speed} PWM, Hot plates to {target_temp}°C")
 
@@ -480,6 +739,8 @@ class CalibrationAgent:
 
                     # Wait for heating
                     logger.info("Waiting for temperature stabilization...")
+                    self.current_session.phase = "Stabilizing"
+                    self.current_session.phase_details = "Waiting for temperature to stabilize"
                     await asyncio.sleep(60)
 
                     # Record data
@@ -487,6 +748,8 @@ class CalibrationAgent:
                     end_time = start_time.timestamp() + recording_duration
 
                     logger.info(f"Recording data for {recording_duration} seconds at {sampling_interval}s intervals")
+                    self.current_session.phase = "Recording"
+                    self.current_session.phase_details = f"Recording data for {recording_duration}s at {sampling_interval}s intervals"
 
                     while datetime.now().timestamp() < end_time and not self.stop_requested:
                         response = await self.arduino_comm.get_status()
@@ -496,6 +759,14 @@ class CalibrationAgent:
 
                             # Get sensor temperatures
                             sensor_temps = response.data.temperatures if response.data.temperatures else []
+
+                            # Update current temperature from first sensor
+                            if sensor_temps and len(sensor_temps) > 0:
+                                self.current_session.current_temperature = sensor_temps[0]
+
+                            # Save session state periodically (every 30 seconds)
+                            if int(timestamp) % 30 == 0:
+                                self._save_session()
 
                             # Calculate chamber temperature average (sensors 1, 3, 5, 7)
                             relevant_sensors = [0, 2, 4, 6]  # 0-indexed for sensors 1, 3, 5, 7
@@ -512,14 +783,54 @@ class CalibrationAgent:
                                 chamber_temp_avg=float(chamber_temp_avg),
                                 cn2_value=cn2_value,
                                 sensor_temps={
-                                    'sensor_1': float(sensor_temps[0]) if 0 < len(sensor_temps) else 0.0,
-                                    'sensor_3': float(sensor_temps[2]) if 2 < len(sensor_temps) else 0.0,
-                                    'sensor_5': float(sensor_temps[4]) if 4 < len(sensor_temps) else 0.0,
-                                    'sensor_7': float(sensor_temps[6]) if 6 < len(sensor_temps) else 0.0,
+                                    'sensor_1': float(sensor_temps[0]) if len(sensor_temps) > 0 else 0,
+                                    'sensor_3': float(sensor_temps[2]) if len(sensor_temps) > 2 else 0,
+                                    'sensor_5': float(sensor_temps[4]) if len(sensor_temps) > 4 else 0,
+                                    'sensor_7': float(sensor_temps[6]) if len(sensor_temps) > 6 else 0
                                 },
                                 timestamp=timestamp
                             )
                             all_data_points.append(data_point)
+                            
+                            # Save data to CSV
+                            if csv_filepath:
+                                csv_data = {
+                                    'timestamp': datetime.now().isoformat(),
+                                    'step': step_count,
+                                    'fan_speed': fan_speed,
+                                    'target_temperature': target_temp,
+                                    'sensor_temp_0': sensor_temps[0] if len(sensor_temps) > 0 else '',
+                                    'sensor_temp_1': sensor_temps[1] if len(sensor_temps) > 1 else '',
+                                    'sensor_temp_2': sensor_temps[2] if len(sensor_temps) > 2 else '',
+                                    'sensor_temp_3': sensor_temps[3] if len(sensor_temps) > 3 else '',
+                                    'sensor_temp_4': sensor_temps[4] if len(sensor_temps) > 4 else '',
+                                    'sensor_temp_5': sensor_temps[5] if len(sensor_temps) > 5 else '',
+                                    'sensor_temp_6': sensor_temps[6] if len(sensor_temps) > 6 else '',
+                                    'sensor_temp_7': sensor_temps[7] if len(sensor_temps) > 7 else '',
+                                    'sensor_temp_8': sensor_temps[8] if len(sensor_temps) > 8 else '',
+                                    'sensor_temp_9': sensor_temps[9] if len(sensor_temps) > 9 else '',
+                                    'sensor_temp_10': sensor_temps[10] if len(sensor_temps) > 10 else '',
+                                    'sensor_temp_11': sensor_temps[11] if len(sensor_temps) > 11 else '',
+                                    'sensor_temp_12': sensor_temps[12] if len(sensor_temps) > 12 else '',
+                                    'sensor_temp_13': sensor_temps[13] if len(sensor_temps) > 13 else '',
+                                    'pressure_bmp_0': response.data.pressure[0] if response.data.pressure and len(response.data.pressure) > 0 else '',
+                                    'pressure_bmp_1': response.data.pressure[1] if response.data.pressure and len(response.data.pressure) > 1 else '',
+                                    'humidity_dht_0': response.data.humidity[0] if response.data.humidity and len(response.data.humidity) > 0 else '',
+                                    'humidity_dht_1': response.data.humidity[1] if response.data.humidity and len(response.data.humidity) > 1 else '',
+                                    'air_flow_0': response.data.air_flow[0] if response.data.air_flow and len(response.data.air_flow) > 0 else '',
+                                    'air_flow_1': response.data.air_flow[1] if response.data.air_flow and len(response.data.air_flow) > 1 else '',
+                                    'air_flow_2': response.data.air_flow[2] if response.data.air_flow and len(response.data.air_flow) > 2 else '',
+                                    'air_flow_3': response.data.air_flow[3] if response.data.air_flow and len(response.data.air_flow) > 3 else '',
+                                    'cn2_thermal': cn2_value,
+                                    'chamber_temp_avg': chamber_temp_avg,
+                                    'phase': self.current_session.phase,
+                                    'phase_details': self.current_session.phase_details
+                                }
+                                self._append_to_csv(csv_filepath, csv_data)
+
+                            # Notify status callback
+                            if self.status_callback:
+                                self.status_callback(self.current_session)
 
                         await asyncio.sleep(sampling_interval)
 
