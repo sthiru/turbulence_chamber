@@ -47,13 +47,13 @@
 #define STATUS_LED 13
 
 // BME280 SPI Chip Select Pins
-#define BMP280_CS_1 26  // Digital pin 22
-#define BMP280_CS_2 28  // Digital pin 24
+#define BMP280_CS_1 12  // Digital pin 22
+#define BMP280_CS_2 13  // Digital pin 24
 #define NUM_BMP280_SENSORS 2
 
 // DHT Sensor Data Pins
-#define DHT_PIN_1 22  // Digital pin 26
-#define DHT_PIN_2 24  // Digital pin 28
+#define DHT_PIN_1 10  // Digital pin 26
+#define DHT_PIN_2 11  // Digital pin 28
 #define NUM_DHT_SENSORS 2
 
 // SPI pins for Arduino Mega (hardware SPI)
@@ -65,7 +65,7 @@
 #define BMP_MOSI 51
 
 // System Constants
-#define NUM_SENSORS 12
+#define NUM_SENSORS 14
 #define NUM_FANS 4
 #define NUM_HOT_PLATES 2
 #define NUM_FLOW_SENSORS 4
@@ -162,54 +162,63 @@ void setup() {
   // Sensor 2 address: 286164348927DEA9
   // Sensor 4 address: 28616434CDBEBB2D
   
-  // Convert hex strings to DeviceAddress arrays
-  // Sensor 1: 28616434892D9476
+  // Convert hex strings to DeviceAddress arrays  
+  // Sensor 1: 28616434892D9476 
   tempDeviceAddresses[0][0] = 0x28; tempDeviceAddresses[0][1] = 0x61; tempDeviceAddresses[0][2] = 0x64; tempDeviceAddresses[0][3] = 0x34;
   tempDeviceAddresses[0][4] = 0x89; tempDeviceAddresses[0][5] = 0x2D; tempDeviceAddresses[0][6] = 0x94; tempDeviceAddresses[0][7] = 0x76;
   
-  // Sensor 2: 286164348927DEA9  
+  // Sensor 2: 286164348927DEA9 
   tempDeviceAddresses[1][0] = 0x28; tempDeviceAddresses[1][1] = 0x61; tempDeviceAddresses[1][2] = 0x64; tempDeviceAddresses[1][3] = 0x34;
   tempDeviceAddresses[1][4] = 0x89; tempDeviceAddresses[1][5] = 0x27; tempDeviceAddresses[1][6] = 0xDE; tempDeviceAddresses[1][7] = 0xA9;
   
-  // Sensor 3: 28616434C951B1A0
+  // Sensor 3: 28616434C951B1A0 
   tempDeviceAddresses[2][0] = 0x28; tempDeviceAddresses[2][1] = 0x61; tempDeviceAddresses[2][2] = 0x64; tempDeviceAddresses[2][3] = 0x34;
-  tempDeviceAddresses[2][4] = 0xC9; tempDeviceAddresses[2][5] = 0x51; tempDeviceAddresses[2][6] = 0xB1; tempDeviceAddresses[2][7] = 0xA0;
+  tempDeviceAddresses[2][4] = 0xC2; tempDeviceAddresses[2][5] = 0x0D; tempDeviceAddresses[2][6] = 0x68; tempDeviceAddresses[2][7] = 0x90;
   
-  // Sensor 4: 28616434CDBEBB2D
-  tempDeviceAddresses[3][0] = 0x28; tempDeviceAddresses[3][1] = 0x61; tempDeviceAddresses[3][2] = 0x64; tempDeviceAddresses[3][3] = 0x34;
-  tempDeviceAddresses[3][4] = 0xCD; tempDeviceAddresses[3][5] = 0xBE; tempDeviceAddresses[3][6] = 0xBB; tempDeviceAddresses[3][7] = 0x2D;
+  // Sensor 4: 28D47F4A000000FF
+  tempDeviceAddresses[3][0] = 0x28; tempDeviceAddresses[3][1] = 0xD4; tempDeviceAddresses[3][2] = 0x7F; tempDeviceAddresses[3][3] = 0x4A;
+  tempDeviceAddresses[3][4] = 0x00; tempDeviceAddresses[3][5] = 0x00; tempDeviceAddresses[3][6] = 0x00; tempDeviceAddresses[3][7] = 0xFF;
+
+  // Sensor 5: 2874984A00000028
+  tempDeviceAddresses[4][0] = 0x28; tempDeviceAddresses[4][1] = 0x74; tempDeviceAddresses[4][2] = 0x98; tempDeviceAddresses[4][3] = 0x4A;
+  tempDeviceAddresses[4][4] = 0x00; tempDeviceAddresses[4][5] = 0x00; tempDeviceAddresses[4][6] = 0x00; tempDeviceAddresses[4][7] = 0x28;
+
+  // Sensor 6: 283CD648000000B0
+  tempDeviceAddresses[5][0] = 0x28; tempDeviceAddresses[5][1] = 0x3C; tempDeviceAddresses[5][2] = 0xD6; tempDeviceAddresses[5][3] = 0x48;
+  tempDeviceAddresses[5][4] = 0x00; tempDeviceAddresses[5][5] = 0x00; tempDeviceAddresses[5][6] = 0x00; tempDeviceAddresses[5][7] = 0xB0;
+
+  // Sensor 7: 28DA8A4A00000098
+  tempDeviceAddresses[6][0] = 0x28; tempDeviceAddresses[6][1] = 0xDA; tempDeviceAddresses[6][2] = 0x8A; tempDeviceAddresses[6][3] = 0x4A;
+  tempDeviceAddresses[6][4] = 0x00; tempDeviceAddresses[6][5] = 0x00; tempDeviceAddresses[6][6] = 0x00; tempDeviceAddresses[6][7] = 0x98;
+
+  // Sensor 8: 2879F54800000098
+  tempDeviceAddresses[7][0] = 0x28; tempDeviceAddresses[7][1] = 0x79; tempDeviceAddresses[7][2] = 0xF5; tempDeviceAddresses[7][3] = 0x48;
+  tempDeviceAddresses[7][4] = 0x00; tempDeviceAddresses[7][5] = 0x00; tempDeviceAddresses[7][6] = 0x00; tempDeviceAddresses[7][7] = 0x98;
+
+  // Sensor 9: 28F5874A000000E6
+  tempDeviceAddresses[8][0] = 0x28; tempDeviceAddresses[8][1] = 0xF5; tempDeviceAddresses[8][2] = 0x87; tempDeviceAddresses[8][3] = 0x4A;
+  tempDeviceAddresses[8][4] = 0x00; tempDeviceAddresses[8][5] = 0x00; tempDeviceAddresses[8][6] = 0x00; tempDeviceAddresses[8][7] = 0xE6;
+
+  // Sensor 10: 28037F4A000000BE
+  tempDeviceAddresses[9][0] = 0x28; tempDeviceAddresses[9][1] = 0x03; tempDeviceAddresses[9][2] = 0x7F; tempDeviceAddresses[9][3] = 0x4A;
+  tempDeviceAddresses[9][4] = 0x00; tempDeviceAddresses[9][5] = 0x00; tempDeviceAddresses[9][6] = 0x00; tempDeviceAddresses[9][7] = 0xBE;
+
+  // Sensor 11: 28616434C951B1A0
+  tempDeviceAddresses[10][0] = 0x28; tempDeviceAddresses[10][1] = 0x61; tempDeviceAddresses[10][2] = 0x64; tempDeviceAddresses[10][3] = 0x34;
+  tempDeviceAddresses[10][4] = 0xC9; tempDeviceAddresses[10][5] = 0x51; tempDeviceAddresses[10][6] = 0xB1; tempDeviceAddresses[10][7] = 0xA0;
+
+  // Sensor 12: 28616434CDBEBB2D
+  tempDeviceAddresses[11][0] = 0x28; tempDeviceAddresses[11][1] = 0x61; tempDeviceAddresses[11][2] = 0x64; tempDeviceAddresses[11][3] = 0x34;
+  tempDeviceAddresses[11][4] = 0xCD; tempDeviceAddresses[11][5] = 0xBE; tempDeviceAddresses[11][6] = 0xBB; tempDeviceAddresses[11][7] = 0x2D;
+
+  // Sensor 13: 28A84B4800000086
+  tempDeviceAddresses[12][0] = 0x28; tempDeviceAddresses[12][1] = 0xA8; tempDeviceAddresses[12][2] = 0x4B; tempDeviceAddresses[12][3] = 0x48;
+  tempDeviceAddresses[12][4] = 0x00; tempDeviceAddresses[12][5] = 0x00; tempDeviceAddresses[12][6] = 0x00; tempDeviceAddresses[12][7] = 0x86;
   
-  // Sensor 5: 28616434C20D6890
-  tempDeviceAddresses[4][0] = 0x28; tempDeviceAddresses[4][1] = 0x61; tempDeviceAddresses[4][2] = 0x64; tempDeviceAddresses[4][3] = 0x34;
-  tempDeviceAddresses[4][4] = 0xC2; tempDeviceAddresses[4][5] = 0x0D; tempDeviceAddresses[4][6] = 0x68; tempDeviceAddresses[4][7] = 0x90;
-  
-  // Sensor 6: 28D47F4A000000FF
-  tempDeviceAddresses[5][0] = 0x28; tempDeviceAddresses[5][1] = 0xD4; tempDeviceAddresses[5][2] = 0x7F; tempDeviceAddresses[5][3] = 0x4A;
-  tempDeviceAddresses[5][4] = 0x00; tempDeviceAddresses[5][5] = 0x00; tempDeviceAddresses[5][6] = 0x00; tempDeviceAddresses[5][7] = 0xFF;
+  // Sensor 14: 28F9624800000094
+  tempDeviceAddresses[13][0] = 0x28; tempDeviceAddresses[13][1] = 0xF9; tempDeviceAddresses[13][2] = 0x62; tempDeviceAddresses[13][3] = 0x48;
+  tempDeviceAddresses[13][4] = 0x00; tempDeviceAddresses[13][5] = 0x00; tempDeviceAddresses[13][6] = 0x00; tempDeviceAddresses[13][7] = 0x94;
 
-  // Sensor 7: 2874984A00000028
-  tempDeviceAddresses[6][0] = 0x28; tempDeviceAddresses[6][1] = 0x74; tempDeviceAddresses[6][2] = 0x98; tempDeviceAddresses[6][3] = 0x4A;
-  tempDeviceAddresses[6][4] = 0x00; tempDeviceAddresses[6][5] = 0x00; tempDeviceAddresses[6][6] = 0x00; tempDeviceAddresses[6][7] = 0x28;
-
-  // Sensor 8: 283CD648000000B0
-  tempDeviceAddresses[7][0] = 0x28; tempDeviceAddresses[7][1] = 0x3C; tempDeviceAddresses[7][2] = 0xD6; tempDeviceAddresses[7][3] = 0x48;
-  tempDeviceAddresses[7][4] = 0x00; tempDeviceAddresses[7][5] = 0x00; tempDeviceAddresses[7][6] = 0x00; tempDeviceAddresses[7][7] = 0xB0;
-
-  // Sensor 9: 28DA8A4A00000098
-  tempDeviceAddresses[8][0] = 0x28; tempDeviceAddresses[8][1] = 0xDA; tempDeviceAddresses[8][2] = 0x8A; tempDeviceAddresses[8][3] = 0x4A;
-  tempDeviceAddresses[8][4] = 0x00; tempDeviceAddresses[8][5] = 0x00; tempDeviceAddresses[8][6] = 0x00; tempDeviceAddresses[8][7] = 0x98;
-
-  // Sensor 10: 2879F54800000098
-  tempDeviceAddresses[9][0] = 0x28; tempDeviceAddresses[9][1] = 0x79; tempDeviceAddresses[9][2] = 0xF5; tempDeviceAddresses[9][3] = 0x48;
-  tempDeviceAddresses[9][4] = 0x00; tempDeviceAddresses[9][5] = 0x00; tempDeviceAddresses[9][6] = 0x00; tempDeviceAddresses[9][7] = 0x98;
-
-  // Sensor 11: 28F5874A000000E6
-  tempDeviceAddresses[10][0] = 0x28; tempDeviceAddresses[10][1] = 0xF5; tempDeviceAddresses[10][2] = 0x87; tempDeviceAddresses[10][3] = 0x4A;
-  tempDeviceAddresses[10][4] = 0x00; tempDeviceAddresses[10][5] = 0x00; tempDeviceAddresses[10][6] = 0x00; tempDeviceAddresses[10][7] = 0xE6;
-
-  // Sensor 12: 28037F4A000000BE
-  tempDeviceAddresses[11][0] = 0x28; tempDeviceAddresses[11][1] = 0x03; tempDeviceAddresses[11][2] = 0x7F; tempDeviceAddresses[11][3] = 0x4A;
-  tempDeviceAddresses[11][4] = 0x00; tempDeviceAddresses[11][5] = 0x00; tempDeviceAddresses[11][6] = 0x00; tempDeviceAddresses[11][7] = 0xBE;
 
 
   // Print sensor addresses for verification
@@ -350,6 +359,7 @@ void loop() {
 
 void updateTemperatures() {
   sensors.requestTemperatures();
+  //delay(250);  // Small delay for Conversion to settle... already handled in setWaitForConversion... need to try with different pull up resistor
 
   for (int i = 0; i < NUM_SENSORS; i++) {
     float temp = sensors.getTempC(tempDeviceAddresses[i]);
@@ -460,10 +470,10 @@ float calculateFlowRate(float voltage, FlowSensorCoefficients coeffs) {
 
 void updateControl() {
   // Simple PID control for hot plates
-  // With 5 sensors, use sensor 0 for hot plate 0 and sensor 4 for hot plate 1
+  // Use surface sensors: sensor 13 (index 12) for hot plate 0, sensor 14 (index 13) for hot plate 1
 
   for (int i = 0; i < NUM_HOT_PLATES; i++) {      
-    int controlSensor = i == 0 ? 0 : 4;      
+    int controlSensor = i == 0 ? 12 : 13;  // Use surface sensors 13 and 14
     float error = targetTemperatures[i] - currentTemperatures[controlSensor];
     
     // Apply safety limits (always active, even in manual mode)
@@ -472,7 +482,11 @@ void updateControl() {
       hotPlateStates[i] = false;
       Serial.print("SAFETY: Hot plate ");
       Serial.print(i + 1);
-      Serial.println(" turned off due to over-temperature");
+      Serial.print(" turned off due to over-temperature (surface sensor ");
+      Serial.print(controlSensor + 1);
+      Serial.print(": ");
+      Serial.print(currentTemperatures[controlSensor]);
+      Serial.println("°C)");
     } 
     else if (manualHotPlateControl[i]) {
       // Manual control mode - respect manual toggle state

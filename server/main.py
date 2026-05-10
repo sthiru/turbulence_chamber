@@ -37,6 +37,7 @@ from camera_acquisition import (
     diagnose_camera_connection, get_camera_instance
 )
 from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status
+from cn2.cn2_thermal import calculate_cn2
 from calibration.calibration_agent import CalibrationAgent
 from calibration.models import CalibrationRequest, CalibrationControl
 
@@ -236,70 +237,6 @@ video_streaming_task = None
 last_broadcast_time = 0
 historical_data_sent = False  # Track if full historical data has been sent
 
-# CN² calculation function
-def calculate_cn2(temperatures, bme_temperatures, bme_pressure, r=0.5):
-    """
-    Calculate CN² (structure function parameter) for turbulence
-    
-    Formula: (7.9*10^-5 * (P/T^2))*((dt^2)/r^(2/3))
-    
-    Args:
-        temperatures: List of temperature readings from DS18B20 sensors
-        bme_temperatures: List of temperature readings from BME280 sensors
-        pressure: Pressure in hPa (default 1010 hPa)
-        r: Radial distance (default 0.5)
-    
-    Returns:
-        CN² value
-    """
-    try:
-        # Get the minimum temperature from BME280 sensors (ambient temperature)
-        if(len(bme_temperatures) > 0):
-            ambient_temp = min(bme_temperatures)
-            ambient_temp = ambient_temp if ambient_temp > 0.0 else max(bme_temperatures)
-        else:
-            ambient_temp = 25.0  # Default to room temperature
-
-        # Get the minimum peressure from BME senesor
-        if(len(bme_pressure) > 0):
-            pressure = min(bme_pressure)
-            pressure = pressure if pressure > 0.0 else max(bme_pressure)
-        else:
-            pressure = 1010.0  # Default to standard pressure
-        
-        if ambient_temp <= 0:
-            logger.warning(f"Invalid ambient temperature for CN²: {ambient_temp}")
-            ambient_temp = 25.0  # Default to room temperature
-        
-        if pressure <= 0:
-            logger.warning(f"Invalid pressure for CN²: {pressure}")
-            pressure = 1010.0  # Default to standard pressure
-
-        ambient_temp_kelvin = ambient_temp + 273.15
-        
-        # Calculate dt^2 (difference between min and max temperatures)
-        if not temperatures or len(temperatures) < 2:
-            return 0.0
-        
-        valid_temps = [temp for temp in temperatures if temp > -100]  # Filter out error values
-        if len(valid_temps) < 2:
-            return 0.0
-        
-        temp_min = min(valid_temps)
-        temp_max = max(valid_temps)
-        dt_squared = (temp_max - temp_min) ** 2
-        
-        # Calculate CN² using the formula
-        cn2 = (7.9e-5 * (pressure / (ambient_temp_kelvin ** 2)))**2 * (dt_squared / (r ** (2/3)))
-        
-        logger.debug(f"CN² calculation: P={pressure}hPa, T={ambient_temp}°C, dt²={dt_squared:.2f}, CN²={cn2:.2e}")
-        
-        return cn2
-        
-    except Exception as e:
-        logger.error(f"Error calculating CN²: {e}")
-        return 0.0
-
 # Background polling task
 async def background_status_polling():
     """Background task to poll Arduino for status and broadcast to WebSocket clients"""
@@ -395,7 +332,7 @@ async def background_status_polling():
                             "temperature_dht": status_data.get("temperature_dht", []),
                             "humidity": status_data.get("humidity", []),
                             "flow_rates": status_data.get("flow_rates", []),
-                            "cn2": status_data.get("cn2", 0.0),
+                            "cn2": status_data.get("cn2", []),
                             "cn2_optical": status_data.get("cn2_optical"),
                             "cn2_status": status_data.get("cn2_status"),
                             "camera_image": status_data.get("camera_image"),
@@ -1232,7 +1169,7 @@ async def download_captured_data():
         # Write header
         header = [
             'timestamp', 'session_id',
-            'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5','temp_sensor_6', 'temp_sensor_7', 'temp_sensor_8', 'temp_sensor_9', 'temp_sensor_10','temp_sensor_11','temp_sensor_12',
+            'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5','temp_sensor_6', 'temp_sensor_7', 'temp_sensor_8', 'temp_sensor_9', 'temp_sensor_10','temp_sensor_11','temp_sensor_12','temp_sensor_13','temp_sensor_14',
             'bmp_temp_1', 'bmp_temp_2',
             'dht_temp_1', 'dht_temp_2',
             'target_temp_1', 'target_temp_2',
@@ -1443,7 +1380,7 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
             "hot_plate_1", "hot_plate_2",
             "bme_temp_1", "bme_temp_2", "bme_temp_3", "bme_temp_4",
             "bme_pressure_1", "bme_pressure_2", "bme_pressure_3", "bme_pressure_4",
-            "error"
+            "cn2_thermal", "cn2_optical", "error"
         ])
         return output.getvalue(), filename_prefix
     
@@ -1458,7 +1395,7 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
         "hot_plate_1", "hot_plate_2",
         "bme_temp_1", "bme_temp_2", "bme_temp_3", "bme_temp_4",
         "bme_pressure_1", "bme_pressure_2", "bme_pressure_3", "bme_pressure_4",
-        "error"
+        "cn2_thermal", "cn2_optical", "error"
     ])
     
     # Write data rows
@@ -1499,6 +1436,19 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
         bme_pressure = record.get("pressure", [])
         for i in range(4):
             row.append(bme_pressure[i] if i < len(bme_pressure) else "")
+        
+        # CN² thermal (semicolon-separated values)
+        cn2_thermal = record.get("cn2", [])
+        if cn2_thermal and isinstance(cn2_thermal, list):
+            # Convert array to semicolon-separated string
+            cn2_thermal_str = ";".join(str(val) for val in cn2_thermal)
+        else:
+            cn2_thermal_str = str(cn2_thermal) if cn2_thermal else ""
+        row.append(cn2_thermal_str)
+        
+        # CN² optical
+        cn2_optical = record.get("cn2_optical")
+        row.append(str(cn2_optical) if cn2_optical is not None else "")
         
         # Error message
         row.append(record.get("error", ""))

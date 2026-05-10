@@ -153,7 +153,9 @@
     <!-- Hot Plate 1 (in front of F1 - Outside) -->
     <rect id="hotplate1" x="460" y="85" width="60" height="45" rx="5"
           fill="#c0c0c0" stroke="#333" stroke-width="2"/>
-    <text x="490" y="112" text-anchor="middle" font-size="12" fill="#333">H1</text>
+    <text x="490" y="102" text-anchor="middle" font-size="10" fill="#333">H1</text>
+    <!-- Surface Temperature Display -->
+    <text id="hotplate1-temp" x="490" y="120" text-anchor="middle" font-size="14" fill="#000000" font-weight="bold">--°C</text>
     
     <!-- Hot Plate 1 Control -->
     <g id="hotplate1-controls" transform="translate(380, 95)">
@@ -252,7 +254,9 @@
     <!-- Hot Plate 2 (in front of F2 - Outside) -->
     <rect id="hotplate2" x="680" y="85" width="60" height="45" rx="5"
           fill="#c0c0c0" stroke="#333" stroke-width="2"/>
-    <text x="710" y="112" text-anchor="middle" font-size="12" fill="#333">H2</text>
+    <text x="710" y="102" text-anchor="middle" font-size="10" fill="#333">H2</text>
+    <!-- Surface Temperature Display -->
+    <text id="hotplate2-temp" x="710" y="120" text-anchor="middle" font-size="14" fill="#000000" font-weight="bold">--°C</text>
 
     <!-- Hot Plate 2 Control -->
     <g id="hotplate2-controls" transform="translate(760, 95)">
@@ -265,17 +269,17 @@
     </g>   
     
     <!-- Temperature Sensors - 4 Columns (1, 5, 5, 1) -->
-    <!-- Column 1: 1 sensor (T1) - close to laser path on left -->
-    <g id="sensor1" transform="translate(375, 305)">
+    <!-- Column 1: 1 sensor (T11) - close to laser path on left -->
+    <g id="sensor11" transform="translate(375, 305)">
         <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T1</text>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T11</text>
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp1">--°C</text>
     </g>
 
-    <!-- Column 2: 5 sensors (T2, T3, T4, T5, T6) - equal separation -->
-    <g id="sensor2" transform="translate(490, 200)">
+    <!-- Column 2: 5 sensors (T1, T2, T3, T4, T5) - equal separation -->
+    <g id="sensor1" transform="translate(490, 200)">
         <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T2</text>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T1</text>
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp2">--°C</text>
     </g>
 
@@ -285,28 +289,28 @@
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp3">--°C</text>
     </g>
 
-    <g id="sensor4" transform="translate(490, 334)">
+    <g id="sensor5" transform="translate(490, 334)">
         <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T4</text>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T5</text>
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp4">--°C</text>
     </g>
 
-    <g id="sensor5" transform="translate(490, 401)">
+    <g id="sensor4" transform="translate(490, 401)">
         <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T5</text>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T4</text>
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp5">--°C</text>
     </g>
 
-    <g id="sensor6" transform="translate(490, 468)">
+    <g id="sensor2" transform="translate(490, 468)">
         <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T6</text>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T2</text>
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp6">--°C</text>
     </g>
 
-    <!-- Column 3: 5 sensors (T7, T8, T9, T10, T11) - equal separation -->
-    <g id="sensor7" transform="translate(710, 200)">
+    <!-- Column 3: 5 sensors (T6, T7, T8, T9, T10) - equal separation -->
+    <g id="sensor6" transform="translate(710, 200)">
         <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T7</text>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T6</text>
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp7">--°C</text>
     </g>
 
@@ -316,51 +320,51 @@
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp8">--°C</text>
     </g>
 
-    <g id="sensor9" transform="translate(710, 334)">
+    <g id="sensor10" transform="translate(710, 334)">
         <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T9</text>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T10</text>
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp9">--°C</text>
     </g>
 
-    <g id="sensor10" transform="translate(710, 401)">
+    <g id="sensor9" transform="translate(710, 401)">
         <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T10</text>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T9</text>
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp10">--°C</text>
     </g>
 
-    <g id="sensor11" transform="translate(710, 468)">
+    <g id="sensor7" transform="translate(710, 468)">
         <circle cx="0" cy="0" r="10" class="sensor-circle sensor-normal" stroke="#333" stroke-width="2"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T11</text>
+        <text x="0" y="4" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">T7</text>
         <text x="0" y="-20" text-anchor="middle" class="temperature-display" id="temp11">--°C</text>
     </g>
 
     <!-- Windflow Sensors -->
     <!-- WF1 near T3 (along air flow from Fan 1) -->
-    <g id="windflow1" transform="translate(520, 235)">
+    <g id="windflow1" transform="translate(540, 235)">
         <circle cx="0" cy="0" r="10" fill="#ff9800" stroke="#333" stroke-width="2"/>
         <text x="0" y="4" text-anchor="middle" font-size="9" fill="#fff" font-weight="bold">WF1</text>
-        <text x="0" y="-18" text-anchor="middle" font-size="8" fill="#666" id="flow1">-- m/s</text>
+        <text x="0" y="-18" text-anchor="middle" font-size="10" fill="#666" font-weight="bold" id="flow1">-- m/s</text>
     </g>
 
     <!-- WF2 near T4 (along air flow from Fan 3) -->
-    <g id="windflow2" transform="translate(520, 405)">
+    <g id="windflow2" transform="translate(540, 405)">
         <circle cx="0" cy="0" r="10" fill="#ff9800" stroke="#333" stroke-width="2"/>
         <text x="0" y="4" text-anchor="middle" font-size="9" fill="#fff" font-weight="bold">WF2</text>
-        <text x="0" y="-18" text-anchor="middle" font-size="8" fill="#666" id="flow2">-- m/s</text>
+        <text x="0" y="-18" text-anchor="middle" font-size="10" fill="#666" font-weight="bold" id="flow2">-- m/s</text>
     </g>
 
     <!-- WF3 near T7 (along air flow from Fan 2) -->
-    <g id="windflow3" transform="translate(680, 235)">
+    <g id="windflow3" transform="translate(660, 235)">
         <circle cx="0" cy="0" r="10" fill="#ff9800" stroke="#333" stroke-width="2"/>
         <text x="0" y="4" text-anchor="middle" font-size="9" fill="#fff" font-weight="bold">WF3</text>
-        <text x="0" y="-18" text-anchor="middle" font-size="8" fill="#666" id="flow3">-- m/s</text>
+        <text x="0" y="-18" text-anchor="middle" font-size="10" fill="#666" font-weight="bold" id="flow3">-- m/s</text>
     </g>
 
     <!-- WF4 near T8 (along air flow from Fan 4) -->
-    <g id="windflow4" transform="translate(680, 405)">
+    <g id="windflow4" transform="translate(660, 405)">
         <circle cx="0" cy="0" r="10" fill="#ff9800" stroke="#333" stroke-width="2"/>
         <text x="0" y="4" text-anchor="middle" font-size="9" fill="#fff" font-weight="bold">WF4</text>
-        <text x="0" y="-18" text-anchor="middle" font-size="8" fill="#666" id="flow4">-- m/s</text>
+        <text x="0" y="-18" text-anchor="middle" font-size="10" fill="#666" font-weight="bold" id="flow4">-- m/s</text>
     </g>
 
     <!-- Column 4: 1 sensor (T12) - close to laser path on right -->
@@ -379,32 +383,32 @@
     
     <!-- Air flow indicators (temperature-based colors) -->
     <!-- 5 arrows from Fan 1 (hot air - red) -->
-    <path d="M 490,70 L 490,140" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 500,65 L 500,150" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 490,70 L 550,300" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 480,65 L 480,150" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 490,75 L 490,160" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <!-- <path d="M 490,70 L 490,140" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <path d="M 500,65 L 500,150" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/> -->
+    <path d="M 490,70 L 550,325" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <!-- <path d="M 480,65 L 480,150" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <path d="M 490,75 L 490,160" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/> -->
 
     <!-- 5 arrows from Fan 3 (cold air - blue) -->
-    <path d="M 490,515 L 490,460" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 500,520 L 500,480" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <!-- <path d="M 490,515 L 490,460" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <path d="M 500,520 L 500,480" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/> -->
     <path d="M 490,515 L 550,325" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 480,520 L 480,480" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 490,510 L 490,470" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <!-- <path d="M 480,520 L 480,480" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <path d="M 490,510 L 490,470" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/> -->
 
     <!-- 5 arrows from Fan 2 (hot air - red) -->
-    <path d="M 710,70 L 710,140" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 700,65 L 700,150" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <!-- <path d="M 710,70 L 710,140" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <path d="M 700,65 L 700,150" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/> -->
     <path d="M 710,70 L 650,325" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 720,65 L 720,150" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 710,75 L 710,160" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <!-- <path d="M 720,65 L 720,150" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <path d="M 710,75 L 710,160" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/> -->
 
     <!-- 5 arrows from Fan 4 (cold air - blue) -->
-    <path d="M 710,515 L 710,460" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 700,520 L 700,480" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <!-- <path d="M 710,515 L 710,460" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <path d="M 700,520 L 700,480" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/> -->
     <path d="M 710,515 L 650,325" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 720,520 L 720,480" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
-    <path d="M 710,510 L 710,470" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <!-- <path d="M 720,520 L 720,480" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/>
+    <path d="M 710,510 L 710,470" stroke="#2196f3" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.6"/> -->
     
     <!-- Optical Measurement System -->
     <!-- Laser Source (left side) -->

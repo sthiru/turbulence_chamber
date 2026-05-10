@@ -204,6 +204,33 @@ body {
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
 }
 
+/* Fixed Bottom Control Bar Styling */
+.fixed-bottom {
+    z-index: 999 !important;
+    background: rgba(248, 249, 250, 0.95) !important;
+    backdrop-filter: blur(10px) !important;
+    border-top: 2px solid #dee2e6 !important;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+.fixed-bottom .btn {
+    font-weight: 500;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.fixed-bottom .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.fixed-bottom .badge {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.625rem;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
 .connected {
     background: #51cf66;
     color: white;

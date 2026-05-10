@@ -3,6 +3,12 @@
 let ws = null;
 let reconnectInterval = null;
 
+// Data capture variables
+let isCapturing = false;
+let capturedData = [];
+let currentSessionId = null;
+let userActionInProgress = false; // Prevent status check from overriding user actions
+
 // Configuration
 const CONFIG = {
     WS_URL: `ws://${window.location.host}/ws/status`,
@@ -99,7 +105,11 @@ function handleWebSocketMessage(data) {
         const latestData = dataArray[dataArray.length - 1];
         
         if (latestData) {
-            updateSensorData(latestData);
+            try {
+                updateSensorData(latestData);
+            } catch (error) {
+                console.error('Error in updateSensorData:', error);
+            }
             
             // Capture data point if data capture is active
             captureDataPoint(latestData);
@@ -130,18 +140,6 @@ function updateSystemStatus(data) {
     
     // Update connection status to show system ready state
     updateSystemReadyStatus(data.system_ready);
-}
-
-// Update system ready status display
-function updateSystemReadyStatus(systemReady) {
-    const statusElement = document.getElementById('connectionStatus');
-    if (systemReady) {
-        statusElement.className = 'connection-status connected';
-        statusElement.innerHTML = '<i class="fas fa-check-circle"></i> System Ready';
-    } else {
-        statusElement.className = 'connection-status disconnected';
-        statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> System Not Ready';
-    }
 }
 
 // Update sensor data
@@ -181,17 +179,41 @@ function updateSensorData(data) {
             const circle = sensorElement.querySelector('circle');
             if (circle) {
                 circle.classList.remove('sensor-normal', 'sensor-warning', 'sensor-danger');
-
-                if (temp >= CONFIG.DANGER_TEMP) {
-                    circle.classList.add('sensor-danger');
-                } else if (temp >= CONFIG.WARNING_TEMP) {
+                
+                if (temp < 20) {
+                    circle.classList.add('sensor-normal');
+                } else if (temp < 30) {
                     circle.classList.add('sensor-warning');
                 } else {
-                    circle.classList.add('sensor-normal');
+                    circle.classList.add('sensor-danger');
                 }
             }
         }
     });
+
+    // Update hotplate surface temperatures (sensors 13 and 14)
+    const hotplate1TempElement = svgDoc.getElementById('hotplate1-temp');
+    const hotplate2TempElement = svgDoc.getElementById('hotplate2-temp');
+    
+    // Sensor 13 (index 12) for Hotplate 1
+    if (temperatures.length > 12 && hotplate1TempElement) {
+        const temp13 = temperatures[12];
+        if (temp13 < -100) {
+            hotplate1TempElement.textContent = '--°C';
+        } else {
+            hotplate1TempElement.textContent = temp13.toFixed(1) + '°C';
+        }
+    }
+    
+    // Sensor 14 (index 13) for Hotplate 2  
+    if (temperatures.length > 13 && hotplate2TempElement) {
+        const temp14 = temperatures[13];
+        if (temp14 < -100) {
+            hotplate2TempElement.textContent = '--°C';
+        } else {
+            hotplate2TempElement.textContent = temp14.toFixed(1) + '°C';
+        }
+    }
 
     // Update ambient temperature and humidity (from DHT sensor)
     const ambientTemps = data.temperature_dht || [];
@@ -218,7 +240,9 @@ function updateSensorData(data) {
     }
     
     // Update hot plates
-    const hotPlateStates = data[0].hot_plate_states || [];
+    const dataArray = Array.isArray(data) ? data : [data];
+    const firstDataItem = dataArray[0];
+    const hotPlateStates = (firstDataItem && firstDataItem.hot_plate_states) ? firstDataItem.hot_plate_states : [];
     hotPlateStates.forEach((state, index) => {
         const hotplateElement = svgDoc.getElementById(`hotplate${index + 1}`);
         const switchKnob = svgDoc.getElementById(`hotplate${index + 1}-switch-knob`);
@@ -252,7 +276,7 @@ function updateSensorData(data) {
     });
     
     // Update fans
-    const fanSpeeds = data[0].fan_speeds || [];
+    const fanSpeeds = (firstDataItem && firstDataItem.fan_speeds) ? firstDataItem.fan_speeds : [];
     fanSpeeds.forEach((speed, index) => {
         const fanElement = svgDoc.getElementById(`fan${index + 1}`);
         const sliderKnob = svgDoc.getElementById(`fan${index + 1}-slider-knob`);
@@ -313,7 +337,9 @@ function updateSensorData(data) {
     
     // Update CN²
     if (data.cn2 !== undefined && data.cn2 !== null) {
-        const cn2Value = data.cn2.toExponential(2);
+        // Take the first value from the CN² array for display
+        const cn2Array = Array.isArray(data.cn2) ? data.cn2 : [data.cn2];
+        const cn2Value = cn2Array[0].toExponential(2);
         const cn2ValueElement = document.getElementById('cn2Value');
         if (cn2ValueElement) {
             cn2ValueElement.textContent = cn2Value;
@@ -327,7 +353,7 @@ function updateSensorData(data) {
     }
 
     // Update windflow sensors
-    const flowRates = data.flow_rates || [];
+    const flowRates = (firstDataItem && firstDataItem.flow_rates) ? firstDataItem.flow_rates : [];
     flowRates.forEach((flow, index) => {
         const flowElement = svgDoc.getElementById(`flow${index + 1}`);
         if (flowElement) {
@@ -339,6 +365,7 @@ function updateSensorData(data) {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     initWebSocket();
+    initDataCapture();
     
     // Wait for SVG to load before initializing controls
     const svgObject = document.querySelector('object[data="/static/main.svg"]');
@@ -354,15 +381,7 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         console.error('SVG object not found');
     }
-    
-    // Initialize data capture functionality
-    initDataCapture();
 });
-
-// Data Capture System
-let capturedData = [];
-let isCapturing = false;
-let currentSessionId = null;
 
 function initDataCapture() {
     const startBtn = document.getElementById('startCaptureBtn');
@@ -387,6 +406,11 @@ function initDataCapture() {
 }
 
 async function checkCaptureStatus() {
+    // Don't override user actions
+    if (userActionInProgress) {
+        return;
+    }
+    
     try {
         const response = await fetch('/api/data-capture/status');
         const status = await response.json();
@@ -395,6 +419,9 @@ async function checkCaptureStatus() {
             isCapturing = true;
             currentSessionId = status.session?.id;
             updateCaptureUI(true);
+        } else {
+            isCapturing = false;
+            updateCaptureUI(false);
         }
     } catch (e) {
         console.error('Error checking capture status:', e);
@@ -402,6 +429,8 @@ async function checkCaptureStatus() {
 }
 
 async function startDataCapture() {
+    userActionInProgress = true; // Prevent status check interference
+    
     try {
         const response = await fetch('/api/data-capture', {
             method: 'POST',
@@ -432,10 +461,17 @@ async function startDataCapture() {
     } catch (e) {
         console.error('Error starting data capture:', e);
         showNotification('Error starting data capture', 'error');
+    } finally {
+        // Allow status checks after a delay
+        setTimeout(() => {
+            userActionInProgress = false;
+        }, 2000);
     }
 }
 
 async function stopDataCapture() {
+    userActionInProgress = true; // Prevent status check interference
+    
     try {
         const response = await fetch('/api/data-capture', {
             method: 'POST',
@@ -446,14 +482,14 @@ async function stopDataCapture() {
                 start: false
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.status === 'success') {
             isCapturing = false;
-            
+
             updateCaptureUI(false);
-            
+
             // Show notification with session info
             showNotification(`Data capture stopped. ${result.session_info.total_data_points} data points captured.`, 'info');
         } else {
@@ -463,6 +499,11 @@ async function stopDataCapture() {
     } catch (e) {
         console.error('Error stopping data capture:', e);
         showNotification('Error stopping data capture', 'error');
+    } finally {
+        // Allow status checks after a delay
+        setTimeout(() => {
+            userActionInProgress = false;
+        }, 2000);
     }
 }
 
@@ -515,6 +556,7 @@ function captureDataPoint(data) {
 
 function updateDataCounter() {
     const dataCounter = document.getElementById('dataCounter');
+    
     if (dataCounter) {
         dataCounter.textContent = capturedData.length;
         
