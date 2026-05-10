@@ -215,8 +215,8 @@ function updateSensorData(data) {
         }
     }
 
-    // Update ambient temperature and humidity (from DHT sensor)
-    const ambientTemps = data.temperature_dht || [];
+    // Update ambient temperature and humidity (from BMP sensor)
+    const ambientTemps = data.temperature_bmp || [];
     const humidities = data.humidity || [];
 
     if (ambientTemps.length > 0 && ambientTemps[0] >= -100) {
