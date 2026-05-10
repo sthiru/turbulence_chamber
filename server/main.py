@@ -231,7 +231,7 @@ def capture_and_save_image(capture_folder: str) -> Optional[str]:
         return None
 
 # Global variables for background polling
-polling_interval = 3.0  # Default polling interval in seconds
+polling_interval = 1.0  # Default polling interval in seconds
 background_task = None
 video_streaming_task = None
 last_broadcast_time = 0
