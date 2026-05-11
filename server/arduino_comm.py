@@ -137,19 +137,68 @@ class ArduinoCommunicator:
                 if response_line:
                     try:
                         response_data = json.loads(response_line)
+                        
+                        # Check if this is an Arduino error message (has type field)
+                        if isinstance(response_data, dict) and 'type' in response_data:
+                            if response_data['type'] == 'error':
+                                # Arduino sensor error - log it but don't disconnect
+                                logger.warning(f"Arduino sensor error: {response_data}")
+                                return ArduinoResponse(
+                                    status="error",
+                                    msg=f"Arduino error: {response_data.get('message', 'Unknown error')}"
+                                )
+                            elif response_data['type'] == 'safety':
+                                # Arduino safety event - log it but don't disconnect
+                                logger.warning(f"Arduino safety event: {response_data}")
+                                return ArduinoResponse(
+                                    status="ok",  # Safety events are not errors, they're notifications
+                                    msg=f"Safety event: {response_data.get('event', 'Unknown event')}"
+                                )
+                            elif response_data['type'] == 'info':
+                                # Arduino info message - log it but don't disconnect
+                                logger.info(f"Arduino info: {response_data}")
+                                # Return ok status for info messages (they're not errors)
+                                return ArduinoResponse(
+                                    status="ok",
+                                    msg=f"Info: {response_data.get('message', 'Info message')}"
+                                )
+                        
+                        # Try to parse as ArduinoResponse
                         return ArduinoResponse(**response_data)
                     except json.JSONDecodeError as e:
                         logger.error(f"JSON decode error: {e}")
                         logger.error(f"Raw response: '{response_line}'")
                         
-                        # Try reading additional lines to find valid JSON (up to 5 attempts)
+                        # Try reading additional lines to find valid JSON (up to 3 attempts)
                         for attempt in range(3):
-                            logger.warning(f"JSON decode attempt {attempt + 1}/5, trying to read next line...")
+                            logger.warning(f"JSON decode attempt {attempt + 1}/3, trying to read next line...")
                             next_line = await self._read_line(timeout=2.0)
                             if next_line:
                                 logger.info(f"Read next line: '{next_line}'")
                                 try:
                                     response_data = json.loads(next_line)
+                                    
+                                    # Check if this is an Arduino error message
+                                    if isinstance(response_data, dict) and 'type' in response_data:
+                                        if response_data['type'] == 'error':
+                                            logger.warning(f"Arduino sensor error: {response_data}")
+                                            return ArduinoResponse(
+                                                status="error",
+                                                msg=f"Arduino error: {response_data.get('message', 'Unknown error')}"
+                                            )
+                                        elif response_data['type'] == 'safety':
+                                            logger.warning(f"Arduino safety event: {response_data}")
+                                            return ArduinoResponse(
+                                                status="ok",
+                                                msg=f"Safety event: {response_data.get('event', 'Unknown event')}"
+                                            )
+                                        elif response_data['type'] == 'info':
+                                            logger.info(f"Arduino info: {response_data}")
+                                            return ArduinoResponse(
+                                                status="ok",
+                                                msg=f"Info: {response_data.get('message', 'Info message')}"
+                                            )
+                                    
                                     logger.info(f"Successfully parsed JSON on attempt {attempt + 1}")
                                     return ArduinoResponse(**response_data)
                                 except json.JSONDecodeError:

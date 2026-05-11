@@ -86,12 +86,20 @@ class CalibrationSession(BaseModel):
     total_speed_steps: int = 0  # Total number of speed levels across all fans
     current_speed_step: int = 0  # Current speed level being calibrated
     
+    # Data point tracking
+    total_data_points: int = 0  # Total number of data points to be captured
+    captured_data_points: int = 0  # Number of data points actually captured
+    
     # Metadata
     notes: Optional[str] = None
     error_message: Optional[str] = None
     
     def get_progress(self) -> float:
         """Get calibration progress as percentage"""
+        # Use data point tracking if available
+        if self.total_data_points > 0:
+            return (self.captured_data_points / self.total_data_points) * 100
+        # Fallback to step-based progress
         if self.total_steps == 0:
             return 0.0
         return (self.current_step / self.total_steps) * 100

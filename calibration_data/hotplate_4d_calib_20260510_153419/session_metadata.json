@@ -1,14 +1,19 @@
 {
-  "session_id": "windflow_calib_20260510_173527",
-  "start_time": "2026-05-10T17:35:27.715844",
+  "session_id": "hotplate_4d_calib_20260510_153419",
+  "start_time": "2026-05-10T15:34:19.338356",
   "end_time": null,
   "status": "running",
-  "total_steps": 49,
+  "total_steps": 3,
   "current_step": 0,
   "config": {
-    "fan_speed_step": 5,
-    "settling_time_ms": 100,
-    "num_samples": 3
+    "temp_min": 80.0,
+    "temp_max": 90.0,
+    "temp_step": 5.0,
+    "fan_speeds": [
+      255
+    ],
+    "recording_duration": 300,
+    "sampling_interval": 5
   },
   "steps": [],
   "lookup_table": null,
@@ -18,10 +23,10 @@
   "phase": null,
   "phase_details": null,
   "current_flow_rates": [],
-  "total_speed_steps": 196,
+  "total_speed_steps": 3,
   "current_speed_step": 0,
   "total_data_points": 0,
   "captured_data_points": 0,
-  "notes": "Fan-to-Windflow calibration with 5 PWM step (parallel execution)",
+  "notes": "4D calibration: 1 fan speeds \u00d7 3 temperature steps",
   "error_message": null
 }

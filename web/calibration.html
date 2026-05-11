@@ -1188,8 +1188,16 @@
                         if (isHotplateCalibration) {
                             // Update hot plate calibration display
                             document.getElementById('hotplateSessionId').textContent = session.session_id || '--';
-                            document.getElementById('hotplateCurrentStep').textContent = session.current_step || '0';
-                            document.getElementById('hotplateTotalSteps').textContent = session.total_steps || '0';
+                            
+                            // Show data points if available, otherwise show steps
+                            if (session.total_data_points && session.total_data_points > 0) {
+                                document.getElementById('hotplateCurrentStep').textContent = session.captured_data_points || '0';
+                                document.getElementById('hotplateTotalSteps').textContent = session.total_data_points || '0';
+                            } else {
+                                document.getElementById('hotplateCurrentStep').textContent = session.current_step || '0';
+                                document.getElementById('hotplateTotalSteps').textContent = session.total_steps || '0';
+                            }
+                            
                             document.getElementById('hotplateProgressBar').style.width = `${(data.progress || 0)}%`;
                             document.getElementById('hotplateProgressPercent').textContent = `${(data.progress || 0).toFixed(1)}%`;
                             
@@ -1235,8 +1243,16 @@
                         } else {
                             // Update windflow calibration display
                             sessionId.textContent = session.session_id;
-                            currentStep.textContent = session.current_step;
-                            totalSteps.textContent = session.total_steps;
+                            
+                            // Show data points if available, otherwise show steps
+                            if (session.total_data_points && session.total_data_points > 0) {
+                                currentStep.textContent = session.captured_data_points || '0';
+                                totalSteps.textContent = session.total_data_points || '0';
+                            } else {
+                                currentStep.textContent = session.current_step || '0';
+                                totalSteps.textContent = session.total_steps || '0';
+                            }
+                            
                             progressBar.style.width = `${(data.progress || 0)}%`;
                             progressPercent.textContent = `${(data.progress || 0).toFixed(1)}%`;
                             

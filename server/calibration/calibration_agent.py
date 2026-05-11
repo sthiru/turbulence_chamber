@@ -111,12 +111,13 @@ class CalibrationAgent:
                     self.is_paused = session_data.get("is_paused", False)
                     self.stop_requested = session_data.get("stop_requested", False)
                     
-                    # If session was running, mark it as stopped (server restart)
+                    # If session was running, mark it as paused (server restart)
                     if self.is_running:
                         self.is_running = False
-                        self.current_session.status = CalibrationStatus.FAILED
-                        self.current_session.error_message = "Server restarted during calibration"
-                        self._save_session()  # Update with stopped status
+                        self.is_paused = True
+                        self.current_session.status = CalibrationStatus.PAUSED
+                        self.current_session.error_message = "Server restarted - session paused. Can be resumed."
+                        self._save_session()  # Update with paused status
                     
                     logger.info(f"Session recovered: {self.current_session.session_id}")
             else:
@@ -260,6 +261,28 @@ class CalibrationAgent:
         except Exception as e:
             logger.error(f"Failed to read CSV headers: {e}")
             return []
+    
+    async def _capture_sensor_data(self) -> Optional[Dict]:
+        """Unified method to capture sensor data from Arduino"""
+        try:
+            response = await self.arduino_comm.get_status()
+            if response.status == "ok" and response.data:
+                return {
+                    'timestamp': datetime.now().isoformat(),
+                    'temperatures': response.data.temperatures if response.data.temperatures else [],
+                    'temperature_bmp': response.data.temperature_bmp if response.data.temperature_bmp else [],
+                    'temperature_dht': response.data.temperature_dht if response.data.temperature_dht else [],
+                    'pressure': response.data.pressure if response.data.pressure else [],
+                    'humidity': response.data.humidity if response.data.humidity else [],
+                    'flow_rates': response.data.flow_rates if response.data.flow_rates else [],
+                    'fan_speeds': response.data.fan_speeds if response.data.fan_speeds else [],
+                    'target_temperatures': response.data.target_temperatures if response.data.target_temperatures else [],
+                    'hot_plate_states': response.data.hot_plate_states if response.data.hot_plate_states else []
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error capturing sensor data: {e}")
+            return None
     
     def set_status_callback(self, callback: Callable):
         """Set callback for status updates"""
@@ -458,17 +481,17 @@ class CalibrationAgent:
             ambient_pressure = None
             ambient_humidity = None
             try:
-                response = await self.arduino_comm.get_status()
-                if response.status == "ok" and response.data:
+                sensor_data = await self._capture_sensor_data()
+                if sensor_data:
                     # Get ambient temperature from BME280 sensor
-                    if response.data.temperature_bmp and len(response.data.temperature_bmp) > 0:
-                        ambient_temp = response.data.temperature_bmp[0]
+                    if sensor_data['temperature_bmp'] and len(sensor_data['temperature_bmp']) > 0:
+                        ambient_temp = sensor_data['temperature_bmp'][0]
                     # Get pressure from BME280 sensor
-                    if response.data.pressure and len(response.data.pressure) > 0:
-                        ambient_pressure = response.data.pressure[0]
+                    if sensor_data['pressure'] and len(sensor_data['pressure']) > 0:
+                        ambient_pressure = sensor_data['pressure'][0]
                     # Get humidity from DHT22 sensor
-                    if response.data.humidity and len(response.data.humidity) > 0:
-                        ambient_humidity = response.data.humidity[0]
+                    if sensor_data['humidity'] and len(sensor_data['humidity']) > 0:
+                        ambient_humidity = sensor_data['humidity'][0]
                     logger.info(f"Ambient conditions: {ambient_temp}°C, {ambient_pressure} hPa, {ambient_humidity}% RH")
             except Exception as e:
                 logger.warning(f"Could not capture ambient conditions: {e}")
@@ -523,19 +546,19 @@ class CalibrationAgent:
                 # Record multiple readings for all sensors
                 all_flow_readings = [[] for _ in range(4)]  # Store readings for each sensor
                 sensor_temps_data = []  # Store sensor temperature data for CSV
+                response_data = None  # Store response data for CSV
                 
                 for sample_idx in range(num_samples):
-                    response = await self.arduino_comm.get_status()
-                    if response.status == "ok" and response.data:
-                        flow_rates = response.data.flow_rates
+                    sensor_data = await self._capture_sensor_data()
+                    if sensor_data:
+                        flow_rates = sensor_data['flow_rates']
                         for sensor_id in range(min(4, len(flow_rates))):
                             all_flow_readings[sensor_id].append(flow_rates[sensor_id])
                         
                         # Store sensor temperatures for CSV (only once per fan speed)
                         if sample_idx == 0:
-                            sensor_temps_data = response.data.temperatures if response.data.temperatures else []
-                    
-                    #await asyncio.sleep(0.2)
+                            sensor_temps_data = sensor_data['temperatures']
+                            response_data = sensor_data
                 
                 # Calculate averages for each sensor
                 avg_flows = []
@@ -546,9 +569,9 @@ class CalibrationAgent:
                     logger.debug(f"Sensor {sensor_id} @ {fan_speed} PWM → Flow: {avg_flow:.3f}")
                 
                 # Save data to CSV
-                if csv_filepath and sensor_temps_data:
+                if csv_filepath and sensor_temps_data and response_data:
                     csv_data = {
-                        'timestamp': datetime.now().isoformat(),
+                        'timestamp': response_data['timestamp'],
                         'step': idx + 1,
                         'fan_id': 'all',  # All fans set to same speed
                         'fan_speed': fan_speed,
@@ -570,14 +593,10 @@ class CalibrationAgent:
                         'sensor_temp_11': sensor_temps_data[11] if len(sensor_temps_data) > 11 else '',
                         'sensor_temp_12': sensor_temps_data[12] if len(sensor_temps_data) > 12 else '',
                         'sensor_temp_13': sensor_temps_data[13] if len(sensor_temps_data) > 13 else '',
-                        'pressure_bmp_0': response.data.pressure[0] if response.data.pressure and len(response.data.pressure) > 0 else '',
-                        'pressure_bmp_1': response.data.pressure[1] if response.data.pressure and len(response.data.pressure) > 1 else '',
-                        'humidity_dht_0': response.data.humidity[0] if response.data.humidity and len(response.data.humidity) > 0 else '',
-                        'humidity_dht_1': response.data.humidity[1] if response.data.humidity and len(response.data.humidity) > 1 else '',
-                        'air_flow_0': response.data.air_flow[0] if response.data.air_flow and len(response.data.air_flow) > 0 else '',
-                        'air_flow_1': response.data.air_flow[1] if response.data.air_flow and len(response.data.air_flow) > 1 else '',
-                        'air_flow_2': response.data.air_flow[2] if response.data.air_flow and len(response.data.air_flow) > 2 else '',
-                        'air_flow_3': response.data.air_flow[3] if response.data.air_flow and len(response.data.air_flow) > 3 else ''
+                        'pressure_bmp_0': response_data['pressure'][0] if response_data['pressure'] and len(response_data['pressure']) > 0 else '',
+                        'pressure_bmp_1': response_data['pressure'][1] if response_data['pressure'] and len(response_data['pressure']) > 1 else '',
+                        'humidity_dht_0': response_data['humidity'][0] if response_data['humidity'] and len(response_data['humidity']) > 0 else '',
+                        'humidity_dht_1': response_data['humidity'][1] if response_data['humidity'] and len(response_data['humidity']) > 1 else ''
                     }
                     self._append_to_csv(csv_filepath, csv_data)
                 
@@ -649,7 +668,7 @@ class CalibrationAgent:
                                        fan_speeds: List[int] = None,
                                        recording_duration: int = 900,
                                        sampling_interval: int = 10):
-        """Main hot plate 4D calibration loop - nested loops: fan speeds × temperatures"""
+        """Main hot plate calibration loop following proper stages"""
         try:
             if fan_speeds is None:
                 fan_speeds = [255, 191, 128, 64]
@@ -659,14 +678,14 @@ class CalibrationAgent:
             ambient_pressure = None
             ambient_humidity = None
             try:
-                response = await self.arduino_comm.get_status()
-                if response.status == "ok" and response.data:
-                    if response.data.temperature_bmp and len(response.data.temperature_bmp) > 0:
-                        ambient_temp = response.data.temperature_bmp[0]
-                    if response.data.pressure and len(response.data.pressure) > 0:
-                        ambient_pressure = response.data.pressure[0]
-                    if response.data.humidity and len(response.data.humidity) > 0:
-                        ambient_humidity = response.data.humidity[0]
+                sensor_data = await self._capture_sensor_data()
+                if sensor_data:
+                    if sensor_data['temperature_bmp'] and len(sensor_data['temperature_bmp']) > 0:
+                        ambient_temp = sensor_data['temperature_bmp'][0]
+                    if sensor_data['pressure'] and len(sensor_data['pressure']) > 0:
+                        ambient_pressure = sensor_data['pressure'][0]
+                    if sensor_data['humidity'] and len(sensor_data['humidity']) > 0:
+                        ambient_humidity = sensor_data['humidity'][0]
                     logger.info(f"Ambient conditions: {ambient_temp}°C, {ambient_pressure} hPa, {ambient_humidity}% RH")
             except Exception as e:
                 logger.warning(f"Could not capture ambient conditions: {e}")
@@ -695,6 +714,11 @@ class CalibrationAgent:
 
             logger.info(f"Testing {len(fan_speeds)} fan speeds × {len(temp_steps)} temperature steps")
 
+            # Calculate total data points
+            total_data_points = len(fan_speeds) * len(temp_steps) * (recording_duration // sampling_interval)
+            self.current_session.total_data_points = total_data_points
+            logger.info(f"Total data points to capture: {total_data_points}")
+
             # Initialize config
             config = CombinedCalibrationConfig(
                 temp_min=temp_min,
@@ -713,10 +737,13 @@ class CalibrationAgent:
                 if self.stop_requested:
                     break
 
-                logger.info(f"Setting all fans to {fan_speed} PWM")
+                # Stage 0: Stop all fans - set PWM to 0
+                logger.info("Stage 0: Stopping all fans...")
+                self.current_session.phase = "Stopping Fans"
+                self.current_session.phase_details = "Setting all fans to 0 PWM"
                 for fan_id in range(4):
-                    await self.arduino_comm.set_fan_speed(fan_id, fan_speed)
-                await asyncio.sleep(2)  # Wait for fans to stabilize
+                    await self.arduino_comm.set_fan_speed(fan_id, 0)
+                await asyncio.sleep(2)
 
                 for target_temp in temp_steps:
                     if self.stop_requested:
@@ -727,38 +754,45 @@ class CalibrationAgent:
                     self.current_session.current_speed_step = step_count
                     self.current_session.current_fan_speed = fan_speed
                     self.current_session.current_temperature = target_temp
-                    self.current_session.phase = "Heating"
-                    self.current_session.phase_details = f"Setting hot plates to {target_temp}°C"
 
-                    logger.info(f"Step {step_count}: Fan {fan_speed} PWM, Hot plates to {target_temp}°C")
+                    # Stage 1: Stabilize the hotplate surface temperature
+                    logger.info(f"Step {step_count}: Stage 1 - Stabilizing hotplate to {target_temp}°C")
+                    self.current_session.phase = "Stabilizing Hotplate"
+                    self.current_session.phase_details = f"Setting hot plates to {target_temp}°C"
 
                     # Set hot plate temperatures
                     for hotplate_id in [0, 1]:
                         await self.arduino_comm.set_temperature(hotplate_id, target_temp)
                         await asyncio.sleep(0.5)
 
-                    # Wait for heating
-                    logger.info("Waiting for temperature stabilization...")
-                    self.current_session.phase = "Stabilizing"
-                    self.current_session.phase_details = "Waiting for temperature to stabilize"
+                    # Wait for stabilization
+                    logger.info("Waiting for temperature stabilization (60 seconds)...")
                     await asyncio.sleep(60)
 
-                    # Record data
+                    # Stage 2: Start the fans at desired value
+                    logger.info(f"Stage 2: Starting fans at {fan_speed} PWM")
+                    self.current_session.phase = "Starting Fans"
+                    self.current_session.phase_details = f"Setting fans to {fan_speed} PWM"
+                    for fan_id in range(4):
+                        await self.arduino_comm.set_fan_speed(fan_id, fan_speed)
+                    await asyncio.sleep(2)  # Wait for fans to stabilize
+
+                    # Stage 3 & 4: Run background task and capture data
                     start_time = datetime.now()
                     end_time = start_time.timestamp() + recording_duration
 
-                    logger.info(f"Recording data for {recording_duration} seconds at {sampling_interval}s intervals")
+                    logger.info(f"Stage 3&4: Recording data for {recording_duration} seconds at {sampling_interval}s intervals")
                     self.current_session.phase = "Recording"
                     self.current_session.phase_details = f"Recording data for {recording_duration}s at {sampling_interval}s intervals"
 
                     while datetime.now().timestamp() < end_time and not self.stop_requested:
-                        response = await self.arduino_comm.get_status()
+                        sensor_data = await self._capture_sensor_data()
 
-                        if response.status == "ok" and response.data:
+                        if sensor_data:
                             timestamp = datetime.now().timestamp() - start_time.timestamp()
 
                             # Get sensor temperatures
-                            sensor_temps = response.data.temperatures if response.data.temperatures else []
+                            sensor_temps = sensor_data['temperatures']
 
                             # Update current temperature from first sensor
                             if sensor_temps and len(sensor_temps) > 0:
@@ -792,10 +826,10 @@ class CalibrationAgent:
                             )
                             all_data_points.append(data_point)
                             
-                            # Save data to CSV
+                            # Stage 5: Save data to CSV immediately for each data point
                             if csv_filepath:
                                 csv_data = {
-                                    'timestamp': datetime.now().isoformat(),
+                                    'timestamp': sensor_data['timestamp'],
                                     'step': step_count,
                                     'fan_speed': fan_speed,
                                     'target_temperature': target_temp,
@@ -813,20 +847,19 @@ class CalibrationAgent:
                                     'sensor_temp_11': sensor_temps[11] if len(sensor_temps) > 11 else '',
                                     'sensor_temp_12': sensor_temps[12] if len(sensor_temps) > 12 else '',
                                     'sensor_temp_13': sensor_temps[13] if len(sensor_temps) > 13 else '',
-                                    'pressure_bmp_0': response.data.pressure[0] if response.data.pressure and len(response.data.pressure) > 0 else '',
-                                    'pressure_bmp_1': response.data.pressure[1] if response.data.pressure and len(response.data.pressure) > 1 else '',
-                                    'humidity_dht_0': response.data.humidity[0] if response.data.humidity and len(response.data.humidity) > 0 else '',
-                                    'humidity_dht_1': response.data.humidity[1] if response.data.humidity and len(response.data.humidity) > 1 else '',
-                                    'air_flow_0': response.data.air_flow[0] if response.data.air_flow and len(response.data.air_flow) > 0 else '',
-                                    'air_flow_1': response.data.air_flow[1] if response.data.air_flow and len(response.data.air_flow) > 1 else '',
-                                    'air_flow_2': response.data.air_flow[2] if response.data.air_flow and len(response.data.air_flow) > 2 else '',
-                                    'air_flow_3': response.data.air_flow[3] if response.data.air_flow and len(response.data.air_flow) > 3 else '',
+                                    'pressure_bmp_0': sensor_data['pressure'][0] if sensor_data['pressure'] and len(sensor_data['pressure']) > 0 else '',
+                                    'pressure_bmp_1': sensor_data['pressure'][1] if sensor_data['pressure'] and len(sensor_data['pressure']) > 1 else '',
+                                    'humidity_dht_0': sensor_data['humidity'][0] if sensor_data['humidity'] and len(sensor_data['humidity']) > 0 else '',
+                                    'humidity_dht_1': sensor_data['humidity'][1] if sensor_data['humidity'] and len(sensor_data['humidity']) > 1 else '',
                                     'cn2_thermal': cn2_value,
                                     'chamber_temp_avg': chamber_temp_avg,
                                     'phase': self.current_session.phase,
                                     'phase_details': self.current_session.phase_details
                                 }
                                 self._append_to_csv(csv_filepath, csv_data)
+                                
+                                # Update captured data points counter
+                                self.current_session.captured_data_points += 1
 
                             # Notify status callback
                             if self.status_callback:
@@ -835,9 +868,6 @@ class CalibrationAgent:
                         await asyncio.sleep(sampling_interval)
 
                     logger.info(f"Completed recording for Fan {fan_speed} PWM @ {target_temp}°C")
-
-                    # Save incremental data
-                    self._save_combined_incremental_data(session_folder, all_data_points)
 
             if not self.stop_requested:
                 # Build lookup table
@@ -948,14 +978,14 @@ class CalibrationAgent:
             ambient_pressure = None
             ambient_humidity = None
             try:
-                response = await self.arduino_comm.get_status()
-                if response.status == "ok" and response.data:
-                    if response.data.temperature_bmp and len(response.data.temperature_bmp) > 0:
-                        ambient_temp = response.data.temperature_bmp[0]
-                    if response.data.pressure and len(response.data.pressure) > 0:
-                        ambient_pressure = response.data.pressure[0]
-                    if response.data.humidity and len(response.data.humidity) > 0:
-                        ambient_humidity = response.data.humidity[0]
+                sensor_data = await self._capture_sensor_data()
+                if sensor_data:
+                    if sensor_data['temperature_bmp'] and len(sensor_data['temperature_bmp']) > 0:
+                        ambient_temp = sensor_data['temperature_bmp'][0]
+                    if sensor_data['pressure'] and len(sensor_data['pressure']) > 0:
+                        ambient_pressure = sensor_data['pressure'][0]
+                    if sensor_data['humidity'] and len(sensor_data['humidity']) > 0:
+                        ambient_humidity = sensor_data['humidity'][0]
                     logger.info(f"Ambient conditions: {ambient_temp}°C, {ambient_pressure} hPa, {ambient_humidity}% RH")
             except Exception as e:
                 logger.warning(f"Could not capture ambient conditions: {e}")
@@ -1028,13 +1058,13 @@ class CalibrationAgent:
                     logger.info(f"Recording data for {recording_duration} seconds at {sampling_interval}s intervals")
 
                     while datetime.now().timestamp() < end_time and not self.stop_requested:
-                        response = await self.arduino_comm.get_status()
+                        sensor_data = await self._capture_sensor_data()
 
-                        if response.status == "ok" and response.data:
+                        if sensor_data:
                             timestamp = datetime.now().timestamp() - start_time.timestamp()
 
                             # Get sensor temperatures
-                            sensor_temps = response.data.temperatures if response.data.temperatures else []
+                            sensor_temps = sensor_data['temperatures']
 
                             # Calculate chamber temperature average (sensors 1, 3, 5, 7)
                             relevant_sensors = [0, 2, 4, 6]  # 0-indexed for sensors 1, 3, 5, 7
