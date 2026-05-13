@@ -31,6 +31,7 @@
 #include <Adafruit_BMP280.h>
 #include <SPI.h>
 #include <DHT22.h>
+#include <PID_v1.h>
 
 // Pin Definitions
 #define ONE_WIRE_BUS 2
@@ -125,10 +126,17 @@ unsigned long lastUpdateTime = 0;
 unsigned long lastDHTUpdateTime = 0;
 bool systemReady = false;
 
-// PID Variables (simplified)
-float kp = 2.0, ki = 0.5, kd = 1.0;
-float integral[NUM_HOT_PLATES] = {0, 0};
-float previousError[NUM_HOT_PLATES] = {0, 0};
+// PID Controller Variables
+// PID tuning parameters
+double kp = 8.0, ki = 0.3, kd = 2.0;
+
+// PID input/output variables for hotplate 0
+double pidInput0, pidOutput0, pidSetpoint0;
+PID pid0(&pidInput0, &pidOutput0, &pidSetpoint0, kp, ki, kd, DIRECT);
+
+// PID input/output variables for hotplate 1
+double pidInput1, pidOutput1, pidSetpoint1;
+PID pid1(&pidInput1, &pidOutput1, &pidSetpoint1, kp, ki, kd, DIRECT);
 
 void setup() {
   Serial.begin(1000000);
@@ -167,49 +175,49 @@ void setup() {
   tempDeviceAddresses[0][0] = 0x28; tempDeviceAddresses[0][1] = 0x61; tempDeviceAddresses[0][2] = 0x64; tempDeviceAddresses[0][3] = 0x34;
   tempDeviceAddresses[0][4] = 0x89; tempDeviceAddresses[0][5] = 0x2D; tempDeviceAddresses[0][6] = 0x94; tempDeviceAddresses[0][7] = 0x76;
   
-  // Sensor 2: 286164348927DEA9 
-  tempDeviceAddresses[1][0] = 0x28; tempDeviceAddresses[1][1] = 0x61; tempDeviceAddresses[1][2] = 0x64; tempDeviceAddresses[1][3] = 0x34;
-  tempDeviceAddresses[1][4] = 0x89; tempDeviceAddresses[1][5] = 0x27; tempDeviceAddresses[1][6] = 0xDE; tempDeviceAddresses[1][7] = 0xA9;
+  // Sensor 2: 28DA8A4A00000098  4
+  tempDeviceAddresses[4][0] = 0x28; tempDeviceAddresses[4][1] = 0xDA; tempDeviceAddresses[4][2] = 0x8A; tempDeviceAddresses[4][3] = 0x4A;
+  tempDeviceAddresses[4][4] = 0x00; tempDeviceAddresses[4][5] = 0x00; tempDeviceAddresses[4][6] = 0x00; tempDeviceAddresses[4][7] = 0x98;
   
-  // Sensor 3: 28616434C951B1A0 
-  tempDeviceAddresses[2][0] = 0x28; tempDeviceAddresses[2][1] = 0x61; tempDeviceAddresses[2][2] = 0x64; tempDeviceAddresses[2][3] = 0x34;
-  tempDeviceAddresses[2][4] = 0xC2; tempDeviceAddresses[2][5] = 0x0D; tempDeviceAddresses[2][6] = 0x68; tempDeviceAddresses[2][7] = 0x90;
+  // Sensor 3: 28616434C951B1A0  3
+  tempDeviceAddresses[3][0] = 0x28; tempDeviceAddresses[3][1] = 0x61; tempDeviceAddresses[3][2] = 0x64; tempDeviceAddresses[3][3] = 0x34;
+  tempDeviceAddresses[3][4] = 0xC2; tempDeviceAddresses[3][5] = 0x0D; tempDeviceAddresses[3][6] = 0x68; tempDeviceAddresses[3][7] = 0x90;
   
-  // Sensor 4: 28D47F4A000000FF
-  tempDeviceAddresses[3][0] = 0x28; tempDeviceAddresses[3][1] = 0xD4; tempDeviceAddresses[3][2] = 0x7F; tempDeviceAddresses[3][3] = 0x4A;
-  tempDeviceAddresses[3][4] = 0x00; tempDeviceAddresses[3][5] = 0x00; tempDeviceAddresses[3][6] = 0x00; tempDeviceAddresses[3][7] = 0xFF;
-
-  // Sensor 5: 2874984A00000028
-  tempDeviceAddresses[4][0] = 0x28; tempDeviceAddresses[4][1] = 0x74; tempDeviceAddresses[4][2] = 0x98; tempDeviceAddresses[4][3] = 0x4A;
-  tempDeviceAddresses[4][4] = 0x00; tempDeviceAddresses[4][5] = 0x00; tempDeviceAddresses[4][6] = 0x00; tempDeviceAddresses[4][7] = 0x28;
+  // Sensor 9: 28D47F4A000000FF  11
+  tempDeviceAddresses[11][0] = 0x28; tempDeviceAddresses[11][1] = 0xD4; tempDeviceAddresses[11][2] = 0x7F; tempDeviceAddresses[11][3] = 0x4A;
+  tempDeviceAddresses[11][4] = 0x00; tempDeviceAddresses[11][5] = 0x00; tempDeviceAddresses[11][6] = 0x00; tempDeviceAddresses[11][7] = 0xFF;  
+  
+  // Sensor 5: 2874984A00000028  6
+  tempDeviceAddresses[6][0] = 0x28; tempDeviceAddresses[6][1] = 0x74; tempDeviceAddresses[6][2] = 0x98; tempDeviceAddresses[6][3] = 0x4A;
+  tempDeviceAddresses[6][4] = 0x00; tempDeviceAddresses[6][5] = 0x00; tempDeviceAddresses[6][6] = 0x00; tempDeviceAddresses[6][7] = 0x28;
 
   // Sensor 6: 283CD648000000B0
-  tempDeviceAddresses[5][0] = 0x28; tempDeviceAddresses[5][1] = 0x3C; tempDeviceAddresses[5][2] = 0xD6; tempDeviceAddresses[5][3] = 0x48;
-  tempDeviceAddresses[5][4] = 0x00; tempDeviceAddresses[5][5] = 0x00; tempDeviceAddresses[5][6] = 0x00; tempDeviceAddresses[5][7] = 0xB0;
+  tempDeviceAddresses[8][0] = 0x28; tempDeviceAddresses[8][1] = 0x3C; tempDeviceAddresses[8][2] = 0xD6; tempDeviceAddresses[8][3] = 0x48;
+  tempDeviceAddresses[8][4] = 0x00; tempDeviceAddresses[8][5] = 0x00; tempDeviceAddresses[8][6] = 0x00; tempDeviceAddresses[8][7] = 0xB0;
 
-  // Sensor 7: 28DA8A4A00000098
-  tempDeviceAddresses[6][0] = 0x28; tempDeviceAddresses[6][1] = 0xDA; tempDeviceAddresses[6][2] = 0x8A; tempDeviceAddresses[6][3] = 0x4A;
-  tempDeviceAddresses[6][4] = 0x00; tempDeviceAddresses[6][5] = 0x00; tempDeviceAddresses[6][6] = 0x00; tempDeviceAddresses[6][7] = 0x98;
+  // Sensor 8: 2879F54800000098  10
+  tempDeviceAddresses[10][0] = 0x28; tempDeviceAddresses[10][1] = 0x79; tempDeviceAddresses[10][2] = 0xF5; tempDeviceAddresses[10][3] = 0x48;
+  tempDeviceAddresses[10][4] = 0x00; tempDeviceAddresses[10][5] = 0x00; tempDeviceAddresses[10][6] = 0x00; tempDeviceAddresses[10][7] = 0x98;
 
-  // Sensor 8: 2879F54800000098
-  tempDeviceAddresses[7][0] = 0x28; tempDeviceAddresses[7][1] = 0x79; tempDeviceAddresses[7][2] = 0xF5; tempDeviceAddresses[7][3] = 0x48;
-  tempDeviceAddresses[7][4] = 0x00; tempDeviceAddresses[7][5] = 0x00; tempDeviceAddresses[7][6] = 0x00; tempDeviceAddresses[7][7] = 0x98;
+  // Sensor 7: 286164348927DEA9  -> 1
+  tempDeviceAddresses[1][0] = 0x28; tempDeviceAddresses[1][1] = 0x61; tempDeviceAddresses[1][2] = 0x64; tempDeviceAddresses[1][3] = 0x34;
+  tempDeviceAddresses[1][4] = 0x89; tempDeviceAddresses[1][5] = 0x27; tempDeviceAddresses[1][6] = 0xDE; tempDeviceAddresses[1][7] = 0xA9;
 
-  // Sensor 9: 28F5874A000000E6
-  tempDeviceAddresses[8][0] = 0x28; tempDeviceAddresses[8][1] = 0xF5; tempDeviceAddresses[8][2] = 0x87; tempDeviceAddresses[8][3] = 0x4A;
-  tempDeviceAddresses[8][4] = 0x00; tempDeviceAddresses[8][5] = 0x00; tempDeviceAddresses[8][6] = 0x00; tempDeviceAddresses[8][7] = 0xE6;
+  // Sensor 4: 28F5874A000000E6   7
+  tempDeviceAddresses[7][0] = 0x28; tempDeviceAddresses[7][1] = 0xF5; tempDeviceAddresses[7][2] = 0x87; tempDeviceAddresses[7][3] = 0x4A;
+  tempDeviceAddresses[7][4] = 0x00; tempDeviceAddresses[7][5] = 0x00; tempDeviceAddresses[7][6] = 0x00; tempDeviceAddresses[7][7] = 0xE6;
 
-  // Sensor 10: 28037F4A000000BE
+  // Sensor 10: 28037F4A000000BE  9
   tempDeviceAddresses[9][0] = 0x28; tempDeviceAddresses[9][1] = 0x03; tempDeviceAddresses[9][2] = 0x7F; tempDeviceAddresses[9][3] = 0x4A;
   tempDeviceAddresses[9][4] = 0x00; tempDeviceAddresses[9][5] = 0x00; tempDeviceAddresses[9][6] = 0x00; tempDeviceAddresses[9][7] = 0xBE;
 
   // Sensor 11: 28616434C951B1A0
-  tempDeviceAddresses[10][0] = 0x28; tempDeviceAddresses[10][1] = 0x61; tempDeviceAddresses[10][2] = 0x64; tempDeviceAddresses[10][3] = 0x34;
-  tempDeviceAddresses[10][4] = 0xC9; tempDeviceAddresses[10][5] = 0x51; tempDeviceAddresses[10][6] = 0xB1; tempDeviceAddresses[10][7] = 0xA0;
+  tempDeviceAddresses[5][0] = 0x28; tempDeviceAddresses[5][1] = 0x61; tempDeviceAddresses[5][2] = 0x64; tempDeviceAddresses[5][3] = 0x34;
+  tempDeviceAddresses[5][4] = 0xC9; tempDeviceAddresses[5][5] = 0x51; tempDeviceAddresses[5][6] = 0xB1; tempDeviceAddresses[5][7] = 0xA0;
 
   // Sensor 12: 28616434CDBEBB2D
-  tempDeviceAddresses[11][0] = 0x28; tempDeviceAddresses[11][1] = 0x61; tempDeviceAddresses[11][2] = 0x64; tempDeviceAddresses[11][3] = 0x34;
-  tempDeviceAddresses[11][4] = 0xCD; tempDeviceAddresses[11][5] = 0xBE; tempDeviceAddresses[11][6] = 0xBB; tempDeviceAddresses[11][7] = 0x2D;
+  tempDeviceAddresses[2][0] = 0x28; tempDeviceAddresses[2][1] = 0x61; tempDeviceAddresses[2][2] = 0x64; tempDeviceAddresses[2][3] = 0x34;
+  tempDeviceAddresses[2][4] = 0xCD; tempDeviceAddresses[2][5] = 0xBE; tempDeviceAddresses[2][6] = 0xBB; tempDeviceAddresses[2][7] = 0x2D;
 
   // Sensor 13: 28A84B4800000086
   tempDeviceAddresses[12][0] = 0x28; tempDeviceAddresses[12][1] = 0xA8; tempDeviceAddresses[12][2] = 0x4B; tempDeviceAddresses[12][3] = 0x48;
@@ -244,6 +252,16 @@ void setup() {
   
   // Initialize DHT sensors
   initializeDHTSensors();
+  
+  // Initialize PID controllers
+  pidSetpoint0 = targetTemperatures[0];
+  pidSetpoint1 = targetTemperatures[1];
+  pid0.SetMode(AUTOMATIC);
+  pid0.SetOutputLimits(0, 255);  // SSR control: 0 = OFF, 255 = ON (binary)
+  pid0.SetSampleTime(1000);  // 1 second sample time
+  pid1.SetMode(AUTOMATIC);
+  pid1.SetOutputLimits(0, 255);
+  pid1.SetSampleTime(1000);
   
   Serial.println("{\"type\":\"info\",\"message\":\"Temperature Control System Ready\"}");
   digitalWrite(STATUS_LED, HIGH);
@@ -468,43 +486,90 @@ float calculateFlowRate(float voltage, FlowSensorCoefficients coeffs) {
 }
 
 void updateControl() {
-  // Simple PID control for hot plates
-  // Use surface sensors: sensor 13 (index 12) for hot plate 0, sensor 14 (index 13) for hot plate 1
-
-  for (int i = 0; i < NUM_HOT_PLATES; i++) {      
-    int controlSensor = i == 0 ? 12 : 13;  // Use surface sensors 13 and 14
-    float error = targetTemperatures[i] - currentTemperatures[controlSensor];
+  // PID control for hot plates using surface sensors
+  // Hotplate 0: uses currentTemperatures[12] (surface sensor 13)
+  // Hotplate 1: uses currentTemperatures[13] (surface sensor 14)
+  
+  // Hotplate 0 Control
+  {
+    int controlSensor = 12;  // Surface sensor 13 (index 12)
+    int relayPin = SSR_RELAY_1;
     
-    // Apply safety limits (always active, even in manual mode)
+    // Apply safety limits (always active, highest priority)
     if (currentTemperatures[controlSensor] > MAX_TEMP) {
-      digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2, LOW);
-      hotPlateStates[i] = false;
-      Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":");
-      Serial.print(i + 1);
-      Serial.print(",\"control_sensor\":");
+      digitalWrite(relayPin, LOW);
+      hotPlateStates[0] = false;
+      Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":1,\"control_sensor\":");
       Serial.print(controlSensor + 1);
       Serial.print(",\"temperature\":");
       Serial.print(currentTemperatures[controlSensor]);
       Serial.println("}");
-    } 
-    else if (manualHotPlateControl[i]) {
-      // Manual control mode - respect manual toggle state
-      digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2, hotPlateStates[i] ? HIGH : LOW);
-      // Don't change hotPlateStates[i] - keep manual state
-    } 
+    }
+    // Manual OFF state has highest priority (after safety)
+    else if (manualHotPlateControl[0] && !hotPlateStates[0]) {
+      digitalWrite(relayPin, LOW);
+    }
+    // Manual ON state
+    else if (manualHotPlateControl[0] && hotPlateStates[0]) {
+      digitalWrite(relayPin, HIGH);
+    }
+    // Automatic PID control mode
     else {
-      // Automatic temperature control mode
-      // Simple on/off control based on PID output
-      if (currentTemperatures[controlSensor] > targetTemperatures[i]) {
-        digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2,  LOW );
-        hotPlateStates[i] = false;
-      }
-      else{
-        digitalWrite(i == 0 ? SSR_RELAY_1 : SSR_RELAY_2,  HIGH );
-        hotPlateStates[i] = true;
+      pidInput0 = currentTemperatures[controlSensor];
+      pidSetpoint0 = targetTemperatures[0];
+      
+      if (pid0.Compute()) {
+        // PID output: 0-127 = OFF, 128-255 = ON (binary control for SSR)
+        if (pidOutput0 > 127.5) {
+          digitalWrite(relayPin, HIGH);
+          hotPlateStates[0] = true;
+        } else {
+          digitalWrite(relayPin, LOW);
+          hotPlateStates[0] = false;
+        }
       }
     }
-    previousError[i] = error;
+  }
+  
+  // Hotplate 1 Control
+  {
+    int controlSensor = 13;  // Surface sensor 14 (index 13)
+    int relayPin = SSR_RELAY_2;
+    
+    // Apply safety limits (always active, highest priority)
+    if (currentTemperatures[controlSensor] > MAX_TEMP) {
+      digitalWrite(relayPin, LOW);
+      hotPlateStates[1] = false;
+      Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":2,\"control_sensor\":");
+      Serial.print(controlSensor + 1);
+      Serial.print(",\"temperature\":");
+      Serial.print(currentTemperatures[controlSensor]);
+      Serial.println("}");
+    }
+    // Manual OFF state has highest priority (after safety)
+    else if (manualHotPlateControl[1] && !hotPlateStates[1]) {
+      digitalWrite(relayPin, LOW);
+    }
+    // Manual ON state
+    else if (manualHotPlateControl[1] && hotPlateStates[1]) {
+      digitalWrite(relayPin, HIGH);
+    }
+    // Automatic PID control mode
+    else {
+      pidInput1 = currentTemperatures[controlSensor];
+      pidSetpoint1 = targetTemperatures[1];
+      
+      if (pid1.Compute()) {
+        // PID output: 0-127 = OFF, 128-255 = ON (binary control for SSR)
+        if (pidOutput1 > 127.5) {
+          digitalWrite(relayPin, HIGH);
+          hotPlateStates[1] = true;
+        } else {
+          digitalWrite(relayPin, LOW);
+          hotPlateStates[1] = false;
+        }
+      }
+    }
   }
 }
 
