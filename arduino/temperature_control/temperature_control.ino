@@ -66,7 +66,8 @@
 #define BMP_MOSI 51
 
 // System Constants
-#define NUM_SENSORS 14
+#define NUM_DS18B20_SENSORS 14  // Total physical DS18B20 sensors
+#define NUM_SENSORS 12          // Number of sensors in temperatures array (excluding hotplate sensors)
 #define NUM_FANS 4
 #define NUM_HOT_PLATES 2
 #define NUM_FLOW_SENSORS 4
@@ -78,7 +79,7 @@
 // Global Variables
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
-DeviceAddress tempDeviceAddresses[NUM_SENSORS];
+DeviceAddress tempDeviceAddresses[NUM_DS18B20_SENSORS];
 
 // BME280 Sensors (SPI)
 Adafruit_BMP280 bmp1(BMP280_CS_1), bmp2(BMP280_CS_2);  // Create 2 BME280 objects
@@ -91,19 +92,26 @@ bool dhtFound[NUM_DHT_SENSORS] = {false, false};
 
 // System State
 float currentTemperatures[NUM_SENSORS];
-float hotplateTemperatures[NUM_HOT_PLATES];
 float targetTemperatures[NUM_HOT_PLATES] = {80.0, 80.0};
 int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
 bool manualHotPlateControl[NUM_HOT_PLATES] = {false, false}; // Manual override flags
 
-// BME280 Data arrays
-float bmpTemperatures[NUM_BMP280_SENSORS];
-float bmpPressure[NUM_BMP280_SENSORS];
+// Hotplate Surface Temperatures (separate variables)
+float temp_hotplate1 = 0.0;  // Surface sensor 13 (index 12)
+float temp_hotplate2 = 0.0;  // Surface sensor 14 (index 13)
 
-// DHT Data arrays
-float dhtTemperatures[NUM_DHT_SENSORS];
-float dhtHumidity[NUM_DHT_SENSORS];
+// BME280 Data (separate variables for internal/external)
+float bmpTemperature_internal = 0.0;
+float bmpPressure_internal = 0.0;
+float bmpTemperature_external = 0.0;
+float bmpPressure_external = 0.0;
+
+// DHT Data (separate variables for internal/external)
+float dhtTemperature_internal = 0.0;
+float dhtHumidity_internal = 0.0;
+float dhtTemperature_external = 0.0;
+float dhtHumidity_external = 0.0;
 
 // Air Flow Sensor Data
 float flowRatesData[NUM_FLOW_SENSORS];
@@ -376,16 +384,31 @@ void updateTemperatures() {
   sensors.requestTemperatures();
   //delay(250);  // Small delay for Conversion to settle... already handled in setWaitForConversion... need to try with different pull up resistor
 
-  for (int i = 0; i < NUM_SENSORS; i++) {
+  for (int i = 0; i < NUM_DS18B20_SENSORS; i++) {
     float temp = sensors.getTempC(tempDeviceAddresses[i]);
 
     if (temp == DEVICE_DISCONNECTED_C) {
       Serial.print("{\"type\":\"error\",\"sensor_type\":\"ds18b20\",\"sensor_id\":");
       Serial.print(i);
       Serial.println(",\"message\":\"disconnected\"}");
-      currentTemperatures[i] = 0.0; // Error value
+      
+      // Store in separate variables for hotplate sensors, array for others
+      if (i == 12) {
+        temp_hotplate1 = 0.0;
+      } else if (i == 13) {
+        temp_hotplate2 = 0.0;
+      } else if (i < NUM_SENSORS) {
+        currentTemperatures[i] = 0.0;
+      }
     } else {
-      currentTemperatures[i] = temp;
+      // Store in separate variables for hotplate sensors, array for others
+      if (i == 12) {
+        temp_hotplate1 = temp;
+      } else if (i == 13) {
+        temp_hotplate2 = temp;
+      } else if (i < NUM_SENSORS) {
+        currentTemperatures[i] = temp;
+      }
     }
   }
 
@@ -404,55 +427,74 @@ void updateTemperatures() {
 }
 
 void updateBME280Sensors() {
-  // Array of sensor pointers and CS pins for easier iteration
-  Adafruit_BMP280* bmpSensors[NUM_BMP280_SENSORS] = {&bmp1, &bmp2};
-  int csPins[NUM_BMP280_SENSORS] = {BMP280_CS_1, BMP280_CS_2};
-  
-  for (int i = 0; i < NUM_BMP280_SENSORS; i++) {
-    if (bmpFound[i]) {
-      // Select the sensor by pulling CS LOW
-      digitalWrite(csPins[i], LOW);
-      delay(1);  // Small delay for CS to settle
-      
-      bmpTemperatures[i] = bmpSensors[i]->readTemperature();
-      bmpPressure[i] = bmpSensors[i]->readPressure() / 100.0F; // Convert Pa to hPa
-      
-      // Deselect the sensor by pulling CS HIGH
-      digitalWrite(csPins[i], HIGH);
-      
-      if (isnan(bmpTemperatures[i]) || isnan(bmpPressure[i])) {
-        Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":");
-        Serial.print(i + 1);
-        Serial.println(",\"message\":\"read_failure\"}");
-        bmpTemperatures[i] = 0.0;
-        bmpPressure[i] = 0.0;
-      }
-    } else {
-      bmpTemperatures[i] = 0.0;
-      bmpPressure[i] = 0.0;
+  // BME280 Sensor 1 (Internal)
+  if (bmpFound[0]) {
+    digitalWrite(BMP280_CS_1, LOW);
+    delay(1);
+    
+    bmpTemperature_internal = bmp1.readTemperature();
+    bmpPressure_internal = bmp1.readPressure() / 100.0F;
+    
+    digitalWrite(BMP280_CS_1, HIGH);
+    
+    if (isnan(bmpTemperature_internal) || isnan(bmpPressure_internal)) {
+      Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":1,\"message\":\"read_failure\"}");
+      bmpTemperature_internal = 0.0;
+      bmpPressure_internal = 0.0;
     }
+  } else {
+    bmpTemperature_internal = 0.0;
+    bmpPressure_internal = 0.0;
+  }
+  
+  // BME280 Sensor 2 (External)
+  if (bmpFound[1]) {
+    digitalWrite(BMP280_CS_2, LOW);
+    delay(1);
+    
+    bmpTemperature_external = bmp2.readTemperature();
+    bmpPressure_external = bmp2.readPressure() / 100.0F;
+    
+    digitalWrite(BMP280_CS_2, HIGH);
+    
+    if (isnan(bmpTemperature_external) || isnan(bmpPressure_external)) {
+      Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":2,\"message\":\"read_failure\"}");
+      bmpTemperature_external = 0.0;
+      bmpPressure_external = 0.0;
+    }
+  } else {
+    bmpTemperature_external = 0.0;
+    bmpPressure_external = 0.0;
   }
 }
 
 void updateDHTSensors() {
-  // Array of sensor pointers for easier iteration
-  DHT22* dhtSensors[NUM_DHT_SENSORS] = {&dht1, &dht2};
-  
-  for (int i = 0; i < NUM_DHT_SENSORS; i++) {
-    if (dhtFound[i]) {
-      dhtTemperatures[i] = dhtSensors[i]->getTemperature();
-      dhtHumidity[i] = dhtSensors[i]->getHumidity();
-      if (isnan(dhtTemperatures[i]) || isnan(dhtHumidity[i])) {
-        Serial.print("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":");
-        Serial.print(i + 1);
-        Serial.println(",\"message\":\"read_failure\"}");
-        dhtTemperatures[i] = 0.0;
-        dhtHumidity[i] = 0.0;
-      }
-    } else {
-      dhtTemperatures[i] = 0.0;
-      dhtHumidity[i] = 0.0;
+  // DHT22 Sensor 1 (Internal)
+  if (dhtFound[0]) {
+    dhtTemperature_internal = dht1.getTemperature();
+    dhtHumidity_internal = dht1.getHumidity();
+    if (isnan(dhtTemperature_internal) || isnan(dhtHumidity_internal)) {
+      Serial.print("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":1,\"message\":\"read_failure\"}");
+      dhtTemperature_internal = 0.0;
+      dhtHumidity_internal = 0.0;
     }
+  } else {
+    dhtTemperature_internal = 0.0;
+    dhtHumidity_internal = 0.0;
+  }
+  
+  // DHT22 Sensor 2 (External)
+  if (dhtFound[1]) {
+    dhtTemperature_external = dht2.getTemperature();
+    dhtHumidity_external = dht2.getHumidity();
+    if (isnan(dhtTemperature_external) || isnan(dhtHumidity_external)) {
+      Serial.print("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":2,\"message\":\"read_failure\"}");
+      dhtTemperature_external = 0.0;
+      dhtHumidity_external = 0.0;
+    }
+  } else {
+    dhtTemperature_external = 0.0;
+    dhtHumidity_external = 0.0;
   }
 }
 
@@ -486,23 +528,20 @@ float calculateFlowRate(float voltage, FlowSensorCoefficients coeffs) {
 }
 
 void updateControl() {
-  // PID control for hot plates using surface sensors
-  // Hotplate 0: uses currentTemperatures[12] (surface sensor 13)
-  // Hotplate 1: uses currentTemperatures[13] (surface sensor 14)
+  // PID control for hot plates using separate surface temperature variables
+  // Hotplate 0: uses temp_hotplate1
+  // Hotplate 1: uses temp_hotplate2
   
   // Hotplate 0 Control
   {
-    int controlSensor = 12;  // Surface sensor 13 (index 12)
     int relayPin = SSR_RELAY_1;
     
     // Apply safety limits (always active, highest priority)
-    if (currentTemperatures[controlSensor] > MAX_TEMP) {
+    if (temp_hotplate1 > MAX_TEMP) {
       digitalWrite(relayPin, LOW);
       hotPlateStates[0] = false;
-      Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":1,\"control_sensor\":");
-      Serial.print(controlSensor + 1);
-      Serial.print(",\"temperature\":");
-      Serial.print(currentTemperatures[controlSensor]);
+      Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":1,\"temperature\":");
+      Serial.print(temp_hotplate1);
       Serial.println("}");
     }
     // Manual OFF state has highest priority (after safety)
@@ -515,7 +554,7 @@ void updateControl() {
     }
     // Automatic PID control mode
     else {
-      pidInput0 = currentTemperatures[controlSensor];
+      pidInput0 = temp_hotplate1;
       pidSetpoint0 = targetTemperatures[0];
       
       if (pid0.Compute()) {
@@ -533,17 +572,14 @@ void updateControl() {
   
   // Hotplate 1 Control
   {
-    int controlSensor = 13;  // Surface sensor 14 (index 13)
     int relayPin = SSR_RELAY_2;
     
     // Apply safety limits (always active, highest priority)
-    if (currentTemperatures[controlSensor] > MAX_TEMP) {
+    if (temp_hotplate2 > MAX_TEMP) {
       digitalWrite(relayPin, LOW);
       hotPlateStates[1] = false;
-      Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":2,\"control_sensor\":");
-      Serial.print(controlSensor + 1);
-      Serial.print(",\"temperature\":");
-      Serial.print(currentTemperatures[controlSensor]);
+      Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":2,\"temperature\":");
+      Serial.print(temp_hotplate2);
       Serial.println("}");
     }
     // Manual OFF state has highest priority (after safety)
@@ -556,7 +592,7 @@ void updateControl() {
     }
     // Automatic PID control mode
     else {
-      pidInput1 = currentTemperatures[controlSensor];
+      pidInput1 = temp_hotplate2;
       pidSetpoint1 = targetTemperatures[1];
       
       if (pid1.Compute()) {
@@ -661,29 +697,25 @@ void sendStatusResponse() {
     temps.add(currentTemperatures[i]);
   }
   
-  // Add BME280 temperature data
-  JsonArray bmpTemps = data.createNestedArray("temperature_bmp");
-  for (int i = 0; i < NUM_BMP280_SENSORS; i++) {
-    bmpTemps.add(bmpTemperatures[i]);
-  }
+  // Add hotplate surface temperatures
+  data["temp_hotplate1"] = temp_hotplate1;
+  data["temp_hotplate2"] = temp_hotplate2;
   
-  // Add BME280 pressure data
-  JsonArray bmpPress = data.createNestedArray("pressure");
-  for (int i = 0; i < NUM_BMP280_SENSORS; i++) {
-    bmpPress.add(bmpPressure[i]);
-  }
+  // Add BME280 temperature data (internal/external)
+  data["bmpTemperature_internal"] = bmpTemperature_internal;
+  data["bmpTemperature_external"] = bmpTemperature_external;
   
-  // Add DHT temperature data
-  JsonArray dhtTemps = data.createNestedArray("temperature_dht");
-  for (int i = 0; i < NUM_DHT_SENSORS; i++) {
-    dhtTemps.add(dhtTemperatures[i]);
-  }
+  // Add BME280 pressure data (internal/external)
+  data["bmpPressure_internal"] = bmpPressure_internal;
+  data["bmpPressure_external"] = bmpPressure_external;
   
-  // Add DHT humidity data
-  JsonArray dhtHumid = data.createNestedArray("humidity");
-  for (int i = 0; i < NUM_DHT_SENSORS; i++) {
-    dhtHumid.add(dhtHumidity[i]);
-  }
+  // Add DHT temperature data (internal/external)
+  data["dhtTemperature_internal"] = dhtTemperature_internal;
+  data["dhtTemperature_external"] = dhtTemperature_external;
+  
+  // Add DHT humidity data (internal/external)
+  data["dhtHumidity_internal"] = dhtHumidity_internal;
+  data["dhtHumidity_external"] = dhtHumidity_external;
   
   JsonArray targets = data.createNestedArray("target_temperatures");
   for (int i = 0; i < NUM_HOT_PLATES; i++) {

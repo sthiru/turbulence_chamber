@@ -31,10 +31,16 @@ class CameraStatus(BaseModel):
 
 class SystemStatus(BaseModel):
     temperatures: List[float]
-    temperature_bmp: List[float]
-    pressure: List[float]
-    temperature_dht: List[float]
-    humidity: List[float]
+    temp_hotplate1: float
+    temp_hotplate2: float
+    bmpTemperature_internal: float
+    bmpTemperature_external: float
+    bmpPressure_internal: float
+    bmpPressure_external: float
+    dhtTemperature_internal: float
+    dhtTemperature_external: float
+    dhtHumidity_internal: float
+    dhtHumidity_external: float
     target_temperatures: List[float]
     fan_speeds: List[int]
     hot_plate_states: List[bool]

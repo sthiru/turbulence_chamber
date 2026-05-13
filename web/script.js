@@ -413,25 +413,24 @@ function initChart() {
 
 // Update BME280 sensor displays
 function updateBMESensors(data) {
-    const bmeTemps = data.temperature_bmp || [];
-    const bmePressure = data.pressure || [];
+    // BME280 Sensor 1 (Internal)
+    const bmeTemp1Element = document.getElementById('bme-temp-1');
+    const bmeTemp1StatusElement = document.getElementById('bme-temp-status-1');
+    const bmePressure1Element = document.getElementById('bme-pressure-1');
     
-    // Update BME280 temperature displays
-    bmeTemps.forEach((temp, index) => {
-        const tempElement = document.getElementById(`bme-temp-${index + 1}`);
-        const statusElement = document.getElementById(`bme-temp-status-${index + 1}`);
-        const cardElement = tempElement?.closest('.sensor-card');
-        
-        if (tempElement) {
-            tempElement.textContent = temp.toFixed(1) + '°C';
+    if (data.bmpTemperature_internal !== undefined) {
+        const temp = data.bmpTemperature_internal;
+        if (bmeTemp1Element) {
+            bmeTemp1Element.textContent = temp.toFixed(1) + '°C';
         }
         
-        if (statusElement) {
+        if (bmeTemp1StatusElement) {
+            const cardElement = bmeTemp1Element?.closest('.sensor-card');
             if (temp < -100) {
-                statusElement.textContent = 'Error';
+                bmeTemp1StatusElement.textContent = 'Error';
                 if (cardElement) cardElement.className = 'card sensor-card h-100 border-danger';
             } else {
-                statusElement.textContent = 'Normal';
+                bmeTemp1StatusElement.textContent = 'Normal';
                 if (cardElement) {
                     cardElement.className = 'card sensor-card h-100';
                     if (temp >= CONFIG.DANGER_TEMP) {
@@ -444,19 +443,57 @@ function updateBMESensors(data) {
                 }
             }
         }
-    });
+    }
     
-    // Update BME280 pressure displays
-    bmePressure.forEach((pressure, index) => {
-        const pressureElement = document.getElementById(`bme-pressure-${index + 1}`);
-        if (pressureElement) {
-            if (pressure < 0) {
-                pressureElement.textContent = '-- hPa';
+    if (data.bmpPressure_internal !== undefined && bmePressure1Element) {
+        const pressure = data.bmpPressure_internal;
+        if (pressure < 0) {
+            bmePressure1Element.textContent = '-- hPa';
+        } else {
+            bmePressure1Element.textContent = pressure.toFixed(1) + ' hPa';
+        }
+    }
+    
+    // BME280 Sensor 2 (External)
+    const bmeTemp2Element = document.getElementById('bme-temp-2');
+    const bmeTemp2StatusElement = document.getElementById('bme-temp-status-2');
+    const bmePressure2Element = document.getElementById('bme-pressure-2');
+    
+    if (data.bmpTemperature_external !== undefined) {
+        const temp = data.bmpTemperature_external;
+        if (bmeTemp2Element) {
+            bmeTemp2Element.textContent = temp.toFixed(1) + '°C';
+        }
+        
+        if (bmeTemp2StatusElement) {
+            const cardElement = bmeTemp2Element?.closest('.sensor-card');
+            if (temp < -100) {
+                bmeTemp2StatusElement.textContent = 'Error';
+                if (cardElement) cardElement.className = 'card sensor-card h-100 border-danger';
             } else {
-                pressureElement.textContent = pressure.toFixed(1) + ' hPa';
+                bmeTemp2StatusElement.textContent = 'Normal';
+                if (cardElement) {
+                    cardElement.className = 'card sensor-card h-100';
+                    if (temp >= CONFIG.DANGER_TEMP) {
+                        cardElement.classList.add('border-danger');
+                    } else if (temp >= CONFIG.WARNING_TEMP) {
+                        cardElement.classList.add('border-warning');
+                    } else {
+                        cardElement.classList.add('border-success');
+                    }
+                }
             }
         }
-    });
+    }
+    
+    if (data.bmpPressure_external !== undefined && bmePressure2Element) {
+        const pressure = data.bmpPressure_external;
+        if (pressure < 0) {
+            bmePressure2Element.textContent = '-- hPa';
+        } else {
+            bmePressure2Element.textContent = pressure.toFixed(1) + ' hPa';
+        }
+    }
 }
 
 // Update CN² display

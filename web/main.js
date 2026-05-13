@@ -191,52 +191,46 @@ function updateSensorData(data) {
         }
     });
 
-    // Update hotplate surface temperatures (sensors 13 and 14)
+    // Update hotplate surface temperatures (using separate variables)
     const hotplate1TempElement = svgDoc.getElementById('hotplate1-temp');
     const hotplate2TempElement = svgDoc.getElementById('hotplate2-temp');
     
-    // Sensor 13 (index 12) for Hotplate 1
-    if (temperatures.length > 12 && hotplate1TempElement) {
-        const temp13 = temperatures[12];
-        if (temp13 < -100) {
+    // Hotplate 1 temperature
+    if (data.temp_hotplate1 !== undefined && hotplate1TempElement) {
+        if (data.temp_hotplate1 < -100) {
             hotplate1TempElement.textContent = '--°C';
         } else {
-            hotplate1TempElement.textContent = temp13.toFixed(1) + '°C';
+            hotplate1TempElement.textContent = data.temp_hotplate1.toFixed(1) + '°C';
         }
     }
     
-    // Sensor 14 (index 13) for Hotplate 2  
-    if (temperatures.length > 13 && hotplate2TempElement) {
-        const temp14 = temperatures[13];
-        if (temp14 < -100) {
+    // Hotplate 2 temperature
+    if (data.temp_hotplate2 !== undefined && hotplate2TempElement) {
+        if (data.temp_hotplate2 < -100) {
             hotplate2TempElement.textContent = '--°C';
         } else {
-            hotplate2TempElement.textContent = temp14.toFixed(1) + '°C';
+            hotplate2TempElement.textContent = data.temp_hotplate2.toFixed(1) + '°C';
         }
     }
 
-    // Update ambient temperature and humidity (from BMP sensor)
-    const ambientTemps = data.temperature_bmp || [];
-    const humidities = data.humidity || [];
+    // Update ambient temperature and humidity (from separate internal/external variables)
+    const ambientTempElement = svgDoc.getElementById('ambientTemp');
+    const ambientHumElement = svgDoc.getElementById('ambientHum');
+    const internalHumElement = svgDoc.getElementById('internalHum');
 
-    if (ambientTemps.length > 0 && ambientTemps[0] >= -100) {
-        const ambientTempElement = svgDoc.getElementById('ambientTemp');
-        if (ambientTempElement) {
-            ambientTempElement.textContent = ambientTemps[0].toFixed(1) + '°C';
-        }
+    // External temperature (ambient)
+    if (data.bmpTemperature_external !== undefined && data.bmpTemperature_external >= -100 && ambientTempElement) {
+        ambientTempElement.textContent = data.bmpTemperature_external.toFixed(1) + '°C';
     }
 
-    if (humidities.length > 1 && humidities[1] >= 0) {
-        const ambientHumElement = svgDoc.getElementById('ambientHum');
-        if (ambientHumElement) {
-            ambientHumElement.textContent = humidities[1].toFixed(1) + '%';
-        }
+    // External humidity (ambient)
+    if (data.dhtHumidity_external !== undefined && data.dhtHumidity_external >= 0 && ambientHumElement) {
+        ambientHumElement.textContent = data.dhtHumidity_external.toFixed(1) + '%';
+    }
 
-        // Also update internal humidity (using the same humidity data for now)
-        const internalHumElement = svgDoc.getElementById('internalHum');
-        if (internalHumElement) {
-            internalHumElement.textContent = humidities[1].toFixed(1) + '%';
-        }
+    // Internal humidity
+    if (data.dhtHumidity_internal !== undefined && data.dhtHumidity_internal >= 0 && internalHumElement) {
+        internalHumElement.textContent = data.dhtHumidity_internal.toFixed(1) + '%';
     }
     
     // Update hot plates
