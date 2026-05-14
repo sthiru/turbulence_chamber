@@ -1,18 +1,5 @@
 // Global variables
 let ws;
-let tempChart;
-let tempData = {
-    labels: [],
-    datasets: []
-};
-let temperatureHistory = {
-    timestamps: [],
-    data: [] // Array of arrays for each sensor
-};
-let manualControlState = {
-    hotplates: [false, false],
-    fans: [false, false, false, false]
-};
 
 // Configuration
 const CONFIG = {
@@ -51,7 +38,6 @@ function initWebSocket() {
         
         ws.onopen = function() {
             console.log('WebSocket connected successfully');
-            updateConnectionStatus('online', 'Connected');
             hideErrorMessage();
         };
         
@@ -68,7 +54,6 @@ function initWebSocket() {
                     // Update system status immediately for fast footer update
                     console.log('System status message received');
                     updateSystemStatus(data);
-                    updateConnectionStatus(data.device_status, 'Connected');
                 } else if (data.type === 'historical_data') {
                     // Handle complete historical data (first time)
                     console.log('Historical data message received, records:', data.count);
@@ -76,13 +61,8 @@ function initWebSocket() {
                     // Update with latest data for all displays
                     if (data.data && data.data.length > 0) {
                         const latestData = data.data[data.data.length - 1];
-                        updateTemperatureSensors(latestData.temperatures || []);
                         updateHotPlateControls(latestData.target_temperatures || [], latestData.hot_plate_states || []);
                         updateFanControls(latestData.fan_speeds || []);
-                        updateDeviceStatus({}); // Empty since system status is in separate message
-                        updateChart(data.data.slice(-50)); // Update chart with last 50 records
-                        updateBMESensors(latestData); // Update BME280 sensors
-                        updateCN2Display(latestData.cn2 || 0.0); // Update CN² display
                     }
                 } else if (data.type === 'current_data') {
                     // Handle current data updates (subsequent messages)
@@ -91,17 +71,9 @@ function initWebSocket() {
                     // Update with latest data for all displays
                     if (data.data && data.data.length > 0) {
                         const latestData = data.data[data.data.length - 1];
-                        updateTemperatureSensors(latestData.temperatures || []);
                         updateHotPlateControls(latestData.target_temperatures || [], latestData.hot_plate_states || []);
                         updateFanControls(latestData.fan_speeds || []);
-                        updateDeviceStatus({}); // Empty since system status is in separate message
-                        updateChart(data.data); // Update chart with recent data only
-                        updateBMESensors(latestData); // Update BME280 sensors
-                        updateCN2Display(latestData.cn2 || 0.0); // Update CN² display
                     }
-                } else {
-                    // Handle legacy single message format
-                    updateDisplay(data);
                 }
             } catch (error) {
                 console.error('Error parsing WebSocket data:', error);
@@ -111,28 +83,18 @@ function initWebSocket() {
         
         ws.onclose = function(event) {
             console.log('WebSocket disconnected, code:', event.code, 'reason:', event.reason);
-            updateConnectionStatus('offline', 'Disconnected');
             // Try to reconnect after 3 seconds
             setTimeout(initWebSocket, 3000);
         };
         
         ws.onerror = function(error) {
             console.error('WebSocket error:', error);
-            updateConnectionStatus('error', 'Connection Error');
             showErrorMessage('Connection error. Please check if the server is running on port 8000.');
         };
     } catch (error) {
         console.error('Error creating WebSocket:', error);
-        updateConnectionStatus('error', 'Connection Failed');
         showErrorMessage('Failed to establish connection to server. Please check if the server is running.');
     }
-}
-
-// Update connection status
-function updateConnectionStatus(status, text) {
-    const statusElement = document.getElementById('connection-status');
-    statusElement.className = `badge bg-${status === 'online' ? 'success' : status === 'offline' ? 'danger' : 'warning'}`;
-    statusElement.innerHTML = `<i class="fas fa-circle"></i> ${text}`;
 }
 
 // Show/hide error messages
@@ -153,36 +115,6 @@ function showErrorMessage(message, type = 'danger') {
 function hideErrorMessage() {
     const errorElement = document.getElementById('error-message');
     errorElement.classList.add('d-none');
-}
-
-// Update display with new data
-function updateDisplay(data) {
-    try {
-        // Update system status
-        updateSystemStatus(data);
-        
-        // Update temperature sensors
-        updateTemperatureSensors(data.temperatures || []);
-        
-        // Update hot plate controls
-        updateHotPlateControls(data.target_temperatures || [], data.hot_plate_states || []);
-        
-        // Update fan controls
-        updateFanControls(data.fan_speeds || []);
-        
-        // Update chart
-        updateChart(data.temperatures || []);
-        
-        // Update manual controls
-        updateManualControls(data);
-        
-        // Update device status
-        updateDeviceStatus(data);
-        
-    } catch (error) {
-        console.error('Error updating display:', error);
-        showErrorMessage('Error updating display');
-    }
 }
 
 // Update system status
@@ -241,64 +173,6 @@ function updateSystemStatus(data) {
     }
 }
 
-// Update temperature sensor display
-function updateTemperatureSensors(temperatures) {
-    temperatures.forEach((temp, index) => {
-        const tempElement = document.getElementById(`temp-${index + 1}`);
-        const statusElement = document.getElementById(`temp-status-${index + 1}`);
-        const cardElement = tempElement.closest('.sensor-card');
-        
-        if (tempElement) {
-            const tempClass = getTemperatureClass(temp);
-            const tempValue = temp < -100 ? 'Error' : `${temp.toFixed(1)}°C`;
-            const icon = getTemperatureIcon(temp);
-            
-            // Update temperature value
-            tempElement.textContent = tempValue;
-            tempElement.className = `temp-display ${tempClass}`;
-            
-            // Update icon
-            const iconElement = cardElement.querySelector('.card-title i');
-            if (iconElement) {
-                iconElement.className = `fas ${icon}`;
-            }
-            
-            // Update status text
-            if (statusElement) {
-                if (temp >= 0 && temp < 100) {
-                    statusElement.textContent = getTemperatureStatus(temp);
-                    statusElement.style.display = 'block';
-                } else {
-                    statusElement.style.display = 'none';
-                }
-            }
-        }
-    });
-}
-
-// Get temperature class for styling
-function getTemperatureClass(temp) {
-    if (temp < -100) return 'temp-error';
-    if (temp >= CONFIG.DANGER_TEMP) return 'temp-danger';
-    if (temp >= CONFIG.WARNING_TEMP) return 'temp-warning';
-    return 'temp-normal';
-}
-
-// Get temperature icon
-function getTemperatureIcon(temp) {
-    if (temp < -100) return 'fa-exclamation-triangle';
-    if (temp >= CONFIG.DANGER_TEMP) return 'fa-temperature-high';
-    if (temp >= CONFIG.WARNING_TEMP) return 'fa-temperature-half';
-    return 'fa-temperature-low';
-}
-
-// Get temperature status text
-function getTemperatureStatus(temp) {
-    if (temp >= CONFIG.DANGER_TEMP) return 'Danger Zone';
-    if (temp >= CONFIG.WARNING_TEMP) return 'Warning';
-    return 'Normal';
-}
-
 // Update hot plate controls
 function updateHotPlateControls(targetTemps, states) {
     targetTemps.forEach((target, index) => {
@@ -340,256 +214,6 @@ function updateFanControls(speeds) {
             speedValue.textContent = speed;
         }
     });
-}
-
-// Update fan speed display
-function updateFanDisplay(fanId, speed) {
-    const displayElement = document.getElementById(`fan-display-${fanId}`);
-    if (displayElement) {
-        displayElement.textContent = speed;
-    }
-}
-
-// Initialize temperature chart
-function initChart() {
-    const canvas = document.getElementById('tempChart');
-    if (!canvas) {
-        console.log('Chart canvas not found, skipping chart initialization');
-        return;
-    }
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-        console.error('Failed to get canvas context');
-        return;
-    }
-    
-    tempChart = new Chart(ctx, {
-        type: 'line',
-        data: tempData,
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: CONFIG.MAX_TEMP,
-                    title: {
-                        display: true,
-                        text: 'Temperature (°C)'
-                    },
-                    ticks: {
-                        callback: function(value) {
-                            return value + '°C';
-                        }
-                    }
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Time'
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '°C';
-                        }
-                    }
-                }
-            },
-            animation: {
-                duration: 500
-            }
-        }
-    });
-}
-
-// Update BME280 sensor displays
-function updateBMESensors(data) {
-    // BME280 Sensor 1 (Internal)
-    const bmeTemp1Element = document.getElementById('bme-temp-1');
-    const bmeTemp1StatusElement = document.getElementById('bme-temp-status-1');
-    const bmePressure1Element = document.getElementById('bme-pressure-1');
-    
-    if (data.bmpTemperature_internal !== undefined) {
-        const temp = data.bmpTemperature_internal;
-        if (bmeTemp1Element) {
-            bmeTemp1Element.textContent = temp.toFixed(1) + '°C';
-        }
-        
-        if (bmeTemp1StatusElement) {
-            const cardElement = bmeTemp1Element?.closest('.sensor-card');
-            if (temp < -100) {
-                bmeTemp1StatusElement.textContent = 'Error';
-                if (cardElement) cardElement.className = 'card sensor-card h-100 border-danger';
-            } else {
-                bmeTemp1StatusElement.textContent = 'Normal';
-                if (cardElement) {
-                    cardElement.className = 'card sensor-card h-100';
-                    if (temp >= CONFIG.DANGER_TEMP) {
-                        cardElement.classList.add('border-danger');
-                    } else if (temp >= CONFIG.WARNING_TEMP) {
-                        cardElement.classList.add('border-warning');
-                    } else {
-                        cardElement.classList.add('border-success');
-                    }
-                }
-            }
-        }
-    }
-    
-    if (data.bmpPressure_internal !== undefined && bmePressure1Element) {
-        const pressure = data.bmpPressure_internal;
-        if (pressure < 0) {
-            bmePressure1Element.textContent = '-- hPa';
-        } else {
-            bmePressure1Element.textContent = pressure.toFixed(1) + ' hPa';
-        }
-    }
-    
-    // BME280 Sensor 2 (External)
-    const bmeTemp2Element = document.getElementById('bme-temp-2');
-    const bmeTemp2StatusElement = document.getElementById('bme-temp-status-2');
-    const bmePressure2Element = document.getElementById('bme-pressure-2');
-    
-    if (data.bmpTemperature_external !== undefined) {
-        const temp = data.bmpTemperature_external;
-        if (bmeTemp2Element) {
-            bmeTemp2Element.textContent = temp.toFixed(1) + '°C';
-        }
-        
-        if (bmeTemp2StatusElement) {
-            const cardElement = bmeTemp2Element?.closest('.sensor-card');
-            if (temp < -100) {
-                bmeTemp2StatusElement.textContent = 'Error';
-                if (cardElement) cardElement.className = 'card sensor-card h-100 border-danger';
-            } else {
-                bmeTemp2StatusElement.textContent = 'Normal';
-                if (cardElement) {
-                    cardElement.className = 'card sensor-card h-100';
-                    if (temp >= CONFIG.DANGER_TEMP) {
-                        cardElement.classList.add('border-danger');
-                    } else if (temp >= CONFIG.WARNING_TEMP) {
-                        cardElement.classList.add('border-warning');
-                    } else {
-                        cardElement.classList.add('border-success');
-                    }
-                }
-            }
-        }
-    }
-    
-    if (data.bmpPressure_external !== undefined && bmePressure2Element) {
-        const pressure = data.bmpPressure_external;
-        if (pressure < 0) {
-            bmePressure2Element.textContent = '-- hPa';
-        } else {
-            bmePressure2Element.textContent = pressure.toFixed(1) + ' hPa';
-        }
-    }
-}
-
-// Update CN² display
-function updateCN2Display(cn2Value) {
-    const cn2Element = document.getElementById('cn2-value');
-    if (cn2Element) {
-        // Format CN² value in scientific notation
-        if (cn2Value === 0) {
-            cn2Element.textContent = '0.00e+0';
-        } else {
-            cn2Element.textContent = cn2Value.toExponential(2);
-        }
-        
-        // Add color coding based on CN² value ranges
-        const cn2Container = cn2Element.closest('.cn2-container');
-        if (cn2Container) {
-            // Remove existing color classes
-            cn2Container.classList.remove('cn2-low', 'cn2-medium', 'cn2-high');
-            
-            // Add color class based on value
-            if (cn2Value < 1e-15) {
-                cn2Container.classList.add('cn2-low');      // Green - Low turbulence
-            } else if (cn2Value < 1e-13) {
-                cn2Container.classList.add('cn2-medium');   // Yellow - Medium turbulence
-            } else {
-                cn2Container.classList.add('cn2-high');     // Red - High turbulence
-            }
-        }
-        
-        console.log(`CN² updated: ${cn2Value.toExponential(2)}`);
-    }
-}
-
-// Update temperature chart with 5-minute history
-function updateChart(statusData) {
-    if (!tempChart) return;
-    
-    // Handle both single status object and array of status objects
-    const statusArray = Array.isArray(statusData) ? statusData : [statusData];
-    
-    // Process each status record
-    statusArray.forEach(status => {
-        const now = status.timestamp ? new Date(status.timestamp) : new Date();
-        const timestamp = now.getTime();
-        const timeString = now.toLocaleTimeString();
-        
-        // Get temperatures from status data
-        const temperatures = status.temperatures || [];
-        
-        // Store temperature data
-        temperatureHistory.timestamps.push(timestamp);
-        if (temperatureHistory.data.length === 0) {
-            // Initialize data arrays for each sensor
-            temperatures.forEach(() => temperatureHistory.data.push([]));
-        }
-        
-        temperatures.forEach((temp, index) => {
-            if (temperatureHistory.data[index]) {
-                temperatureHistory.data[index].push(temp);
-            }
-        });
-    });
-    
-    // Remove data older than 5 minutes
-    const latestTimestamp = temperatureHistory.timestamps[temperatureHistory.timestamps.length - 1] || Date.now();
-    const cutoffTime = latestTimestamp - CONFIG.CHART_DURATION;
-    const cutoffIndex = temperatureHistory.timestamps.findIndex(t => t >= cutoffTime);
-    
-    if (cutoffIndex > 0) {
-        temperatureHistory.timestamps = temperatureHistory.timestamps.slice(cutoffIndex);
-        temperatureHistory.data = temperatureHistory.data.map(sensorData => 
-            sensorData.slice(cutoffIndex)
-        );
-    }
-    
-    // Update chart data
-    tempData.labels = temperatureHistory.timestamps.map(t => 
-        new Date(t).toLocaleTimeString()
-    );
-    
-    // Update each sensor dataset
-    CONFIG.SENSOR_COLORS.forEach((color, index) => {
-        if (index < temperatureHistory.data.length) {
-            tempData.datasets[index] = {
-                label: `Sensor ${index + 1}`,
-                data: temperatureHistory.data[index] || [],
-                borderColor: color,
-                backgroundColor: color + '20',
-                borderWidth: 2,
-                tension: 0.4,
-                fill: false
-            };
-        }
-    });
-    
-    tempChart.update('none'); // Update without animation for real-time performance
 }
 
 // API functions
@@ -716,12 +340,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize WebSocket
     initWebSocket();
     
-    // Initialize manual controls
-    initManualControls();
-    
-    // Initialize COM port controls
-    initComPortControls();
-    
     // Load saved settings
     loadSavedSettings();
     
@@ -794,43 +412,6 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Temperature Control System initialized successfully');
 });
 
-// Initialize COM port controls
-function initComPortControls() {
-    const reconnectButton = document.getElementById('reconnect-arduino');
-    const comPortSelect = document.getElementById('com-port-select');
-    const setPollingButton = document.getElementById('set-polling-interval');
-    
-    if (reconnectButton) {
-        reconnectButton.addEventListener('click', function() {
-            reconnectArduino();
-        });
-    }
-    
-    if (comPortSelect) {
-        comPortSelect.addEventListener('change', function() {
-            if (this.value) {
-                reconnectArduino(this.value);
-            }
-        });
-    }
-    
-    if (setPollingButton) {
-        setPollingButton.addEventListener('click', function() {
-            setPollingInterval();
-        });
-    }
-    
-    // Add Enter key support for polling interval input
-    const pollingInput = document.getElementById('polling-interval');
-    if (pollingInput) {
-        pollingInput.addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                setPollingInterval();
-            }
-        });
-    }
-}
-
 // Handle page visibility changes
 document.addEventListener('visibilitychange', function() {
     if (document.hidden) {
@@ -852,243 +433,6 @@ window.addEventListener('beforeunload', function() {
         ws.close();
     }
 });
-
-// Manual Control Functions
-function initManualControls() {
-    // Hot plate manual controls
-    for (let i = 0; i < 2; i++) {
-        // Manual control toggle
-        const manualToggle = document.getElementById(`manual-hotplate-${i}`);
-        if (manualToggle) {
-            manualToggle.addEventListener('change', function() {
-                manualControlState.hotplates[i] = this.checked;
-                setManualControlToggle('hotplate', i, this.checked);
-                updateManualControlUI();
-            });
-        }
-        
-        // Hot plate state toggle
-        const stateToggle = document.getElementById(`manual-hotplate-${i}-state`);
-        if (stateToggle) {
-            stateToggle.addEventListener('change', function() {
-                if (manualControlState.hotplates[i]) {
-                    setManualHotPlateState(i, this.checked);
-                }
-            });
-        }
-        
-        // Temperature input
-        const tempInput = document.getElementById(`manual-hotplate-${i}-temp`);
-        if (tempInput) {
-            tempInput.addEventListener('change', function() {
-                if (manualControlState.hotplates[i]) {
-                    setManualHotPlateTemp(i, parseFloat(this.value));
-                }
-            });
-        }
-    }
-    
-    // Fan manual controls
-    for (let i = 0; i < 4; i++) {
-        // Manual control toggle
-        const manualToggle = document.getElementById(`manual-fan-${i}`);
-        if (manualToggle) {
-            manualToggle.addEventListener('change', function() {
-                manualControlState.fans[i] = this.checked;
-                setManualControlToggle('fan', i, this.checked);
-                updateManualControlUI();
-            });
-        }
-        
-        // Fan state toggle
-        const stateToggle = document.getElementById(`manual-fan-${i}-state`);
-        if (stateToggle) {
-            stateToggle.addEventListener('change', function() {
-                if (manualControlState.fans[i]) {
-                    setManualFanState(i, this.checked);
-                }
-            });
-        }
-        
-        // Fan speed slider
-        const speedSlider = document.getElementById(`manual-fan-${i}-speed`);
-        if (speedSlider) {
-            speedSlider.addEventListener('input', function() {
-                const valueDisplay = document.getElementById(`fan-${i}-speed-value`);
-                if (valueDisplay) {
-                    valueDisplay.textContent = this.value;
-                }
-                if (manualControlState.fans[i]) {
-                    setManualFanSpeed(i, parseInt(this.value));
-                }
-            });
-        }
-    }
-}
-
-function updateManualControls(data) {
-    // Update hot plate controls
-    (data.hot_plate_states || []).forEach((state, index) => {
-        const stateToggle = document.getElementById(`manual-hotplate-${index}-state`);
-        const stateText = document.getElementById(`hotplate-${index}-state-text`);
-        
-        if (stateToggle && !manualControlState.hotplates[index]) {
-            stateToggle.checked = state;
-        }
-        if (stateText) {
-            stateText.textContent = state ? 'ON' : 'OFF';
-        }
-        
-        const tempInput = document.getElementById(`manual-hotplate-${index}-temp`);
-        if (tempInput && !manualControlState.hotplates[index]) {
-            tempInput.value = (data.target_temperatures && data.target_temperatures[index]) || 25;
-        }
-    });
-    
-    // Update fan controls
-    (data.fan_speeds || []).forEach((speed, index) => {
-        const speedSlider = document.getElementById(`manual-fan-${index}-speed`);
-        const speedValue = document.getElementById(`fan-${index}-speed-value`);
-        const stateToggle = document.getElementById(`manual-fan-${index}-state`);
-        const stateText = document.getElementById(`fan-${index}-state-text`);
-        
-        if (speedSlider && !manualControlState.fans[index]) {
-            speedSlider.value = speed;
-        }
-        if (speedValue && !manualControlState.fans[index]) {
-            speedValue.textContent = speed;
-        }
-        if (stateToggle && !manualControlState.fans[index]) {
-            stateToggle.checked = speed > 0;
-        }
-        if (stateText) {
-            stateText.textContent = speed > 0 ? 'ON' : 'OFF';
-        }
-    });
-}
-
-function updateManualControlUI() {
-    // Update hot plate UI
-    for (let i = 0; i < 2; i++) {
-        const isManual = manualControlState.hotplates[i];
-        const tempInput = document.getElementById(`manual-hotplate-${i}-temp`);
-        const stateToggle = document.getElementById(`manual-hotplate-${i}-state`);
-        
-        if (tempInput) tempInput.disabled = !isManual;
-        if (stateToggle) stateToggle.disabled = !isManual;
-    }
-    
-    // Update fan UI
-    for (let i = 0; i < 4; i++) {
-        const isManual = manualControlState.fans[i];
-        const speedSlider = document.getElementById(`manual-fan-${i}-speed`);
-        const stateToggle = document.getElementById(`manual-fan-${i}-state`);
-        
-        if (speedSlider) speedSlider.disabled = !isManual;
-        if (stateToggle) stateToggle.disabled = !isManual;
-    }
-}
-
-function updateDeviceStatus(data) {
-    // Update device connection status based on sensor data
-    const temperatures = data.temperatures || [];
-    
-    // Check hot plates (assuming they're connected if corresponding sensors work)
-    for (let i = 0; i < 2; i++) {
-        const statusElement = document.getElementById(`hotplate-${i}-device-status`);
-        if (statusElement) {
-            // With 5 sensors, use sensor 0 for hot plate 0 and sensor 2 for hot plate 1
-            const sensorIndex = i === 0 ? 0 : 2;
-            const isConnected = sensorIndex < temperatures.length && 
-                              temperatures[sensorIndex] > -100;
-            statusElement.textContent = isConnected ? 'Connected' : 'Not connected';
-            statusElement.className = isConnected ? 'text-success' : 'text-danger';
-        }
-    }
-    
-    // Check fans (assume all fans are connected if system is ready)
-    for (let i = 0; i < 4; i++) {
-        const statusElement = document.getElementById(`fan-${i}-device-status`);
-        if (statusElement) {
-            const isConnected = data.system_ready || false;
-            statusElement.textContent = isConnected ? 'Connected' : 'Not connected';
-            statusElement.className = isConnected ? 'text-success' : 'text-danger';
-        }
-    }
-}
-
-async function setManualHotPlateState(plateId, state) {
-    try {
-        await apiCall(`/api/hotplate/${plateId}/toggle`, 'POST', { state: state });
-        console.log(`Manual hot plate ${plateId + 1} set to ${state}`);
-    } catch (error) {
-        console.error('Failed to set manual hot plate state:', error);
-    }
-}
-
-async function setManualHotPlateTemp(plateId, temperature) {
-    try {
-        await apiCall('/api/temperature/set', 'POST', {
-            sensor: plateId,
-            target: temperature
-        });
-        console.log(`Manual hot plate ${plateId + 1} temperature set to ${temperature}°C`);
-    } catch (error) {
-        console.error('Failed to set manual hot plate temperature:', error);
-    }
-}
-
-async function setManualFanState(fanId, state) {
-    try {
-        const speed = state ? 128 : 0; // 50% speed when turned on manually
-        await apiCall('/api/fan/set', 'POST', {
-            fan: fanId,
-            speed: speed
-        });
-        
-        // Update slider
-        const speedSlider = document.getElementById(`manual-fan-${fanId}-speed`);
-        const speedValue = document.getElementById(`fan-${fanId}-speed-value`);
-        if (speedSlider) speedSlider.value = speed;
-        if (speedValue) speedValue.textContent = speed;
-        
-        console.log(`Manual fan ${fanId + 1} set to ${state ? 'ON' : 'OFF'}`);
-    } catch (error) {
-        console.error('Failed to set manual fan state:', error);
-    }
-}
-
-async function setManualFanSpeed(fanId, speed) {
-    try {
-        await apiCall('/api/fan/set', 'POST', {
-            fan: fanId,
-            speed: speed
-        });
-        
-        // Update state toggle
-        const stateToggle = document.getElementById(`manual-fan-${fanId}-state`);
-        const stateText = document.getElementById(`fan-${fanId}-state-text`);
-        if (stateToggle) stateToggle.checked = speed > 0;
-        if (stateText) stateText.textContent = speed > 0 ? 'ON' : 'OFF';
-        
-        console.log(`Manual fan ${fanId + 1} speed set to ${speed}`);
-    } catch (error) {
-        console.error('Failed to set manual fan speed:', error);
-    }
-}
-
-async function setManualControlToggle(deviceType, deviceId, manual) {
-    try {
-        const endpoint = deviceType === 'hotplate' ? 
-            `/api/manual/hotplate/${deviceId}` : 
-            `/api/manual/fan/${deviceId}`;
-        
-        await apiCall(endpoint, 'POST', manual);
-        console.log(`Manual control for ${deviceType} ${deviceId + 1} set to ${manual}`);
-    } catch (error) {
-        console.error(`Failed to set manual control for ${deviceType}:`, error);
-    }
-}
 
 // Arduino COM Port Management
 async function reconnectArduino(newPort = null) {
