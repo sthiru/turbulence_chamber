@@ -128,6 +128,10 @@
         // Initialize camera overlay
         document.getElementById('startVideoBtn').addEventListener('click', function(e) {
             e.preventDefault();
+            // Initialize video WebSocket connection
+            if (typeof initVideoWebSocket === 'function') {
+                initVideoWebSocket();
+            }
             const cameraModalElement = document.getElementById('cameraOverlay');
             const cameraModal = new bootstrap.Modal(cameraModalElement);
             cameraModal.show();
@@ -135,8 +139,15 @@
 
         // Camera modal event listeners for video stream
         const cameraModalElement = document.getElementById('cameraOverlay');
+        let cameraModalInstance = null;
+
         if (cameraModalElement) {
             cameraModalElement.addEventListener('show.bs.modal', function() {
+                // Get or create modal instance
+                cameraModalInstance = bootstrap.Modal.getInstance(cameraModalElement);
+                if (!cameraModalInstance) {
+                    cameraModalInstance = new bootstrap.Modal(cameraModalElement);
+                }
                 // Connect to video stream when modal opens
                 if (typeof startVideoStream === 'function') {
                     startVideoStream();
@@ -148,6 +159,14 @@
                 if (typeof stopVideoStream === 'function') {
                     stopVideoStream();
                 }
+                // Dispose modal instance to remove backdrop
+                if (cameraModalInstance) {
+                    cameraModalInstance.dispose();
+                    cameraModalInstance = null;
+                }
+                // Remove any remaining backdrops
+                const backdrops = document.querySelectorAll('.modal-backdrop');
+                backdrops.forEach(backdrop => backdrop.remove());
             });
         }
 

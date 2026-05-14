@@ -260,14 +260,25 @@ async function stopVideoStream() {
         const response = await fetch('/api/camera/video/stop', {
             method: 'POST'
         });
-        
+
         const result = await response.json();
-        
+
         if (result.status === 'success') {
             // Send stop stream command via WebSocket
             if (videoWs && videoWs.readyState === WebSocket.OPEN) {
                 videoWs.send('{"type":"stop_stream"}');
             }
+            // Close WebSocket connection
+            if (videoWs) {
+                videoWs.close();
+                videoWs = null;
+            }
+            // Clear reconnect interval
+            if (videoReconnectInterval) {
+                clearInterval(videoReconnectInterval);
+                videoReconnectInterval = null;
+            }
+            isVideoStreaming = false;
             showNotification('Video stream stopped', 'info');
         } else {
             showNotification('Failed to stop video stream: ' + result.message, 'error');

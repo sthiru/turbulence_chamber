@@ -98,12 +98,10 @@ function handleWebSocketMessage(data) {
     if (data.type === 'system_status') {
         updateSystemStatus(data);
     } else if (data.type === 'historical_data' || data.type === 'current_data') {
-        updateSensorData(data.data);
-        
         // Get latest data for system status
         const dataArray = Array.isArray(data.data) ? data.data : [data.data];
         const latestData = dataArray[dataArray.length - 1];
-        
+
         if (latestData) {
             try {
                 updateSensorData(latestData);

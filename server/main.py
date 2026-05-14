@@ -24,6 +24,7 @@ import csv
 import io
 import math
 import os
+import cv2
 
 from models import (
     TemperatureCommand, FanCommand, HotPlateCommand, 
@@ -261,8 +262,8 @@ async def background_status_polling():
                 try:
                     cn2_value = calculate_cn2(
                         status_data.get("temperatures", []),
-                        status_data.get("temperature_bmp", []),
-                        status_data.get("pressure", [])
+                        [status_data.get("bmpTemperature_internal"), status_data.get("bmpTemperature_external")],
+                        [status_data.get("bmpPressure_internal"), status_data.get("bmpPressure_external")]
                     )
                     status_data["cn2"] = cn2_value
                 except Exception as e:
@@ -324,15 +325,21 @@ async def background_status_polling():
                         "type": "current_data",
                         "data": [{
                             "temperatures": status_data.get("temperatures", []),
+                            "temp_hotplate1": status_data.get("temp_hotplate1"),
+                            "temp_hotplate2": status_data.get("temp_hotplate2"),
+                            "bmpTemperature_internal": status_data.get("bmpTemperature_internal"),
+                            "bmpTemperature_external": status_data.get("bmpTemperature_external"),
+                            "bmpPressure_internal": status_data.get("bmpPressure_internal"),
+                            "bmpPressure_external": status_data.get("bmpPressure_external"),
+                            "dhtTemperature_internal": status_data.get("dhtTemperature_internal"),
+                            "dhtTemperature_external": status_data.get("dhtTemperature_external"),
+                            "dhtHumidity_internal": status_data.get("dhtHumidity_internal"),
+                            "dhtHumidity_external": status_data.get("dhtHumidity_external"),
                             "target_temperatures": status_data.get("target_temperatures", []),
                             "fan_speeds": status_data.get("fan_speeds", []),
                             "hot_plate_states": status_data.get("hot_plate_states", []),
-                            "temperature_bmp": status_data.get("temperature_bmp", []),
-                            "pressure": status_data.get("pressure", []),
-                            "temperature_dht": status_data.get("temperature_dht", []),
-                            "humidity": status_data.get("humidity", []),
                             "flow_rates": status_data.get("flow_rates", []),
-                            "cn2": status_data.get("cn2", []),
+                            "cn2": status_data.get("cn2"),
                             "cn2_optical": status_data.get("cn2_optical"),
                             "cn2_status": status_data.get("cn2_status"),
                             "camera_image": status_data.get("camera_image"),
@@ -1205,14 +1212,15 @@ async def download_captured_data():
         # Write header
         header = [
             'timestamp', 'session_id',
-            'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5','temp_sensor_6', 'temp_sensor_7', 'temp_sensor_8', 'temp_sensor_9', 'temp_sensor_10','temp_sensor_11','temp_sensor_12','temp_sensor_13','temp_sensor_14',
-            'bmp_temp_1', 'bmp_temp_2',
-            'dht_temp_1', 'dht_temp_2',
+            'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5','temp_sensor_6', 'temp_sensor_7', 'temp_sensor_8', 'temp_sensor_9', 'temp_sensor_10','temp_sensor_11','temp_sensor_12',
+            'temp_hotplate1', 'temp_hotplate2',
+            'bmpTemperature_internal', 'bmpTemperature_external',
+            'bmpPressure_internal', 'bmpPressure_external',
+            'dhtTemperature_internal', 'dhtTemperature_external',
+            'dhtHumidity_internal', 'dhtHumidity_external',
             'target_temp_1', 'target_temp_2',
             'fan_speed_1', 'fan_speed_2', 'fan_speed_3', 'fan_speed_4',
             'hot_plate_1', 'hot_plate_2',
-            'pressure_1', 'pressure_2',
-            'humidity_1', 'humidity_2',
             'cn2_thermal', 'cn2_optical',
             'image_filename'
         ]
@@ -1220,17 +1228,45 @@ async def download_captured_data():
         
         # Write data points
         for point in captured_data_points:
+            temperatures = point.get('temperatures', [])
             row = [
                 point['timestamp'],
                 point.get('session_id', ''),
-                *(point.get('temperatures', [])),
-                *(point.get('temperature_bmp', [])),
-                *(point.get('temperature_dht', [])),
+                # Temperature sensors (1-12)
+                temperatures[0] if len(temperatures) > 0 else '',
+                temperatures[1] if len(temperatures) > 1 else '',
+                temperatures[2] if len(temperatures) > 2 else '',
+                temperatures[3] if len(temperatures) > 3 else '',
+                temperatures[4] if len(temperatures) > 4 else '',
+                temperatures[5] if len(temperatures) > 5 else '',
+                temperatures[6] if len(temperatures) > 6 else '',
+                temperatures[7] if len(temperatures) > 7 else '',
+                temperatures[8] if len(temperatures) > 8 else '',
+                temperatures[9] if len(temperatures) > 9 else '',
+                temperatures[10] if len(temperatures) > 10 else '',
+                temperatures[11] if len(temperatures) > 11 else '',
+                # Hotplate temperatures
+                point.get('temp_hotplate1', ''),
+                point.get('temp_hotplate2', ''),
+                # BME280 temperatures
+                point.get('bmpTemperature_internal', ''),
+                point.get('bmpTemperature_external', ''),
+                # BME280 pressures
+                point.get('bmpPressure_internal', ''),
+                point.get('bmpPressure_external', ''),
+                # DHT temperatures
+                point.get('dhtTemperature_internal', ''),
+                point.get('dhtTemperature_external', ''),
+                # DHT humidities
+                point.get('dhtHumidity_internal', ''),
+                point.get('dhtHumidity_external', ''),
+                # Target temperatures
                 *(point.get('target_temperatures', [])),
+                # Fan speeds
                 *(point.get('fan_speeds', [])),
+                # Hot plate states
                 *(point.get('hot_plate_states', [])),
-                *(point.get('pressure', [])),
-                *(point.get('humidity', [])),
+                # CN2 values
                 point.get('cn2', ''),
                 point.get('cn2_optical', ''),
                 point.get('image_filename', '')
@@ -1411,11 +1447,16 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
         writer.writerow([
             "timestamp", "device_status", "arduino_port", "system_ready",
             "temp_sensor_1", "temp_sensor_2", "temp_sensor_3", "temp_sensor_4", "temp_sensor_5",
+            "temp_sensor_6", "temp_sensor_7", "temp_sensor_8", "temp_sensor_9", "temp_sensor_10",
+            "temp_sensor_11", "temp_sensor_12",
+            "temp_hotplate1", "temp_hotplate2",
+            "bmpTemperature_internal", "bmpTemperature_external",
+            "bmpPressure_internal", "bmpPressure_external",
+            "dhtTemperature_internal", "dhtTemperature_external",
+            "dhtHumidity_internal", "dhtHumidity_external",
             "target_temp_1", "target_temp_2",
             "fan_speed_1", "fan_speed_2", "fan_speed_3", "fan_speed_4",
             "hot_plate_1", "hot_plate_2",
-            "bme_temp_1", "bme_temp_2", "bme_temp_3", "bme_temp_4",
-            "bme_pressure_1", "bme_pressure_2", "bme_pressure_3", "bme_pressure_4",
             "cn2_thermal", "cn2_optical", "error"
         ])
         return output.getvalue(), filename_prefix
@@ -1426,11 +1467,16 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
     writer.writerow([
         "timestamp", "device_status", "arduino_port", "system_ready",
         "temp_sensor_1", "temp_sensor_2", "temp_sensor_3", "temp_sensor_4", "temp_sensor_5",
+        "temp_sensor_6", "temp_sensor_7", "temp_sensor_8", "temp_sensor_9", "temp_sensor_10",
+        "temp_sensor_11", "temp_sensor_12",
+        "temp_hotplate1", "temp_hotplate2",
+        "bmpTemperature_internal", "bmpTemperature_external",
+        "bmpPressure_internal", "bmpPressure_external",
+        "dhtTemperature_internal", "dhtTemperature_external",
+        "dhtHumidity_internal", "dhtHumidity_external",
         "target_temp_1", "target_temp_2",
         "fan_speed_1", "fan_speed_2", "fan_speed_3", "fan_speed_4",
         "hot_plate_1", "hot_plate_2",
-        "bme_temp_1", "bme_temp_2", "bme_temp_3", "bme_temp_4",
-        "bme_pressure_1", "bme_pressure_2", "bme_pressure_3", "bme_pressure_4",
         "cn2_thermal", "cn2_optical", "error"
     ])
     
@@ -1443,10 +1489,30 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
             record.get("system_ready", ""),
         ]
         
-        # Temperature sensors
+        # Temperature sensors (1-12)
         temps = record.get("temperatures", [])
-        for i in range(5):
+        for i in range(12):
             row.append(temps[i] if i < len(temps) else "")
+        
+        # Hotplate temperatures
+        row.append(record.get("temp_hotplate1", ""))
+        row.append(record.get("temp_hotplate2", ""))
+        
+        # BME280 temperatures
+        row.append(record.get("bmpTemperature_internal", ""))
+        row.append(record.get("bmpTemperature_external", ""))
+        
+        # BME280 pressures
+        row.append(record.get("bmpPressure_internal", ""))
+        row.append(record.get("bmpPressure_external", ""))
+        
+        # DHT temperatures
+        row.append(record.get("dhtTemperature_internal", ""))
+        row.append(record.get("dhtTemperature_external", ""))
+        
+        # DHT humidities
+        row.append(record.get("dhtHumidity_internal", ""))
+        row.append(record.get("dhtHumidity_external", ""))
         
         # Target temperatures
         target_temps = record.get("target_temperatures", [])

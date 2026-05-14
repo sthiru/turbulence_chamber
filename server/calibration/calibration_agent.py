@@ -187,12 +187,15 @@ class CalibrationAgent:
             # Create CSV file with headers based on calibration type
             if calibration_type == "hotplate":
                 headers = [
-                    'timestamp', 'step', 'fan_speed', 'target_temperature', 
+                    'timestamp', 'step', 'fan_speed', 'target_temperature',
                     'sensor_temp_0', 'sensor_temp_1', 'sensor_temp_2', 'sensor_temp_3',
                     'sensor_temp_4', 'sensor_temp_5', 'sensor_temp_6', 'sensor_temp_7',
                     'sensor_temp_8', 'sensor_temp_9', 'sensor_temp_10', 'sensor_temp_11',
-                    'sensor_temp_12', 'sensor_temp_13',
-                    'pressure_bmp_0', 'pressure_bmp_1', 'humidity_dht_0', 'humidity_dht_1',
+                    'temp_hotplate1', 'temp_hotplate2',
+                    'bmpTemperature_internal', 'bmpTemperature_external',
+                    'bmpPressure_internal', 'bmpPressure_external',
+                    'dhtTemperature_internal', 'dhtTemperature_external',
+                    'dhtHumidity_internal', 'dhtHumidity_external',
                     'air_flow_0', 'air_flow_1', 'air_flow_2', 'air_flow_3',
                     'cn2_thermal', 'chamber_temp_avg', 'phase', 'phase_details'
                 ]
@@ -203,8 +206,11 @@ class CalibrationAgent:
                     'sensor_temp_0', 'sensor_temp_1', 'sensor_temp_2', 'sensor_temp_3',
                     'sensor_temp_4', 'sensor_temp_5', 'sensor_temp_6', 'sensor_temp_7',
                     'sensor_temp_8', 'sensor_temp_9', 'sensor_temp_10', 'sensor_temp_11',
-                    'sensor_temp_12', 'sensor_temp_13',
-                    'pressure_bmp_0', 'pressure_bmp_1', 'humidity_dht_0', 'humidity_dht_1',
+                    'temp_hotplate1', 'temp_hotplate2',
+                    'bmpTemperature_internal', 'bmpTemperature_external',
+                    'bmpPressure_internal', 'bmpPressure_external',
+                    'dhtTemperature_internal', 'dhtTemperature_external',
+                    'dhtHumidity_internal', 'dhtHumidity_external',
                     'air_flow_0', 'air_flow_1', 'air_flow_2', 'air_flow_3'
                 ]
             else:
@@ -214,8 +220,11 @@ class CalibrationAgent:
                     'sensor_temp_0', 'sensor_temp_1', 'sensor_temp_2', 'sensor_temp_3',
                     'sensor_temp_4', 'sensor_temp_5', 'sensor_temp_6', 'sensor_temp_7',
                     'sensor_temp_8', 'sensor_temp_9', 'sensor_temp_10', 'sensor_temp_11',
-                    'sensor_temp_12', 'sensor_temp_13',
-                    'pressure_bmp_0', 'pressure_bmp_1', 'humidity_dht_0', 'humidity_dht_1',
+                    'temp_hotplate1', 'temp_hotplate2',
+                    'bmpTemperature_internal', 'bmpTemperature_external',
+                    'bmpPressure_internal', 'bmpPressure_external',
+                    'dhtTemperature_internal', 'dhtTemperature_external',
+                    'dhtHumidity_internal', 'dhtHumidity_external',
                     'air_flow_0', 'air_flow_1', 'air_flow_2', 'air_flow_3',
                     'cn2_thermal', 'chamber_temp_avg', 'phase', 'phase_details'
                 ]
@@ -591,12 +600,16 @@ class CalibrationAgent:
                         'sensor_temp_9': sensor_temps_data[9] if len(sensor_temps_data) > 9 else '',
                         'sensor_temp_10': sensor_temps_data[10] if len(sensor_temps_data) > 10 else '',
                         'sensor_temp_11': sensor_temps_data[11] if len(sensor_temps_data) > 11 else '',
-                        'sensor_temp_12': sensor_temps_data[12] if len(sensor_temps_data) > 12 else '',
-                        'sensor_temp_13': sensor_temps_data[13] if len(sensor_temps_data) > 13 else '',
-                        'pressure_bmp_0': response_data['pressure'][0] if response_data['pressure'] and len(response_data['pressure']) > 0 else '',
-                        'pressure_bmp_1': response_data['pressure'][1] if response_data['pressure'] and len(response_data['pressure']) > 1 else '',
-                        'humidity_dht_0': response_data['humidity'][0] if response_data['humidity'] and len(response_data['humidity']) > 0 else '',
-                        'humidity_dht_1': response_data['humidity'][1] if response_data['humidity'] and len(response_data['humidity']) > 1 else ''
+                        'temp_hotplate1': response_data.get('temp_hotplate1', ''),
+                        'temp_hotplate2': response_data.get('temp_hotplate2', ''),
+                        'bmpTemperature_internal': response_data.get('bmpTemperature_internal', ''),
+                        'bmpTemperature_external': response_data.get('bmpTemperature_external', ''),
+                        'bmpPressure_internal': response_data.get('bmpPressure_internal', ''),
+                        'bmpPressure_external': response_data.get('bmpPressure_external', ''),
+                        'dhtTemperature_internal': response_data.get('dhtTemperature_internal', ''),
+                        'dhtTemperature_external': response_data.get('dhtTemperature_external', ''),
+                        'dhtHumidity_internal': response_data.get('dhtHumidity_internal', ''),
+                        'dhtHumidity_external': response_data.get('dhtHumidity_external', '')
                     }
                     self._append_to_csv(csv_filepath, csv_data)
                 
@@ -845,12 +858,16 @@ class CalibrationAgent:
                                     'sensor_temp_9': sensor_temps[9] if len(sensor_temps) > 9 else '',
                                     'sensor_temp_10': sensor_temps[10] if len(sensor_temps) > 10 else '',
                                     'sensor_temp_11': sensor_temps[11] if len(sensor_temps) > 11 else '',
-                                    'sensor_temp_12': sensor_temps[12] if len(sensor_temps) > 12 else '',
-                                    'sensor_temp_13': sensor_temps[13] if len(sensor_temps) > 13 else '',
-                                    'pressure_bmp_0': sensor_data['pressure'][0] if sensor_data['pressure'] and len(sensor_data['pressure']) > 0 else '',
-                                    'pressure_bmp_1': sensor_data['pressure'][1] if sensor_data['pressure'] and len(sensor_data['pressure']) > 1 else '',
-                                    'humidity_dht_0': sensor_data['humidity'][0] if sensor_data['humidity'] and len(sensor_data['humidity']) > 0 else '',
-                                    'humidity_dht_1': sensor_data['humidity'][1] if sensor_data['humidity'] and len(sensor_data['humidity']) > 1 else '',
+                                    'temp_hotplate1': sensor_data.get('temp_hotplate1', ''),
+                                    'temp_hotplate2': sensor_data.get('temp_hotplate2', ''),
+                                    'bmpTemperature_internal': sensor_data.get('bmpTemperature_internal', ''),
+                                    'bmpTemperature_external': sensor_data.get('bmpTemperature_external', ''),
+                                    'bmpPressure_internal': sensor_data.get('bmpPressure_internal', ''),
+                                    'bmpPressure_external': sensor_data.get('bmpPressure_external', ''),
+                                    'dhtTemperature_internal': sensor_data.get('dhtTemperature_internal', ''),
+                                    'dhtTemperature_external': sensor_data.get('dhtTemperature_external', ''),
+                                    'dhtHumidity_internal': sensor_data.get('dhtHumidity_internal', ''),
+                                    'dhtHumidity_external': sensor_data.get('dhtHumidity_external', ''),
                                     'cn2_thermal': cn2_value,
                                     'chamber_temp_avg': chamber_temp_avg,
                                     'phase': self.current_session.phase,
