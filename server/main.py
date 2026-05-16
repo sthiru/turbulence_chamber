@@ -496,6 +496,34 @@ async def video_streaming_worker():
     
     logger.debug("Video streaming worker stopped")
 
+async def apply_settings_to_arduino():
+    """Apply settings from JSON file to Arduino"""
+    settings_file = os.path.join(os.path.dirname(__file__), "config", "settings.json")
+    try:
+        with open(settings_file, 'r') as f:
+            settings = json.load(f)
+        
+        # Send apply_settings command to Arduino
+        command = {
+            "cmd": "apply_settings",
+            "target_temperatures": settings.get("target_temperatures", [80, 80]),
+            "safety_temperature": settings.get("safety_temperature", 120),
+            "pid_parameters": settings.get("pid_parameters", {"kp": 2.0, "ki": 0.5, "kd": 1.0}),
+            "fan_start_behaviour": settings.get("fan_start_behaviour", "full_speed"),
+            "polling_interval": settings.get("polling_interval", 1),
+            "ambient_polling_interval": settings.get("ambient_polling_interval", 10)
+        }
+        
+        response = await arduino_comm.send_command(command)
+        if response.status == "ok":
+            logger.info("Settings applied to Arduino successfully")
+        else:
+            logger.warning(f"Failed to apply settings to Arduino: {response.msg}")
+    except FileNotFoundError:
+        logger.warning("Settings file not found, using default values")
+    except Exception as e:
+        logger.error(f"Error applying settings to Arduino: {e}")
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize Arduino connection and start background polling"""
@@ -508,6 +536,9 @@ async def startup_event():
     success = await arduino_comm.connect()
     if success:
         logger.debug("Arduino connected successfully")
+        
+        # Apply settings from JSON file to Arduino
+        await apply_settings_to_arduino()
         
         # Get initial status and store it
         try:
@@ -588,10 +619,10 @@ async def video_test():
     else:
         raise HTTPException(status_code=404, detail="Video test page not found")
 
-@app.get("/main")
-async def main():
-    """Serve the main visualization interface"""
-    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "control-panel.html")
+@app.get("/configuration")
+async def configuration():
+    """Serve the configuration interface"""
+    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "configuration.html")
     if os.path.exists(web_file):
         return FileResponse(web_file)
     else:
@@ -664,6 +695,43 @@ async def toggle_hot_plate(plate_id: int, request: HotPlateToggleRequest):
             return {"status": "success", "message": f"Hot plate {plate_id + 1} {'enabled' if request.state else 'disabled'}"}
         else:
             raise HTTPException(status_code=400, detail=response.msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/settings")
+async def get_settings():
+    """Get configuration settings from JSON file"""
+    settings_file = os.path.join(os.path.dirname(__file__), "config", "settings.json")
+    try:
+        with open(settings_file, 'r') as f:
+            settings = json.load(f)
+        return settings
+    except FileNotFoundError:
+        return {"error": "Settings file not found"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/settings")
+async def save_settings(settings: dict):
+    """Save configuration settings to JSON file"""
+    settings_file = os.path.join(os.path.dirname(__file__), "config", "settings.json")
+    try:
+        with open(settings_file, 'w') as f:
+            json.dump(settings, f, indent=4)
+        
+        # Apply settings to Arduino
+        await apply_settings_to_arduino()
+        
+        return {"status": "success", "message": "Settings saved and applied to Arduino"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/settings/apply")
+async def apply_settings():
+    """Apply settings from JSON file to Arduino"""
+    try:
+        await apply_settings_to_arduino()
+        return {"status": "success", "message": "Settings applied to Arduino"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

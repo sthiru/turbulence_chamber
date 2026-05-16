@@ -1,0 +1,17 @@
+{
+    "target_temperatures": [
+        80,
+        80
+    ],
+    "safety_temperature": 120,
+    "pid_parameters": {
+        "kp": 2,
+        "ki": 0.5,
+        "kd": 25
+    },
+    "fan_start_behaviour": "full_speed",
+    "arduino_port": "",
+    "polling_interval": 1,
+    "ambient_polling_interval": 9.5,
+    "history_size": 100
+}

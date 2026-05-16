@@ -73,8 +73,8 @@
 #define NUM_FLOW_SENSORS 4
 #define MAX_TEMP 120.0
 #define MIN_TEMP 0.0
-#define UPDATE_INTERVAL 1000  // 1 seconds
-#define DHT_UPDATE_INTERVAL 10000  // 10 seconds for DHT sensors
+unsigned long UPDATE_INTERVAL = 1000;  // 1 second (default, can be modified)
+unsigned long DHT_UPDATE_INTERVAL = 10000;  // 10 seconds for DHT sensors (default, can be modified)
 
 // Global Variables
 OneWire oneWire(ONE_WIRE_BUS);
@@ -672,6 +672,70 @@ void processCommand(String command) {
     } else {
       sendErrorResponse("Invalid hot plate parameters");
     }
+  } else if (cmd == "apply_settings") {
+    // Apply settings from server (target temperatures, PID parameters, etc.)
+    if (doc.containsKey("target_temperatures") && doc["target_temperatures"].is<JsonArray>()) {
+      JsonArray targetTemps = doc["target_temperatures"].as<JsonArray>();
+      for (int i = 0; i < min((int)targetTemps.size(), NUM_HOT_PLATES); i++) {
+        targetTemperatures[i] = targetTemps[i];
+      }
+    }
+    
+    if (doc.containsKey("safety_temperature")) {
+      // Safety temperature is stored but not directly enforced by Arduino
+      // It's primarily enforced by the server side
+      float safetyTemp = doc["safety_temperature"];
+      // Could be used for additional safety checks if needed
+    }
+    
+    if (doc.containsKey("pid_parameters") && doc["pid_parameters"].is<JsonObject>()) {
+      JsonObject pidParams = doc["pid_parameters"].as<JsonObject>();
+      if (pidParams.containsKey("kp")) {
+        kp = pidParams["kp"];
+        pid1.SetTunings(kp, ki, kd);
+        pid2.SetTunings(kp, ki, kd);
+      }
+      if (pidParams.containsKey("ki")) {
+        ki = pidParams["ki"];
+        pid1.SetTunings(kp, ki, kd);
+        pid2.SetTunings(kp, ki, kd);
+      }
+      if (pidParams.containsKey("kd")) {
+        kd = pidParams["kd"];
+        pid1.SetTunings(kp, ki, kd);
+        pid2.SetTunings(kp, ki, kd);
+      }
+    }
+    
+    if (doc.containsKey("fan_start_behaviour")) {
+      String fanBehaviour = doc["fan_start_behaviour"] | "off";
+      if (fanBehaviour == "off") {
+        for (int i = 0; i < NUM_FANS; i++) {
+          fanSpeeds[i] = 0;
+          setFanSpeed(i, 0);
+        }
+      } else if (fanBehaviour == "half_speed") {
+        for (int i = 0; i < NUM_FANS; i++) {
+          fanSpeeds[i] = 127;
+          setFanSpeed(i, 127);
+        }
+      } else if (fanBehaviour == "full_speed") {
+        for (int i = 0; i < NUM_FANS; i++) {
+          fanSpeeds[i] = 255;
+          setFanSpeed(i, 255);
+        }
+      }
+    }
+    
+    // Polling intervals
+    if (doc.containsKey("polling_interval")) {
+      UPDATE_INTERVAL = (unsigned long)(doc["polling_interval"] | 1) * 1000;  // Convert seconds to milliseconds
+    }
+    if (doc.containsKey("ambient_polling_interval")) {
+      DHT_UPDATE_INTERVAL = (unsigned long)(doc["ambient_polling_interval"] | 10) * 1000;  // Convert seconds to milliseconds
+    }
+    
+    sendStatusResponse();
   } else {
     sendErrorResponse("Unknown command");
   }

@@ -1,6 +1,6 @@
-# Temperature Control System
+# Turbulence Chamber Control System
 
-A comprehensive Arduino-based temperature control system with 6 DS18B20 sensors, 4 DC fans, 2 hot plates, FastAPI server, and web interface for remote monitoring and control.
+A comprehensive Arduino-based turbulence chamber control system with 12 DS18B20 temperature sensors, 2 BME280 sensors, 2 DHT22 sensors, 4 DC fans, 2 hot plates, Basler GigE camera, FastAPI server, and web interface for remote monitoring and control with CN² (refractive index structure parameter) measurement capabilities.
 
 ## System Overview
 
@@ -10,25 +10,36 @@ This system provides precise temperature control for multiple heating elements w
 
 ### Components
 - **Arduino Mega 2560** (recommended for sufficient I/O pins)
-- **DS18B20 Temperature Sensors** (6 units) with 4.7kΩ pull-up resistor
+- **DS18B20 Temperature Sensors** (12 units) with 4.7kΩ pull-up resistor
+- **BME280 Pressure/Temperature Sensors** (2 units) via SPI
+- **DHT22 Temperature/Humidity Sensors** (2 units)
 - **SSR-40DA Solid State Relays** (2 units) for hot plate control
 - **IRF540 MOSFETs** (4 units) for fan speed control
 - **24V DC Fans** (4 units) - PGSA2Z brushless cooling fans
 - **Hot Plates** (2 units) compatible with SSR relays
+- **Basler GigE Camera** with Pylon SDK for optical CN² measurement
 - **Power Supply**: 24V for fans, appropriate voltage for hot plates
-- **Raspberry Pi** (or similar) for running the FastAPI server
+- **Raspberry Pi 5** (or similar) for running the FastAPI server
 
 ### Wiring Diagram
 ```
 Arduino Mega Pin Assignments:
-- Pin 2: DS18B20 OneWire Data Bus (all sensors in parallel)
+- Pin 2: DS18B20 OneWire Data Bus (all 12 sensors in parallel)
 - Pin 3: MOSFET Fan 1 PWM
-- Pin 5: MOSFET Fan 2 PWM  
-- Pin 6: MOSFET Fan 3 PWM
-- Pin 10: MOSFET Fan 4 PWM
+- Pin 4: MOSFET Fan 2 PWM
+- Pin 5: MOSFET Fan 3 PWM
+- Pin 6: MOSFET Fan 4 PWM
 - Pin 8: SSR Relay 1 (Hot Plate 1)
 - Pin 9: SSR Relay 2 (Hot Plate 2)
 - Pin 13: Status LED
+- Pin 22: DHT22 Sensor 1 (Internal)
+- Pin 24: DHT22 Sensor 2 (External)
+- Pin 26: BME280 Sensor 1 (Internal) - SPI
+- Pin 28: BME280 Sensor 2 (External) - SPI
+- Pin A0-A3: Air Flow Sensors (4 analog inputs)
+- Pin 50: SPI MOSI (for BME280)
+- Pin 51: SPI MISO (for BME280)
+- Pin 52: SPI SCK (for BME280)
 - GND: Common ground
 - VIN: Power input (7-12V)
 
@@ -58,6 +69,8 @@ SSR Relay Control:
   - OneWire (by Jim Studt)
   - DallasTemperature (by Miles Burton)
   - ArduinoJson (by Benoit Blanchon)
+  - Adafruit BME280 Library
+  - Adafruit DHT Library
 
 ### Python Server
 - Python 3.8 or higher
@@ -85,7 +98,8 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Run the server
-python main.py
+cd server
+uvicorn main:app --port 8000
 ```
 
 ### 3. Hardware Configuration
@@ -97,18 +111,30 @@ python main.py
 ## Usage
 
 ### Web Interface
-- **Dashboard**: Real-time temperature monitoring for all 6 sensors
-- **Control Panel**: Set target temperatures and control fans/hot plates
-- **Temperature Trends**: Live chart showing temperature history
-- **System Status**: Connection status and error monitoring
+- **Dashboard** (`/`): Real-time temperature monitoring for all 12 DS18B20 sensors with live charts
+- **Control Panel** (`/main`): Set target temperatures, control fans/hot plates, system settings
+- **Calibration** (`/calibration`): Hot plate and wind flow calibration utilities
+- **System Status**: Connection status, Arduino port, polling interval display
+- **WebSocket**: Real-time status updates at configurable intervals (default 3 seconds)
 
 ### API Endpoints
+- `GET /` - Main dashboard
+- `GET /main` - Control panel interface
+- `GET /health` - System health check
 - `GET /api/status` - Get current system status
 - `POST /api/temperature/set` - Set target temperature
 - `POST /api/fan/set` - Set fan speed (0-255)
 - `POST /api/hotplate/{id}/toggle` - Toggle hot plate on/off
 - `GET /api/sensors` - Get all sensor data
+- `GET /api/camera/status` - Camera system status
+- `POST /api/camera/capture` - Manual image capture
+- `GET /api/cn2/optical/status` - Optical CN² status
+- `POST /api/cn2/optical/calculate` - Trigger optical CN² calculation
+- `POST /api/data-capture` - Start/stop data capture session
+- `GET /api/data-capture/status` - Query capture status
+- `GET /api/data-capture/download` - Download CSV export
 - `WebSocket /ws/status` - Real-time status updates
+- `WebSocket /ws/video` - Video streaming
 
 ### Control Examples
 ```python
@@ -134,8 +160,8 @@ requests.post('http://localhost:8000/api/hotplate/1/toggle',
 - **PID Parameters**: kp=2.0, ki=0.5, kd=1.0 (tunable)
 
 ### Server Settings
-- **Serial Port**: `/dev/ttyUSB0` (Linux) or `COM3` (Windows)
-- **Baud Rate**: 115200
+- **Serial Port**: `/dev/ttyACM0` (Linux) or `COM4-9` (Windows, auto-detect)
+- **Baud Rate**: 250000
 - **Web Server Port**: 8000
 
 ## Safety Features

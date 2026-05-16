@@ -150,23 +150,6 @@
         </g>
     </g>
     
-    <!-- Hot Plate 1 (in front of F3 - Bottom Left) -->
-    <rect id="hotplate1" x="460" y="465" width="60" height="45" rx="5"
-          fill="#c0c0c0" stroke="#333" stroke-width="2"/>
-    <text x="490" y="482" text-anchor="middle" font-size="10" fill="#333">H1</text>
-    <!-- Surface Temperature Display -->
-    <text id="hotplate1-temp" x="490" y="500" text-anchor="middle" font-size="14" fill="#000000" font-weight="bold">--°C</text>
-    
-    <!-- Hot Plate 1 Control -->
-    <g id="hotplate1-controls" transform="translate(380, 475)">
-        <!-- On/Off Switch -->
-        <g id="hotplate1-switch" class="hotplate-switch" style="cursor: pointer;">
-            <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
-            <circle id="hotplate1-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
-            <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
-        </g>
-    </g>
-    
     <!-- Fan 2 (Top Right - Outside) -->
     <g id="fan2" transform="translate(710, 40)">
         <circle cx="0" cy="0" r="25" fill="url(#fanGradient)" stroke="#333" stroke-width="2"/>
@@ -251,23 +234,40 @@
         </g>
     </g>
     
-    <!-- Hot Plate 2 (in front of F4 - Bottom Right) -->
-    <rect id="hotplate2" x="680" y="465" width="60" height="45" rx="5"
+    <!-- Hot Plate 1 (in front of F4 - Bottom Left) -->
+    <rect id="hotplate1" x="680" y="465" width="60" height="45" rx="5"
           fill="#c0c0c0" stroke="#333" stroke-width="2"/>
-    <text x="710" y="482" text-anchor="middle" font-size="10" fill="#333">H2</text>
+    <text x="710" y="482" text-anchor="middle" font-size="10" fill="#333">H1</text>
     <!-- Surface Temperature Display -->
-    <text id="hotplate2-temp" x="710" y="500" text-anchor="middle" font-size="14" fill="#000000" font-weight="bold">--°C</text>
+    <text id="hotplate1-temp" x="710" y="500" text-anchor="middle" font-size="14" fill="#000000" font-weight="bold">--°C</text>
 
+    <!-- Hot Plate 1 Control -->
+    <g id="hotplate1-controls" transform="translate(760, 475)">
+        <!-- On/Off Switch -->
+        <g id="hotplate1-switch" class="hotplate-switch" style="cursor: pointer;">
+            <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
+            <circle id="hotplate1-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
+            <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
+        </g>
+    </g>   
+    
+    <!-- Hot Plate 2 (in front of F3 - Bottom Right) -->
+    <rect id="hotplate2" x="460" y="465" width="60" height="45" rx="5"
+          fill="#c0c0c0" stroke="#333" stroke-width="2"/>
+    <text x="490" y="482" text-anchor="middle" font-size="10" fill="#333">H2</text>
+    <!-- Surface Temperature Display -->
+    <text id="hotplate2-temp" x="490" y="500" text-anchor="middle" font-size="14" fill="#000000" font-weight="bold">--°C</text>
+    
     <!-- Hot Plate 2 Control -->
-    <g id="hotplate2-controls" transform="translate(760, 475)">
+    <g id="hotplate2-controls" transform="translate(380, 475)">
         <!-- On/Off Switch -->
         <g id="hotplate2-switch" class="hotplate-switch" style="cursor: pointer;">
             <rect x="0" y="0" width="40" height="20" rx="10" fill="#ddd" stroke="#999" stroke-width="1"/>
             <circle id="hotplate2-switch-knob" cx="10" cy="10" r="8" fill="#fff" stroke="#999" stroke-width="1"/>
             <text x="20" y="35" text-anchor="middle" font-size="10" fill="#666">ON/OFF</text>
         </g>
-    </g>   
-    
+    </g>
+
     <!-- Temperature Sensors - 4 Columns (1, 5, 5, 1) -->
     <!-- Column 1: 1 sensor (T11) - close to laser path on left -->
     <g id="sensor11" transform="translate(375, 255)">

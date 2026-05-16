@@ -61,8 +61,15 @@ function initWebSocket() {
                     // Update with latest data for all displays
                     if (data.data && data.data.length > 0) {
                         const latestData = data.data[data.data.length - 1];
-                        updateHotPlateControls(latestData.target_temperatures || [], latestData.hot_plate_states || []);
-                        updateFanControls(latestData.fan_speeds || []);
+                        // Update temperature inputs with target temperatures
+                        if (latestData.target_temperatures) {
+                            latestData.target_temperatures.forEach((target, index) => {
+                                const tempInput = document.getElementById(`target-temp-${index}`);
+                                if (tempInput) {
+                                    tempInput.value = target;
+                                }
+                            });
+                        }
                     }
                 } else if (data.type === 'current_data') {
                     // Handle current data updates (subsequent messages)
@@ -71,8 +78,15 @@ function initWebSocket() {
                     // Update with latest data for all displays
                     if (data.data && data.data.length > 0) {
                         const latestData = data.data[data.data.length - 1];
-                        updateHotPlateControls(latestData.target_temperatures || [], latestData.hot_plate_states || []);
-                        updateFanControls(latestData.fan_speeds || []);
+                        // Update temperature inputs with target temperatures
+                        if (latestData.target_temperatures) {
+                            latestData.target_temperatures.forEach((target, index) => {
+                                const tempInput = document.getElementById(`target-temp-${index}`);
+                                if (tempInput) {
+                                    tempInput.value = target;
+                                }
+                            });
+                        }
                     }
                 }
             } catch (error) {
@@ -173,49 +187,6 @@ function updateSystemStatus(data) {
     }
 }
 
-// Update hot plate controls
-function updateHotPlateControls(targetTemps, states) {
-    targetTemps.forEach((target, index) => {
-        // Update temperature input
-        const tempInput = document.getElementById(`target-temp-${index}`);
-        if (tempInput) {
-            tempInput.value = target;
-        }
-        
-        // Update button state
-        const button = document.getElementById(`hotplate-btn-${index}`);
-        if (button) {
-            button.className = `btn btn-${states[index] ? 'danger' : 'success'} w-100`;
-            button.innerHTML = `<i class="fas fa-power-off"></i> ${states[index] ? 'TURN OFF' : 'TURN ON'}`;
-        }
-    });
-}
-
-function updateFanControls(speeds) {
-    speeds.forEach((speed, index) => {
-        const percentage = Math.round((speed / 255) * 100);
-        
-        // Update progress bar
-        const progressBar = document.getElementById(`fan-progress-${index}`);
-        if (progressBar) {
-            progressBar.style.width = `${percentage}%`;
-            progressBar.textContent = `${percentage}%`;
-        }
-        
-        // Update range slider
-        const rangeSlider = document.getElementById(`fan-speed-${index}`);
-        if (rangeSlider) {
-            rangeSlider.value = speed;
-        }
-        
-        // Update speed value display
-        const speedValue = document.getElementById(`fan-speed-value-${index}`);
-        if (speedValue) {
-            speedValue.textContent = speed;
-        }
-    });
-}
-
 // API functions
 async function apiCall(endpoint, method = 'GET', data = null) {
     try {
@@ -233,8 +204,7 @@ async function apiCall(endpoint, method = 'GET', data = null) {
         const response = await fetch(endpoint, options);
         
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         return await response.json();
@@ -245,75 +215,168 @@ async function apiCall(endpoint, method = 'GET', data = null) {
     }
 }
 
-// Control functions
-async function toggleHotPlate(plateId) {
-    const button = document.getElementById(`hotplate-btn-${plateId}`);
-    const isCurrentlyOn = button.classList.contains('btn-danger');
-    const newState = !isCurrentlyOn;
+async function saveTemperatureSettings() {
+    const targetTemp0 = parseFloat(document.getElementById('target-temp-0').value);
+    const targetTemp1 = parseFloat(document.getElementById('target-temp-1').value);
+    const safetyTemp = parseFloat(document.getElementById('safety-temp').value);
+    const pidKp = parseFloat(document.getElementById('pid-kp').value);
+    const pidKi = parseFloat(document.getElementById('pid-ki').value);
+    const pidKd = parseFloat(document.getElementById('pid-kd').value);
     
     try {
-        await apiCall(`/api/hotplate/${plateId}/toggle`, 'POST', { state: newState });
-        console.log(`Hot plate ${plateId + 1} toggled to ${newState}`);
-        
-        // Update button state immediately for better UX
-        button.className = `btn btn-${newState ? 'danger' : 'success'} w-100`;
-        button.innerHTML = `<i class="fas fa-power-off"></i> ${newState ? 'TURN OFF' : 'TURN ON'}`;
-        
+        await apiCall('/api/temperature/settings', 'POST', {
+            target_temperatures: [targetTemp0, targetTemp1],
+            safety_temperature: safetyTemp,
+            pid_parameters: {
+                kp: pidKp,
+                ki: pidKi,
+                kd: pidKd
+            }
+        });
+        showErrorMessage('Temperature settings saved successfully!', 'success');
     } catch (error) {
-        console.error('Failed to toggle hot plate:', error);
-        // Revert button state on error
-        button.className = `btn btn-${isCurrentlyOn ? 'danger' : 'success'} w-100`;
-        button.innerHTML = `<i class="fas fa-power-off"></i> ${isCurrentlyOn ? 'TURN OFF' : 'TURN ON'}`;
+        console.error('Failed to save temperature settings:', error);
+        showErrorMessage('Failed to save temperature settings');
     }
 }
 
-async function setTemperature(plateId) {
-    const targetTempInput = document.getElementById(`target-temp-${plateId}`);
-    const targetTemp = parseFloat(targetTempInput.value);
-    
-    if (isNaN(targetTemp) || targetTemp < 0 || targetTemp > CONFIG.MAX_TEMP) {
-        showErrorMessage(`Temperature must be between 0 and ${CONFIG.MAX_TEMP}°C`);
-        targetTempInput.focus();
-        return;
-    }
+async function saveFanSettings() {
+    const startBehaviour = document.getElementById('fan-start-behaviour').value;
     
     try {
-        await apiCall('/api/temperature/set', 'POST', {
-            sensor: plateId,
-            target: targetTemp
+        await apiCall('/api/fan/settings', 'POST', {
+            start_behaviour: startBehaviour
         });
-        console.log(`Temperature set to ${targetTemp}°C for hot plate ${plateId + 1}`);
-        
+        showErrorMessage('Fan settings saved successfully!', 'success');
     } catch (error) {
-        console.error('Failed to set temperature:', error);
+        console.error('Failed to save fan settings:', error);
+        showErrorMessage('Failed to save fan settings');
     }
 }
 
-async function setFanSpeed(fanId) {
-    const speedInput = document.getElementById(`fan-speed-${fanId}`);
-    
-    if (!speedInput) {
-        console.error('Speed input element not found for fan:', fanId);
-        return;
-    }
-    
-    const speed = parseInt(speedInput.value);
-    
-    if (isNaN(speed) || speed < 0 || speed > 255) {
-        showErrorMessage('Fan speed must be between 0 and 255');
-        speedInput.focus();
-        return;
-    }
+async function saveAllSettings() {
+    const targetTemp0 = parseFloat(document.getElementById('target-temp-0').value);
+    const targetTemp1 = parseFloat(document.getElementById('target-temp-1').value);
+    const safetyTemp = parseFloat(document.getElementById('safety-temp').value);
+    const pidKp = parseFloat(document.getElementById('pid-kp').value);
+    const pidKi = parseFloat(document.getElementById('pid-ki').value);
+    const pidKd = parseFloat(document.getElementById('pid-kd').value);
+    const startBehaviour = document.getElementById('fan-start-behaviour').value;
+    const arduinoPort = document.getElementById('com-port-select').value;
+    const pollingInterval = parseFloat(document.getElementById('polling-interval').value);
+    const ambientPollingInterval = parseFloat(document.getElementById('ambient-polling-interval').value);
+    const historySize = parseInt(document.getElementById('history-size').value);
     
     try {
-        await apiCall('/api/fan/set', 'POST', {
-            fan: fanId,
-            speed: speed
+        await apiCall('/api/settings', 'POST', {
+            target_temperatures: [targetTemp0, targetTemp1],
+            safety_temperature: safetyTemp,
+            pid_parameters: {
+                kp: pidKp,
+                ki: pidKi,
+                kd: pidKd
+            },
+            fan_start_behaviour: startBehaviour,
+            arduino_port: arduinoPort,
+            polling_interval: pollingInterval,
+            ambient_polling_interval: ambientPollingInterval,
+            history_size: historySize
         });
-        
+        showErrorMessage('All configuration settings saved successfully!', 'success');
     } catch (error) {
-        console.error('Failed to set fan speed:', error);
-        showErrorMessage('Failed to set fan speed: ' + error.message);
+        console.error('Failed to save all settings:', error);
+        showErrorMessage('Failed to save all configuration settings');
+    }
+}
+
+async function loadSettings() {
+    try {
+        const settings = await apiCall('/api/settings', 'GET');
+        
+        if (settings.error) {
+            console.error('Failed to load settings:', settings.error);
+            return;
+        }
+        
+        // Load temperature settings
+        if (settings.target_temperatures) {
+            const temp0Input = document.getElementById('target-temp-0');
+            const temp1Input = document.getElementById('target-temp-1');
+            if (temp0Input && settings.target_temperatures[0] !== undefined) {
+                temp0Input.value = settings.target_temperatures[0];
+            }
+            if (temp1Input && settings.target_temperatures[1] !== undefined) {
+                temp1Input.value = settings.target_temperatures[1];
+            }
+        }
+        
+        // Load safety temperature
+        if (settings.safety_temperature !== undefined) {
+            const safetyTempInput = document.getElementById('safety-temp');
+            if (safetyTempInput) {
+                safetyTempInput.value = settings.safety_temperature;
+            }
+        }
+        
+        // Load PID parameters
+        if (settings.pid_parameters) {
+            const kpInput = document.getElementById('pid-kp');
+            const kiInput = document.getElementById('pid-ki');
+            const kdInput = document.getElementById('pid-kd');
+            if (kpInput && settings.pid_parameters.kp !== undefined) {
+                kpInput.value = settings.pid_parameters.kp;
+            }
+            if (kiInput && settings.pid_parameters.ki !== undefined) {
+                kiInput.value = settings.pid_parameters.ki;
+            }
+            if (kdInput && settings.pid_parameters.kd !== undefined) {
+                kdInput.value = settings.pid_parameters.kd;
+            }
+        }
+        
+        // Load fan start behaviour
+        if (settings.fan_start_behaviour) {
+            const fanBehaviourSelect = document.getElementById('fan-start-behaviour');
+            if (fanBehaviourSelect) {
+                fanBehaviourSelect.value = settings.fan_start_behaviour;
+            }
+        }
+        
+        // Load Arduino port
+        if (settings.arduino_port !== undefined) {
+            const comPortSelect = document.getElementById('com-port-select');
+            if (comPortSelect) {
+                comPortSelect.value = settings.arduino_port;
+            }
+        }
+        
+        // Load polling interval
+        if (settings.polling_interval !== undefined) {
+            const pollingIntervalInput = document.getElementById('polling-interval');
+            if (pollingIntervalInput) {
+                pollingIntervalInput.value = settings.polling_interval;
+            }
+        }
+        
+        // Load ambient polling interval
+        if (settings.ambient_polling_interval !== undefined) {
+            const ambientPollingIntervalInput = document.getElementById('ambient-polling-interval');
+            if (ambientPollingIntervalInput) {
+                ambientPollingIntervalInput.value = settings.ambient_polling_interval;
+            }
+        }
+        
+        // Load history size
+        if (settings.history_size !== undefined) {
+            const historySizeInput = document.getElementById('history-size');
+            if (historySizeInput) {
+                historySizeInput.value = settings.history_size;
+            }
+        }
+        
+        console.log('Settings loaded successfully');
+    } catch (error) {
+        console.error('Failed to load settings:', error);
     }
 }
 
@@ -334,14 +397,14 @@ function debounce(func, wait) {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Initializing Temperature Control System...');
     
-    // Initialize chart
-    initChart();
-    
     // Initialize WebSocket
     initWebSocket();
     
+    // Initialize COM port controls
+    initComPortControls();
+    
     // Load saved settings
-    loadSavedSettings();
+    loadSettings();
     
     // Add keyboard shortcuts
     document.addEventListener('keydown', function(event) {
