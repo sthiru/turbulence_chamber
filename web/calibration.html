@@ -109,6 +109,11 @@
                     <i class="fas fa-fire me-2"></i>Hot Plate (4D Calibration)
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="pid-tab" data-bs-toggle="tab" data-bs-target="#pid" type="button" role="tab">
+                    <i class="fas fa-cogs me-2"></i>PID Calibration
+                </button>
+            </li>
         </ul>
 
         <!-- Tab Content -->
@@ -546,6 +551,136 @@
             </div>
         </div>
         </div> <!-- End Hot Plate Tab -->
+
+        <!-- PID Calibration Tab -->
+        <div class="tab-pane fade" id="pid" role="tabpanel">
+            <h5 class="mb-3">PID Parameter Calibration</h5>
+            <p class="text-muted mb-4">
+                Tune PID parameters for hotplate temperature control. Record temperature response curves and adjust parameters for optimal performance.
+            </p>
+
+        <!-- Control Section -->
+        <div class="control-section">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#pidControlSection">
+                    <i class="fas fa-chevron-down me-2"></i>PID Parameters
+                </button>
+            </h5>
+            <div class="collapse show" id="pidControlSection">
+                <div class="row">
+                    <!-- Hot Plate 1 PID Parameters -->
+                    <div class="col-md-6">
+                        <h6 class="mb-3">Hot Plate 1 PID Parameters</h6>
+                        <div class="mb-3">
+                            <label for="pid-kp-0" class="form-label">Kp (Proportional)</label>
+                            <input type="number" class="form-control" id="pid-kp-0" value="35" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="pid-ki-0" class="form-label">Ki (Integral)</label>
+                            <input type="number" class="form-control" id="pid-ki-0" value="0.5" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="pid-kd-0" class="form-label">Kd (Derivative)</label>
+                            <input type="number" class="form-control" id="pid-kd-0" value="0" step="0.1">
+                        </div>
+                    </div>
+
+                    <!-- Hot Plate 2 PID Parameters -->
+                    <div class="col-md-6">
+                        <h6 class="mb-3">Hot Plate 2 PID Parameters</h6>
+                        <div class="mb-3">
+                            <label for="pid-kp-1" class="form-label">Kp (Proportional)</label>
+                            <input type="number" class="form-control" id="pid-kp-1" value="80" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="pid-ki-1" class="form-label">Ki (Integral)</label>
+                            <input type="number" class="form-control" id="pid-ki-1" value="0.5" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="pid-kd-1" class="form-label">Kd (Derivative)</label>
+                            <input type="number" class="form-control" id="pid-kd-1" value="1" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary" onclick="savePidSettings()">
+                        <i class="fas fa-save me-2"></i>Save PID Settings
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="loadPidSettings()">
+                        <i class="fas fa-sync me-2"></i>Reload from Settings
+                    </button>
+                </div>
+
+                <div id="pid-settings-message" class="alert alert-sm mt-3 d-none"></div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="control-section mt-4">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#pidChartsSection">
+                    <i class="fas fa-chart-line me-2"></i>Temperature Response Charts
+                </button>
+            </h5>
+            <div class="collapse show" id="pidChartsSection">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-center mb-3">Hot Plate 1 Temperature Response</h6>
+                        <canvas id="pidChart0"></canvas>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-center mb-3">Hot Plate 2 Temperature Response</h6>
+                        <canvas id="pidChart1"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calibration Control Section -->
+        <div class="control-section mt-4">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#pidCalibrationControl">
+                    <i class="fas fa-play-circle me-2"></i>Calibration Control
+                </button>
+            </h5>
+            <div class="collapse show" id="pidCalibrationControl">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Click <strong>Start Calibration</strong> to begin recording temperature data with current PID parameters.
+                    The system will record hotplate surface temperatures over time for analysis.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-success btn-lg" id="startPidCalibration">
+                        <i class="fas fa-play me-2"></i>Start Calibration
+                    </button>
+                    <button type="button" class="btn btn-danger btn-lg" id="stopPidCalibration" disabled>
+                        <i class="fas fa-stop me-2"></i>Stop
+                    </button>
+                    <button type="button" class="btn btn-outline-warning btn-lg" id="clearPidCalibration" onclick="clearPidCalibrationData()">
+                        <i class="fas fa-trash me-2"></i>Clear Data
+                    </button>
+                </div>
+
+                <!-- Calibration Status -->
+                <div class="progress-section mt-4" id="pidStatusSection" style="display: none;">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <span id="pidCalibrationStatus" class="badge bg-secondary status-badge">Idle</span>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="text-end">
+                                <span id="pidDataPoints" class="text-muted">Data Points: 0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div> <!-- End PID Calibration Tab -->
 
         </div> <!-- End Tab Content -->
 
@@ -1572,6 +1707,277 @@
         connectSystemWebSocket();
 
         // WebSocket is not auto-connected anymore
+    </script>
+    
+    <!-- PID Calibration JavaScript -->
+    <script>
+        // PID Calibration Variables
+        let pidCalibrating = false;
+        let pidCalibrationData = [];
+        let pidCharts = {};
+        let pidWebSocket = null;
+
+        // Load PID settings from settings.json
+        async function loadPidSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const settings = await response.json();
+                
+                if (settings.pid_parameters) {
+                    // Load Hot Plate 1 PID parameters
+                    if (settings.pid_parameters.hotplate_0) {
+                        document.getElementById('pid-kp-0').value = settings.pid_parameters.hotplate_0.kp || 35;
+                        document.getElementById('pid-ki-0').value = settings.pid_parameters.hotplate_0.ki || 0.5;
+                        document.getElementById('pid-kd-0').value = settings.pid_parameters.hotplate_0.kd || 0;
+                    }
+                    
+                    // Load Hot Plate 2 PID parameters
+                    if (settings.pid_parameters.hotplate_1) {
+                        document.getElementById('pid-kp-1').value = settings.pid_parameters.hotplate_1.kp || 80;
+                        document.getElementById('pid-ki-1').value = settings.pid_parameters.hotplate_1.ki || 0.5;
+                        document.getElementById('pid-kd-1').value = settings.pid_parameters.hotplate_1.kd || 1;
+                    }
+                    
+                    showPidMessage('PID settings loaded successfully', 'success');
+                }
+            } catch (error) {
+                console.error('Failed to load PID settings:', error);
+                showPidMessage('Failed to load PID settings', 'error');
+            }
+        }
+
+        // Save PID settings to settings.json
+        async function savePidSettings() {
+            const pidKp0 = parseFloat(document.getElementById('pid-kp-0').value);
+            const pidKi0 = parseFloat(document.getElementById('pid-ki-0').value);
+            const pidKd0 = parseFloat(document.getElementById('pid-kd-0').value);
+            const pidKp1 = parseFloat(document.getElementById('pid-kp-1').value);
+            const pidKi1 = parseFloat(document.getElementById('pid-ki-1').value);
+            const pidKd1 = parseFloat(document.getElementById('pid-kd-1').value);
+            
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        pid_parameters: {
+                            hotplate_0: {
+                                kp: pidKp0,
+                                ki: pidKi0,
+                                kd: pidKd0
+                            },
+                            hotplate_1: {
+                                kp: pidKp1,
+                                ki: pidKi1,
+                                kd: pidKd1
+                            }
+                        }
+                    })
+                });
+                
+                if (response.ok) {
+                    showPidMessage('PID settings saved successfully', 'success');
+                } else {
+                    showPidMessage('Failed to save PID settings', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save PID settings:', error);
+                showPidMessage('Failed to save PID settings', 'error');
+            }
+        }
+
+        // Show PID settings message
+        function showPidMessage(message, type) {
+            const messageDiv = document.getElementById('pid-settings-message');
+            if (messageDiv) {
+                messageDiv.textContent = message;
+                messageDiv.className = `alert alert-${type} alert-sm`;
+                messageDiv.classList.remove('d-none');
+                
+                setTimeout(() => {
+                    messageDiv.classList.add('d-none');
+                }, 3000);
+            }
+        }
+
+        // Initialize PID charts
+        function initPidCharts() {
+            const chartConfig = (label) => ({
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: label,
+                        data: [],
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time (s)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Temperature (°C)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            pidCharts[0] = new Chart(
+                document.getElementById('pidChart0'),
+                chartConfig('Hot Plate 1 Temperature')
+            );
+
+            pidCharts[1] = new Chart(
+                document.getElementById('pidChart1'),
+                chartConfig('Hot Plate 2 Temperature')
+            );
+        }
+
+        // Start PID calibration
+        async function startPidCalibration() {
+            pidCalibrating = true;
+            pidCalibrationData = [];
+            
+            document.getElementById('startPidCalibration').disabled = true;
+            document.getElementById('stopPidCalibration').disabled = false;
+            document.getElementById('pidStatusSection').style.display = 'block';
+            document.getElementById('pidCalibrationStatus').textContent = 'Running';
+            document.getElementById('pidCalibrationStatus').className = 'badge bg-success status-badge';
+            
+            // Clear charts
+            pidCharts[0].data.labels = [];
+            pidCharts[0].data.datasets[0].data = [];
+            pidCharts[1].data.labels = [];
+            pidCharts[1].data.datasets[0].data = [];
+            pidCharts[0].update();
+            pidCharts[1].update();
+            
+            // Connect WebSocket for real-time data
+            connectPidWebSocket();
+        }
+
+        // Stop PID calibration
+        function stopPidCalibration() {
+            pidCalibrating = false;
+            
+            document.getElementById('startPidCalibration').disabled = false;
+            document.getElementById('stopPidCalibration').disabled = true;
+            document.getElementById('pidCalibrationStatus').textContent = 'Stopped';
+            document.getElementById('pidCalibrationStatus').className = 'badge bg-warning status-badge';
+            
+            if (pidWebSocket) {
+                pidWebSocket.close();
+                pidWebSocket = null;
+            }
+        }
+
+        // Clear PID calibration data
+        function clearPidCalibrationData() {
+            pidCalibrationData = [];
+            
+            pidCharts[0].data.labels = [];
+            pidCharts[0].data.datasets[0].data = [];
+            pidCharts[1].data.labels = [];
+            pidCharts[1].data.datasets[0].data = [];
+            pidCharts[0].update();
+            pidCharts[1].update();
+            
+            document.getElementById('pidDataPoints').textContent = 'Data Points: 0';
+        }
+
+        // Connect PID WebSocket
+        function connectPidWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/status`;
+            
+            pidWebSocket = new WebSocket(wsUrl);
+            
+            pidWebSocket.onopen = function() {
+                console.log('PID calibration WebSocket connected');
+            };
+            
+            pidWebSocket.onmessage = function(event) {
+                if (!pidCalibrating) return;
+                
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'current_data' && data.data && data.data.length > 0) {
+                        const statusData = data.data[0];
+                        const timestamp = new Date(statusData.timestamp);
+                        const timeSeconds = (timestamp - pidCalibrationStartTime) / 1000;
+                        
+                        // Get hotplate temperatures
+                        const tempHotplate1 = statusData.temp_hotplate1;
+                        const tempHotplate2 = statusData.temp_hotplate2;
+                        
+                        if (tempHotplate1 !== null && tempHotplate2 !== null) {
+                            // Add data to charts
+                            pidCharts[0].data.labels.push(timeSeconds.toFixed(1));
+                            pidCharts[0].data.datasets[0].data.push(tempHotplate1);
+                            pidCharts[1].data.labels.push(timeSeconds.toFixed(1));
+                            pidCharts[1].data.datasets[0].data.push(tempHotplate2);
+                            
+                            // Update charts
+                            pidCharts[0].update('none');
+                            pidCharts[1].update('none');
+                            
+                            // Store data
+                            pidCalibrationData.push({
+                                timestamp: statusData.timestamp,
+                                timeSeconds: timeSeconds,
+                                tempHotplate1: tempHotplate1,
+                                tempHotplate2: tempHotplate2
+                            });
+                            
+                            // Update data points counter
+                            document.getElementById('pidDataPoints').textContent = `Data Points: ${pidCalibrationData.length}`;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error processing PID calibration data:', error);
+                }
+            };
+            
+            pidWebSocket.onclose = function() {
+                console.log('PID calibration WebSocket disconnected');
+                if (pidCalibrating) {
+                    setTimeout(connectPidWebSocket, 3000);
+                }
+            };
+            
+            pidWebSocket.onerror = function(error) {
+                console.error('PID calibration WebSocket error:', error);
+            };
+        }
+
+        let pidCalibrationStartTime = null;
+
+        // Initialize PID calibration on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initPidCharts();
+            loadPidSettings();
+            
+            document.getElementById('startPidCalibration').addEventListener('click', function() {
+                pidCalibrationStartTime = new Date();
+                startPidCalibration();
+            });
+            
+            document.getElementById('stopPidCalibration').addEventListener('click', stopPidCalibration);
+        });
     </script>
     
     <!-- Connection Status Bottom Right -->

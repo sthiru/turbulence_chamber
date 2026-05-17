@@ -58,7 +58,8 @@ class CalibrationAgent:
         self.hotplate_calibrator = HotplateCalibrator()
         
         # Session persistence
-        self.session_file = os.path.join(self.config.calibration_data_folder, "current_session.json")
+        calibration_data_folder = self.config.get_calibration_data_folder()
+        self.session_file = os.path.join(calibration_data_folder, "current_session.json")
         
         # Try to recover existing session on startup
         self._recover_session()
@@ -69,7 +70,10 @@ class CalibrationAgent:
         self.combined_calibration_result: Optional = None
 
         # Ensure calibration data folder exists
-        os.makedirs(self.config.calibration_data_folder, exist_ok=True)
+        os.makedirs(calibration_data_folder, exist_ok=True)
+        
+        # Store calibration data folder for use in other methods
+        self.calibration_data_folder = calibration_data_folder
     
     def _save_session(self):
         """Save current session state to file"""
@@ -523,7 +527,7 @@ class CalibrationAgent:
             
             # Create session folder for incremental saving
             session_folder = os.path.join(
-                self.config.calibration_data_folder,
+                self.calibration_data_folder,
                 self.current_session.session_id
             )
             os.makedirs(session_folder, exist_ok=True)
@@ -705,7 +709,7 @@ class CalibrationAgent:
 
             # Create session folder
             session_folder = os.path.join(
-                self.config.calibration_data_folder,
+                self.calibration_data_folder,
                 self.current_session.session_id
             )
             os.makedirs(session_folder, exist_ok=True)
@@ -970,7 +974,7 @@ class CalibrationAgent:
             logger.info(f"Hot plate calibration saved to session: {filepath}")
 
             # Also save to calibration_data folder root
-            calib_folder_abs = os.path.abspath(self.config.calibration_data_folder)
+            calib_folder_abs = os.path.abspath(self.calibration_data_folder)
             latest_filepath = os.path.join(calib_folder_abs, "hotplate_calibration.json")
             self.hotplate_calibrator.export_calibration(latest_filepath)
             logger.info(f"Hot plate calibration saved to calibration_data root: {latest_filepath}")
@@ -1009,7 +1013,7 @@ class CalibrationAgent:
 
             # Create session folder
             session_folder = os.path.join(
-                self.config.calibration_data_folder,
+                self.calibration_data_folder,
                 self.current_session.session_id
             )
             os.makedirs(session_folder, exist_ok=True)
@@ -1198,7 +1202,7 @@ class CalibrationAgent:
             logger.info(f"Combined calibration saved to session: {filepath}")
 
             # Also save to calibration_data folder root
-            calib_folder_abs = os.path.abspath(self.config.calibration_data_folder)
+            calib_folder_abs = os.path.abspath(self.calibration_data_folder)
             latest_filepath = os.path.join(calib_folder_abs, "combined_calibration.json")
             self.combined_calibrator.export_calibration(latest_filepath)
             logger.info(f"Combined calibration saved to calibration_data root: {latest_filepath}")
@@ -1259,7 +1263,7 @@ class CalibrationAgent:
             logger.info(f"Windflow calibration saved to session: {filepath}")
 
             # Also save to calibration_data folder root (latest)
-            calib_folder_abs = os.path.abspath(self.config.calibration_data_folder)
+            calib_folder_abs = os.path.abspath(self.calibration_data_folder)
             latest_filepath = os.path.join(calib_folder_abs, "windflow_polynomials.json")
             self.windflow_calibrator.export_polynomials(latest_filepath)
             logger.info(f"Windflow calibration saved to calibration_data root: {latest_filepath}")

@@ -92,7 +92,7 @@ bool dhtFound[NUM_DHT_SENSORS] = {false, false};
 
 // System State
 float currentTemperatures[NUM_SENSORS];
-float targetTemperatures[NUM_HOT_PLATES] = {80.0, 80.0};
+double targetTemperatures[NUM_HOT_PLATES] = {100.0, 100.0};
 int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
 bool manualHotPlateControl[NUM_HOT_PLATES] = {false, false}; // Manual override flags
@@ -135,16 +135,17 @@ unsigned long lastDHTUpdateTime = 0;
 bool systemReady = false;
 
 // PID Controller Variables
-// PID tuning parameters
-double kp = 8.0, ki = 0.3, kd = 2.0;
+// PID tuning parameters for each hotplate
+double kp0 = 200.0, ki0 = 0.0, kd0 = 0.0;
+double kp1 = 200.0, ki1 = 0.0, kd1 = 0.0;
 
 // PID input/output variables for hotplate 0
-double pidInput0, pidOutput0, pidSetpoint0;
-PID pid0(&pidInput0, &pidOutput0, &pidSetpoint0, kp, ki, kd, DIRECT);
+double pidInput0, pidOutput0;
+PID pid0(&pidInput0, &pidOutput0, &targetTemperatures[0], kp0, ki0, kd0, DIRECT);
 
 // PID input/output variables for hotplate 1
-double pidInput1, pidOutput1, pidSetpoint1;
-PID pid1(&pidInput1, &pidOutput1, &pidSetpoint1, kp, ki, kd, DIRECT);
+double pidInput1, pidOutput1;
+PID pid1(&pidInput1, &pidOutput1, &targetTemperatures[1], kp1, ki1, kd1, DIRECT);
 
 void setup() {
   Serial.begin(1000000);
@@ -262,13 +263,11 @@ void setup() {
   initializeDHTSensors();
   
   // Initialize PID controllers
-  pidSetpoint0 = targetTemperatures[0];
-  pidSetpoint1 = targetTemperatures[1];
   pid0.SetMode(AUTOMATIC);
   pid0.SetOutputLimits(0, 255);  // SSR control: 0 = OFF, 255 = ON (binary)
   pid0.SetSampleTime(1000);  // 1 second sample time
   pid1.SetMode(AUTOMATIC);
-  pid1.SetOutputLimits(0, 255);
+  pid1.SetOutputLimits(0, 255);  // SSR control: 0 = OFF, 255 = ON (binary)
   pid1.SetSampleTime(1000);
   
   Serial.println("{\"type\":\"info\",\"message\":\"Temperature Control System Ready\"}");
@@ -555,7 +554,6 @@ void updateControl() {
     // Automatic PID control mode
     else {
       pidInput0 = temp_hotplate1;
-      pidSetpoint0 = targetTemperatures[0];
       
       if (pid0.Compute()) {
         // PID output: 0-127 = OFF, 128-255 = ON (binary control for SSR)
@@ -593,7 +591,6 @@ void updateControl() {
     // Automatic PID control mode
     else {
       pidInput1 = temp_hotplate2;
-      pidSetpoint1 = targetTemperatures[1];
       
       if (pid1.Compute()) {
         // PID output: 0-127 = OFF, 128-255 = ON (binary control for SSR)
@@ -621,8 +618,8 @@ void processSerialCommands() {
 }
 
 void processCommand(String command) {
-  // Increased JSON buffer size
-  DynamicJsonDocument doc(512);
+  // Increased JSON buffer size to handle larger commands (apply_settings with nested PID parameters)
+  DynamicJsonDocument doc(1024);
   DeserializationError error = deserializeJson(doc, command);
   
   if (error) {
@@ -690,20 +687,58 @@ void processCommand(String command) {
     
     if (doc.containsKey("pid_parameters") && doc["pid_parameters"].is<JsonObject>()) {
       JsonObject pidParams = doc["pid_parameters"].as<JsonObject>();
+      
+      // Handle separate PID parameters for each hotplate
+      if (pidParams.containsKey("hotplate_0") && pidParams["hotplate_0"].is<JsonObject>()) {
+        JsonObject hp0Params = pidParams["hotplate_0"].as<JsonObject>();
+        if (hp0Params.containsKey("kp")) {
+          kp0 = hp0Params["kp"];
+          pid0.SetTunings(kp0, ki0, kd0);
+        }
+        if (hp0Params.containsKey("ki")) {
+          ki0 = hp0Params["ki"];
+          pid0.SetTunings(kp0, ki0, kd0);
+        }
+        if (hp0Params.containsKey("kd")) {
+          kd0 = hp0Params["kd"];
+          pid0.SetTunings(kp0, ki0, kd0);
+        }
+      }
+      
+      if (pidParams.containsKey("hotplate_1") && pidParams["hotplate_1"].is<JsonObject>()) {
+        JsonObject hp1Params = pidParams["hotplate_1"].as<JsonObject>();
+        if (hp1Params.containsKey("kp")) {
+          kp1 = hp1Params["kp"];
+          pid1.SetTunings(kp1, ki1, kd1);
+        }
+        if (hp1Params.containsKey("ki")) {
+          ki1 = hp1Params["ki"];
+          pid1.SetTunings(kp1, ki1, kd1);
+        }
+        if (hp1Params.containsKey("kd")) {
+          kd1 = hp1Params["kd"];
+          pid1.SetTunings(kp1, ki1, kd1);
+        }
+      }
+      
+      // Fallback to old single PID parameter structure if present
       if (pidParams.containsKey("kp")) {
-        kp = pidParams["kp"];
-        pid1.SetTunings(kp, ki, kd);
-        pid2.SetTunings(kp, ki, kd);
+        kp0 = pidParams["kp"];
+        kp1 = pidParams["kp"];
+        pid0.SetTunings(kp0, ki0, kd0);
+        pid1.SetTunings(kp1, ki1, kd1);
       }
       if (pidParams.containsKey("ki")) {
-        ki = pidParams["ki"];
-        pid1.SetTunings(kp, ki, kd);
-        pid2.SetTunings(kp, ki, kd);
+        ki0 = pidParams["ki"];
+        ki1 = pidParams["ki"];
+        pid0.SetTunings(kp0, ki0, kd0);
+        pid1.SetTunings(kp1, ki1, kd1);
       }
       if (pidParams.containsKey("kd")) {
-        kd = pidParams["kd"];
-        pid1.SetTunings(kp, ki, kd);
-        pid2.SetTunings(kp, ki, kd);
+        kd0 = pidParams["kd"];
+        kd1 = pidParams["kd"];
+        pid0.SetTunings(kp0, ki0, kd0);
+        pid1.SetTunings(kp1, ki1, kd1);
       }
     }
     

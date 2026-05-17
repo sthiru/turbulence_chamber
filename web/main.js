@@ -446,6 +446,11 @@ async function startDataCapture() {
             
             // Show notification
             showNotification('Data capture started', 'success');
+            
+            // Show warning if camera is not available
+            if (result.camera_available === false) {
+                showNotification('Camera not available - data capture running without video streaming', 'warning');
+            }
         } else {
             console.error('Failed to start data capture:', result.message);
             showNotification('Failed to start data capture: ' + result.message, 'error');

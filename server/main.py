@@ -41,6 +41,7 @@ from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status
 from cn2.cn2_thermal import calculate_cn2
 from calibration.calibration_agent import CalibrationAgent
 from calibration.models import CalibrationRequest, CalibrationControl
+from calibration.config import CalibrationConfig, get_settings_file_path
 
 # Pydantic model for reconnect request
 class ReconnectRequest(BaseModel):
@@ -85,12 +86,13 @@ app = FastAPI(
 )
 
 # Mount static files
-static_dir = os.path.join(os.path.dirname(__file__), "..", "web")
+workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+static_dir = os.path.join(workspace_root, "web")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Mount camera images directory
-camera_images_dir = os.path.join(os.path.dirname(__file__), "..", "camera_images")
+camera_images_dir = os.path.join(workspace_root, "camera_images")
 if os.path.exists(camera_images_dir):
     app.mount("/camera_images", StaticFiles(directory=camera_images_dir), name="camera_images")
 
@@ -181,7 +183,7 @@ def create_capture_folder() -> str:
     time_folder = now.strftime("%H_%M")     # e.g., "14_30"
     
     # Create folder structure: camera_images/DD_MMM_YYYY/HH_MM
-    base_folder = os.path.join("camera_images", date_folder, time_folder)
+    base_folder = os.path.join(workspace_root, "camera_images", date_folder, time_folder)
     
     try:
         os.makedirs(base_folder, exist_ok=True)
@@ -189,7 +191,7 @@ def create_capture_folder() -> str:
         return base_folder
     except Exception as e:
         logger.error(f"Failed to create capture folder: {e}")
-        return "camera_images"  # Fallback to base folder
+        return os.path.join(workspace_root, "camera_images")  # Fallback to base folder
 
 def capture_and_save_image(capture_folder: str) -> Optional[str]:
     """Capture and save a camera image with timestamp"""
@@ -252,6 +254,11 @@ async def background_status_polling():
             response = await arduino_comm.get_status()
             
             if response.status == "ok":
+                if response.data is None:
+                    logger.warning("Response data is None, skipping status update")
+                    await asyncio.sleep(polling_interval)
+                    continue
+                    
                 status_data = response.data.dict()
                 status_data["device_status"] = "online"
                 status_data["arduino_port"] = arduino_comm.port if arduino_comm.is_connected else None
@@ -498,7 +505,7 @@ async def video_streaming_worker():
 
 async def apply_settings_to_arduino():
     """Apply settings from JSON file to Arduino"""
-    settings_file = os.path.join(os.path.dirname(__file__), "config", "settings.json")
+    settings_file = get_settings_file_path()
     try:
         with open(settings_file, 'r') as f:
             settings = json.load(f)
@@ -508,12 +515,16 @@ async def apply_settings_to_arduino():
             "cmd": "apply_settings",
             "target_temperatures": settings.get("target_temperatures", [80, 80]),
             "safety_temperature": settings.get("safety_temperature", 120),
-            "pid_parameters": settings.get("pid_parameters", {"kp": 2.0, "ki": 0.5, "kd": 1.0}),
+            "pid_parameters": settings.get("pid_parameters", {
+                "hotplate_0": {"kp": 2.0, "ki": 0.5, "kd": 1.0},
+                "hotplate_1": {"kp": 2.0, "ki": 0.5, "kd": 1.0}
+            }),
             "fan_start_behaviour": settings.get("fan_start_behaviour", "full_speed"),
             "polling_interval": settings.get("polling_interval", 1),
             "ambient_polling_interval": settings.get("ambient_polling_interval", 10)
         }
         
+        logger.debug(f"Sending apply_settings command to Arduino: {command}")
         response = await arduino_comm.send_command(command)
         if response.status == "ok":
             logger.info("Settings applied to Arduino successfully")
@@ -559,13 +570,6 @@ async def startup_event():
         # Start background polling task
         background_task = asyncio.create_task(background_status_polling())
         
-        # Start video streaming worker
-        video_streaming_task = asyncio.create_task(video_streaming_worker())
-        
-        # Auto-start video streaming
-        logger.info("Auto-starting video streaming...")
-        start_camera_video_stream(camera_images_folder)
-        
     else:
         logger.warning("Failed to connect to Arduino - server will run without Arduino")
         logger.info("Please check:")
@@ -576,13 +580,6 @@ async def startup_event():
         
         # Start background polling anyway (will show offline status)
         background_task = asyncio.create_task(background_status_polling())
-        
-        # Start video streaming worker anyway
-        video_streaming_task = asyncio.create_task(video_streaming_worker())
-        
-        # Auto-start video streaming
-        logger.info("Auto-starting video streaming...")
-        start_camera_video_stream(camera_images_folder)
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -604,7 +601,7 @@ async def health_check():
 @app.get("/")
 async def root():
     """Serve the main dashboard page"""
-    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "index.html")
+    web_file = os.path.join(workspace_root, "web", "index.html")
     if os.path.exists(web_file):
         return FileResponse(web_file)
     else:
@@ -613,7 +610,7 @@ async def root():
 @app.get("/video-test", response_class=HTMLResponse)
 async def video_test():
     """Serve the video test page"""
-    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "video_test.html")
+    web_file = os.path.join(workspace_root, "web", "video_test.html")
     if os.path.exists(web_file):
         return FileResponse(web_file)
     else:
@@ -622,7 +619,7 @@ async def video_test():
 @app.get("/configuration")
 async def configuration():
     """Serve the configuration interface"""
-    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "configuration.html")
+    web_file = os.path.join(workspace_root, "web", "configuration.html")
     if os.path.exists(web_file):
         return FileResponse(web_file)
     else:
@@ -631,7 +628,7 @@ async def configuration():
 @app.get("/calibration")
 async def calibration():
     """Serve the calibration interface"""
-    web_file = os.path.join(os.path.dirname(__file__), "..", "web", "calibration.html")
+    web_file = os.path.join(workspace_root, "web", "calibration.html")
     if os.path.exists(web_file):
         return FileResponse(web_file)
     else:
@@ -701,7 +698,7 @@ async def toggle_hot_plate(plate_id: int, request: HotPlateToggleRequest):
 @app.get("/api/settings")
 async def get_settings():
     """Get configuration settings from JSON file"""
-    settings_file = os.path.join(os.path.dirname(__file__), "config", "settings.json")
+    settings_file = get_settings_file_path()
     try:
         with open(settings_file, 'r') as f:
             settings = json.load(f)
@@ -714,7 +711,7 @@ async def get_settings():
 @app.post("/api/settings")
 async def save_settings(settings: dict):
     """Save configuration settings to JSON file"""
-    settings_file = os.path.join(os.path.dirname(__file__), "config", "settings.json")
+    settings_file = get_settings_file_path()
     try:
         with open(settings_file, 'w') as f:
             json.dump(settings, f, indent=4)
@@ -1201,13 +1198,29 @@ async def get_calibration_data(session_id: str):
 @app.post("/api/data-capture")
 async def toggle_data_capture(request: DataCaptureRequest):
     """Start or stop data capture with camera images"""
-    global data_capture_active, current_capture_session, captured_data_points
+    global data_capture_active, current_capture_session, captured_data_points, video_streaming_task
     
     try:
         if request.start:
             # Start data capture
             if data_capture_active:
                 return {"status": "error", "message": "Data capture already active"}
+            
+            # Check camera status before starting video streaming
+            camera_status = get_camera_status(camera_images_folder)
+            camera_available = camera_status.get("initialized", False)
+            
+            if camera_available:
+                # Start video streaming worker if not already running
+                if video_streaming_task is None or video_streaming_task.done():
+                    video_streaming_task = asyncio.create_task(video_streaming_worker())
+                    logger.info("Video streaming worker started for data capture")
+                
+                # Start camera video streaming
+                start_camera_video_stream(camera_images_folder)
+                logger.info("Camera video streaming started for data capture")
+            else:
+                logger.warning("Camera not available - starting data capture without video streaming")
             
             # Create new capture session
             capture_folder = create_capture_folder()
@@ -1226,7 +1239,8 @@ async def toggle_data_capture(request: DataCaptureRequest):
                 "status": "success",
                 "message": "Data capture started",
                 "session_id": current_capture_session["id"],
-                "folder": capture_folder
+                "folder": capture_folder,
+                "camera_available": camera_available
             }
             
         else:
@@ -1241,6 +1255,20 @@ async def toggle_data_capture(request: DataCaptureRequest):
             # Reset capture state
             data_capture_active = False
             current_capture_session = None
+            
+            # Stop camera video streaming
+            stop_camera_video_stream(camera_images_folder)
+            
+            # Stop video streaming worker if no other active connections
+            if len(video_manager.active_connections) == 0:
+                logger.info("Stopping video streaming worker - no active connections")
+                if video_streaming_task and not video_streaming_task.done():
+                    video_streaming_task.cancel()
+                    try:
+                        await video_streaming_task
+                    except asyncio.CancelledError:
+                        pass
+                video_streaming_task = None
             
             logger.info(f"Stopped data capture session: {session_info['id']}")
             return {
@@ -1289,6 +1317,7 @@ async def download_captured_data():
             'target_temp_1', 'target_temp_2',
             'fan_speed_1', 'fan_speed_2', 'fan_speed_3', 'fan_speed_4',
             'hot_plate_1', 'hot_plate_2',
+            'flow_rate_1', 'flow_rate_2', 'flow_rate_3', 'flow_rate_4',
             'cn2_thermal', 'cn2_optical',
             'image_filename'
         ]
@@ -1334,6 +1363,8 @@ async def download_captured_data():
                 *(point.get('fan_speeds', [])),
                 # Hot plate states
                 *(point.get('hot_plate_states', [])),
+                # Flow rates
+                *(point.get('flow_rates', [])),
                 # CN2 values
                 point.get('cn2', ''),
                 point.get('cn2_optical', ''),
@@ -1545,6 +1576,7 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
         "target_temp_1", "target_temp_2",
         "fan_speed_1", "fan_speed_2", "fan_speed_3", "fan_speed_4",
         "hot_plate_1", "hot_plate_2",
+        "flow_rate_1", "flow_rate_2", "flow_rate_3", "flow_rate_4",
         "cn2_thermal", "cn2_optical", "error"
     ])
     
@@ -1597,7 +1629,12 @@ def generate_csv(data: list, filename_prefix: str = "arduino_status"):
         for i in range(2):
             row.append(hot_plates[i] if i < len(hot_plates) else "")
         
-        # BME280 temperatures
+        # Flow rates
+        flow_rates = record.get("flow_rates", [])
+        for i in range(4):
+            row.append(flow_rates[i] if i < len(flow_rates) else "")
+        
+        # CN2 values
         bme_temps = record.get("temperature_bmp", [])
         for i in range(4):
             row.append(bme_temps[i] if i < len(bme_temps) else "")
@@ -1796,9 +1833,15 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.websocket("/ws/video/{client_id}")
 async def video_streaming_websocket(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for video streaming"""
+    global video_streaming_task
     logger.info(f"New video streaming connection attempt from client: {client_id}")
     
     await video_manager.connect(websocket, client_id)
+    
+    # Start video streaming worker if not already running
+    if video_streaming_task is None or video_streaming_task.done():
+        video_streaming_task = asyncio.create_task(video_streaming_worker())
+        logger.info("Video streaming worker started for camera overlay view")
     
     # Ensure video streaming is started
     streaming_status = get_camera_streaming_status(camera_images_folder)
@@ -1881,6 +1924,17 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
             break
     
     video_manager.disconnect(client_id)
+    
+    # Stop video streaming worker if no active connections and not in data capture
+    if len(video_manager.active_connections) == 0 and not data_capture_active:
+        logger.info("Stopping video streaming worker - no active connections and not in data capture")
+        if video_streaming_task and not video_streaming_task.done():
+            video_streaming_task.cancel()
+            try:
+                await video_streaming_task
+            except asyncio.CancelledError:
+                pass
+        video_streaming_task = None
 
 # Calibration WebSocket connection manager
 class CalibrationConnectionManager:
@@ -1948,8 +2002,8 @@ async def calibration_websocket(websocket: WebSocket):
         calibration_ws_manager.disconnect(websocket)
 
 # Initialize camera system
-camera_images_folder = os.path.join(os.path.dirname(__file__), "..", "camera_images")
-pfs_file_path = os.path.join(os.path.dirname(__file__), "..", "camera_settings.pfs")  # Default PFS file path
+camera_images_folder = os.path.join(workspace_root, "camera_images")
+pfs_file_path = os.path.join(workspace_root, "camera_settings.pfs")  # Default PFS file path
 
 # Initialize calibration agent
 calibration_agent = CalibrationAgent(arduino_comm)

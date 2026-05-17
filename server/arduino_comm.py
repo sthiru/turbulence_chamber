@@ -90,7 +90,7 @@ class ArduinoCommunicator:
             self.is_connected = False
             logger.debug("Disconnected from Arduino")
     
-    async def send_command(self, command: ArduinoCommand) -> ArduinoResponse:
+    async def send_command(self, command) -> ArduinoResponse:
         """Send command to Arduino and return response"""
         import time
         async with self._lock:
@@ -112,7 +112,11 @@ class ArduinoCommunicator:
             try:
                 # Convert command to JSON and send
                 cmd_start = time.time()
-                cmd_json = json.dumps(command.dict(exclude_none=True))
+                # Handle both dict and ArduinoCommand objects
+                if hasattr(command, 'dict'):
+                    cmd_json = json.dumps(command.dict(exclude_none=True))
+                else:
+                    cmd_json = json.dumps(command)
                 
                 # Clear any pending input first
                 self.serial_conn.reset_input_buffer()

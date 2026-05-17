@@ -98,8 +98,8 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Run the server
-cd server
-uvicorn main:app --port 8000
+form the workspace folder
+uvicorn server.main:app --port 8000
 ```
 
 ### 3. Hardware Configuration

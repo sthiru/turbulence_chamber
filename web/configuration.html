@@ -86,11 +86,14 @@
                         </div>    <!-- PID Control Parameters -->
                             <div class="mb-3 p-2 border rounded">
                                 <h6 class="mb-3"><i class="fas fa-cogs"></i> PID Control Parameters</h6>
+                                
+                                <!-- Hot Plate 1 PID -->
+                                <h6 class="mb-2">Hot Plate 1 PID</h6>
                                 <div class="row mb-2">
                                     <div class="col-12 mb-2">
                                         <div class="input-group">
                                             <span class="input-group-text">Kp (Proportional)</span>
-                                            <input type="number" class="form-control" id="pid-kp" value="2.0" step="0.1">
+                                            <input type="number" class="form-control" id="pid-kp-0" value="80" step="0.1">
                                             <button class="btn btn-secondary" onclick="saveAllSettings()">
                                                 <i class="fas fa-save"></i> Set
                                             </button>
@@ -99,7 +102,39 @@
                                     <div class="col-12 mb-2">
                                         <div class="input-group">
                                             <span class="input-group-text">Ki (Integral)</span>
-                                            <input type="number" class="form-control" id="pid-ki" value="0.5" step="0.1">
+                                            <input type="number" class="form-control" id="pid-ki-0" value="0" step="0.1">
+                                            <button class="btn btn-secondary" onclick="saveAllSettings()">
+                                                <i class="fas fa-save"></i> Set
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="col-12 mb-3">
+                                        <div class="input-group">
+                                            <span class="input-group-text">Kd (Derivative)</span>
+                                            <input type="number" class="form-control" id="pid-kd-0" value="0" step="0.1">
+                                            <button class="btn btn-secondary" onclick="saveAllSettings()">
+                                                <i class="fas fa-save"></i> Set
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Hot Plate 2 PID -->
+                                <h6 class="mb-2">Hot Plate 2 PID</h6>
+                                <div class="row mb-2">
+                                    <div class="col-12 mb-2">
+                                        <div class="input-group">
+                                            <span class="input-group-text">Kp (Proportional)</span>
+                                            <input type="number" class="form-control" id="pid-kp-1" value="80" step="0.1">
+                                            <button class="btn btn-secondary" onclick="saveAllSettings()">
+                                                <i class="fas fa-save"></i> Set
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="col-12 mb-2">
+                                        <div class="input-group">
+                                            <span class="input-group-text">Ki (Integral)</span>
+                                            <input type="number" class="form-control" id="pid-ki-1" value="0" step="0.1">
                                             <button class="btn btn-secondary" onclick="saveAllSettings()">
                                                 <i class="fas fa-save"></i> Set
                                             </button>
@@ -108,7 +143,7 @@
                                     <div class="col-12">
                                         <div class="input-group">
                                             <span class="input-group-text">Kd (Derivative)</span>
-                                            <input type="number" class="form-control" id="pid-kd" value="1.0" step="0.1">
+                                            <input type="number" class="form-control" id="pid-kd-1" value="0" step="0.1">
                                             <button class="btn btn-secondary" onclick="saveAllSettings()">
                                                 <i class="fas fa-save"></i> Set
                                             </button>
@@ -248,7 +283,7 @@
                                 </button>
                             </div>
                         </div>
-                        <div id="error-message" class="alert alert-danger alert-sm d-none"></div>
+                        <div id="error-message" class="alert alert-sm d-none mb-3"></div>
                     </div>
                 </div>
             </div>
@@ -337,6 +372,6 @@
         </div>
     </div>
 
-    <script src="/static/script.js"></script>
+    <script src="/static/configuration.js"></script>
 </body>
 </html>
