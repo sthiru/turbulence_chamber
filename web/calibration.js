@@ -1090,25 +1090,31 @@ async function savePidSettings() {
     const pidKd1 = parseFloat(document.getElementById('pid-kd-1').value);
     
     try {
+        // First load current settings to preserve other values
+        const getResponse = await fetch('/api/settings');
+        const currentSettings = await getResponse.json();
+        
+        // Update only the pid_parameters
+        currentSettings.pid_parameters = {
+            hotplate_0: {
+                kp: pidKp0,
+                ki: pidKi0,
+                kd: pidKd0
+            },
+            hotplate_1: {
+                kp: pidKp1,
+                ki: pidKi1,
+                kd: pidKd1
+            }
+        };
+        
+        // Save the complete settings object
         const response = await fetch('/api/settings', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                pid_parameters: {
-                    hotplate_0: {
-                        kp: pidKp0,
-                        ki: pidKi0,
-                        kd: pidKd0
-                    },
-                    hotplate_1: {
-                        kp: pidKp1,
-                        ki: pidKi1,
-                        kd: pidKd1
-                    }
-                }
-            })
+            body: JSON.stringify(currentSettings)
         });
         
         if (response.ok) {

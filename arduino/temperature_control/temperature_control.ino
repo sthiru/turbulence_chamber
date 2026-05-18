@@ -76,6 +76,10 @@
 unsigned long UPDATE_INTERVAL = 1000;  // 1 second (default, can be modified)
 unsigned long DHT_UPDATE_INTERVAL = 10000;  // 10 seconds for DHT sensors (default, can be modified)
 
+const unsigned long WindowSize = 3000;   // 3 seconds window for the PID control logic
+unsigned long windowStartTime = 0
+
+
 // Global Variables
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
@@ -137,8 +141,8 @@ bool systemReady = false;
 
 // PID Controller Variables
 // PID tuning parameters for each hotplate
-double kp0 = 200.0, ki0 = 0.0, kd0 = 0.0;
-double kp1 = 200.0, ki1 = 0.0, kd1 = 0.0;
+double kp0 = 5.0, ki0 = 0.1, kd0 = 60.0;
+double kp1 = 5.0, ki1 = 0.1 kd1 = 60.0;
 
 // PID input/output variables for hotplate 0
 double pidInput0, pidOutput0;
@@ -265,11 +269,11 @@ void setup() {
   
   // Initialize PID controllers
   pid0.SetMode(AUTOMATIC);
-  pid0.SetOutputLimits(0, 255);  // SSR control: 0 = OFF, 255 = ON (binary)
-  pid0.SetSampleTime(1000);  // 1 second sample time
+  pid0.SetOutputLimits(0, WindowSize);  // SSR control: 0 = OFF, 255 = ON (binary)
+  pid0.SetSampleTime(200);  // 1 second sample time
   pid1.SetMode(AUTOMATIC);
-  pid1.SetOutputLimits(0, 255);  // SSR control: 0 = OFF, 255 = ON (binary)
-  pid1.SetSampleTime(1000);
+  pid1.SetOutputLimits(0, WindowSize);  // SSR control: 0 = OFF, 255 = ON (binary)
+  pid1.SetSampleTime(200);
   
   Serial.println("{\"type\":\"info\",\"message\":\"Temperature Control System Ready\"}");
   digitalWrite(STATUS_LED, HIGH);
@@ -566,16 +570,28 @@ void updateControl() {
     else {
       pidInput0 = temp_hotplate1;
       
-      if (pid0.Compute()) {
-        // PID output: 0-127 = OFF, 128-255 = ON (binary control for SSR)
-        if (pidOutput0 > 127.5) {
-          digitalWrite(relayPin, HIGH);
-          hotPlateStates[0] = true;
-        } else {
-          digitalWrite(relayPin, LOW);
-          hotPlateStates[0] = false;
-        }
+      if (pidInput0 > (Setpoint - 10)) {
+          pid0.SetOutputLimits(0, WindowSize * 0.5);
+      } else {
+          pid0.SetOutputLimits(0, WindowSize);
       }
+      
+      if (pid0.Compute()) {
+          unsigned long now = millis();
+          // Start a new window if needed
+          if (now - windowStartTime >= WindowSize) {
+            windowStartTime += WindowSize;
+          }
+
+          // Time-proportional control
+          if (pidOutput0 > (now - windowStartTime)) {
+            digitalWrite(relayPin, HIGH);   // Heater ON
+            hotPlateStates[0] = true;
+          } else {
+            digitalWrite(relayPin, LOW);    // Heater OFF
+            hotPlateStates[0] = false;
+          }
+        }
     }
   }
   
@@ -603,16 +619,28 @@ void updateControl() {
     else {
       pidInput1 = temp_hotplate2;
       
-      if (pid1.Compute()) {
-        // PID output: 0-127 = OFF, 128-255 = ON (binary control for SSR)
-        if (pidOutput1 > 127.5) {
-          digitalWrite(relayPin, HIGH);
-          hotPlateStates[1] = true;
-        } else {
-          digitalWrite(relayPin, LOW);
-          hotPlateStates[1] = false;
-        }
+      if (pidInput1 > (Setpoint - 10)) {
+          pid1.SetOutputLimits(0, WindowSize * 0.5);
+      } else {
+          pid1.SetOutputLimits(0, WindowSize);
       }
+
+      if (pid1.Compute()) {
+          unsigned long now = millis();
+          // Start a new window if needed
+          if (now - windowStartTime >= WindowSize) {
+            windowStartTime += WindowSize;
+          }
+
+          // Time-proportional control
+          if (pidOutput1 > (now - windowStartTime)) {
+            digitalWrite(relayPin, HIGH);   // Heater ON
+            hotPlateStates[1] = true;
+          } else {
+            digitalWrite(relayPin, LOW);    // Heater OFF
+            hotPlateStates[1] = false;
+          }
+        }
     }
   }
 }

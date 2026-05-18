@@ -191,20 +191,32 @@ async function saveAllSettings() {
     const debugEnabled = document.getElementById('debug-enabled').checked;
     
     try {
-        await apiCall('/api/settings', 'POST', {
-            target_temperatures: [targetTemp0, targetTemp1],
-            safety_temperature: safetyTemp,
-            pid_parameters: {
-                hotplate_0: {kp: pidKp0, ki: pidKi0, kd: pidKd0},
-                hotplate_1: {kp: pidKp1, ki: pidKi1, kd: pidKd1}
-            },
-            fan_start_behaviour: startBehaviour,
-            arduino_port: arduinoPort,
-            polling_interval: pollingInterval,
-            ambient_polling_interval: ambientPollingInterval,
-            history_size: historySize,
-            debug_enabled: debugEnabled
-        });
+        // First load current settings to preserve other values
+        const currentSettings = await apiCall('/api/settings', 'GET');
+        
+        if (currentSettings.error) {
+            console.error('Failed to load current settings:', currentSettings.error);
+            showErrorMessage('Failed to load current settings');
+            return;
+        }
+        
+        // Update settings with new values
+        currentSettings.target_temperatures = [targetTemp0, targetTemp1];
+        currentSettings.safety_temperature = safetyTemp;
+        currentSettings.pid_parameters = {
+            hotplate_0: {kp: pidKp0, ki: pidKi0, kd: pidKd0},
+            hotplate_1: {kp: pidKp1, ki: pidKi1, kd: pidKd1}
+        };
+        currentSettings.fan_start_behaviour = startBehaviour;
+        currentSettings.arduino_port = arduinoPort;
+        currentSettings.polling_interval = pollingInterval;
+        currentSettings.ambient_polling_interval = ambientPollingInterval;
+        currentSettings.history_size = historySize;
+        currentSettings.debug_enabled = debugEnabled;
+        
+        // Save the complete settings object
+        await apiCall('/api/settings', 'POST', currentSettings);
+        
         showErrorMessage('All configuration settings saved successfully!', 'success');
     } catch (error) {
         console.error('Failed to save all settings:', error);

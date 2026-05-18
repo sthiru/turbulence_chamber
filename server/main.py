@@ -361,12 +361,11 @@ async def background_status_polling():
                     await manager.broadcast(json.dumps(current_data_message))
                     logger.debug("Sent current data to WebSocket clients")
                     
-                    # Also send system status if it changed
+                    # Also send system status only when it changed
                     current_system_status = {
                         "device_status": status_data.get("device_status", "unknown"),
                         "system_ready": status_data.get("system_ready", False),
                         "arduino_port": status_data.get("arduino_port"),
-                        "polling_interval": polling_interval,
                         "timestamp": status_data.get("timestamp")
                     }
                     
@@ -377,7 +376,7 @@ async def background_status_polling():
                         current_system_status["arduino_port"] != last_system_status.get("arduino_port")
                     )
                     
-                    if system_status_changed or last_broadcast_time == 0:
+                    if system_status_changed:
                         await manager.broadcast(json.dumps({
                             "type": "system_status",
                             **current_system_status
