@@ -1319,7 +1319,8 @@ async def download_captured_data():
             'fan_speed_1', 'fan_speed_2', 'fan_speed_3', 'fan_speed_4',
             'hot_plate_1', 'hot_plate_2',
             'flow_rate_1', 'flow_rate_2', 'flow_rate_3', 'flow_rate_4',
-            'cn2_thermal', 'cn2_optical',
+            'cn2_row1_500', 'cn2_row1_300', 'cn2_row2_500', 'cn2_row2_300',
+            'cn2_optical',
             'image_filename'
         ]
         writer.writerow(header)
@@ -1366,8 +1367,8 @@ async def download_captured_data():
                 *(point.get('hot_plate_states', [])),
                 # Flow rates
                 *(point.get('flow_rates', [])),
-                # CN2 values
-                point.get('cn2', ''),
+                # CN2 values - split into 4 columns
+                *(point.get('cn2', [])[:4] if isinstance(point.get('cn2', []), list) else ['', '', '', '']),
                 point.get('cn2_optical', ''),
                 point.get('image_filename', '')
             ]
