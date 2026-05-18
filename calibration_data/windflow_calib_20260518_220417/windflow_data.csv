@@ -1,0 +1,4 @@
+timestamp,step,fan_id,fan_speed,flow_rate_sensor_0,flow_rate_sensor_1,flow_rate_sensor_2,flow_rate_sensor_3,sensor_temp_0,sensor_temp_1,sensor_temp_2,sensor_temp_3,sensor_temp_4,sensor_temp_5,sensor_temp_6,sensor_temp_7,sensor_temp_8,sensor_temp_9,sensor_temp_10,sensor_temp_11,temp_hotplate1,temp_hotplate2,bmpTemperature_internal,bmpTemperature_external,bmpPressure_internal,bmpPressure_external,dhtTemperature_internal,dhtTemperature_external,dhtHumidity_internal,dhtHumidity_external,air_flow_0,air_flow_1,air_flow_2,air_flow_3
+2026-05-18T22:04:20.681517,1,all,15,0.322193,0.273008,0.273008,0.458729,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,,,,,,,,,,,,,
+2026-05-18T22:04:24.682672,2,all,20,0.289542,0.289542,0.222567,0.40129300000000007,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,,,,,,,,,,,,,
+2026-05-18T22:04:38.386559,3,all,25,0.634316,0.170829,0.647891,0.250612,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,,,,,,,,,,,,,

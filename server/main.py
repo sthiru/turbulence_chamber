@@ -821,6 +821,16 @@ async def calculate_cn2_optical_endpoint():
 async def start_video_stream():
     """Start video streaming from camera"""
     try:
+        # Check camera status before starting video streaming
+        camera_status = get_camera_status(camera_images_folder)
+        camera_available = camera_status.get("initialized", False)
+        
+        if not camera_available:
+            return {
+                "status": "error",
+                "message": "Camera not connected or not available"
+            }
+        
         success = start_camera_video_stream(camera_images_folder)
         if success:
             return {
@@ -1837,6 +1847,21 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for video streaming"""
     global video_streaming_task
     logger.info(f"New video streaming connection attempt from client: {client_id}")
+    
+    # Check camera status before accepting connection
+    camera_status = get_camera_status(camera_images_folder)
+    camera_available = camera_status.get("initialized", False)
+    
+    if not camera_available:
+        logger.warning(f"Camera not connected - rejecting video streaming connection from client: {client_id}")
+        await websocket.accept()
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": "Camera not connected or not available",
+            "timestamp": datetime.now().isoformat()
+        }))
+        await websocket.close()
+        return
     
     await video_manager.connect(websocket, client_id)
     

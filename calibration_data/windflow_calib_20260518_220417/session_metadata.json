@@ -1,10 +1,10 @@
 {
-  "session_id": "windflow_calib_20260518_215052",
-  "start_time": "2026-05-18T21:50:52.630540",
-  "end_time": null,
-  "status": "running",
+  "session_id": "windflow_calib_20260518_220417",
+  "start_time": "2026-05-18T22:04:17.195562",
+  "end_time": "2026-05-18T22:04:38.544669",
+  "status": "failed",
   "total_steps": 49,
-  "current_step": 0,
+  "current_step": 49,
   "config": {
     "fan_speed_step": 5,
     "settling_time_ms": 1000,
@@ -13,15 +13,20 @@
   "steps": [],
   "lookup_table": null,
   "current_fan_id": null,
-  "current_fan_speed": null,
+  "current_fan_speed": 25,
   "current_temperature": null,
   "phase": null,
   "phase_details": null,
-  "current_flow_rates": [],
+  "current_flow_rates": [
+    0.634316,
+    0.170829,
+    0.647891,
+    0.250612
+  ],
   "total_speed_steps": 196,
-  "current_speed_step": 0,
+  "current_speed_step": 3,
   "total_data_points": 0,
   "captured_data_points": 0,
   "notes": "Fan-to-Windflow calibration with 5 PWM step (parallel execution)",
-  "error_message": null
+  "error_message": "Calibration stopped"
 }

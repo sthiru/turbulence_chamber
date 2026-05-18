@@ -283,10 +283,10 @@ class CalibrationAgent:
                 return {
                     'timestamp': datetime.now().isoformat(),
                     'temperatures': response.data.temperatures if response.data.temperatures else [],
-                    'temperature_bmp': response.data.temperature_bmp if response.data.temperature_bmp else [],
-                    'temperature_dht': response.data.temperature_dht if response.data.temperature_dht else [],
-                    'pressure': response.data.pressure if response.data.pressure else [],
-                    'humidity': response.data.humidity if response.data.humidity else [],
+                    'temperature_bmp': [response.data.bmpTemperature_internal, response.data.bmpTemperature_external] if response.data.bmpTemperature_internal or response.data.bmpTemperature_external else [],
+                    'temperature_dht': [response.data.dhtTemperature_internal, response.data.dhtTemperature_external] if response.data.dhtTemperature_internal or response.data.dhtTemperature_external else [],
+                    'pressure': [response.data.bmpPressure_internal, response.data.bmpPressure_external] if response.data.bmpPressure_internal or response.data.bmpPressure_external else [],
+                    'humidity': [response.data.dhtHumidity_internal, response.data.dhtHumidity_external] if response.data.dhtHumidity_internal or response.data.dhtHumidity_external else [],
                     'flow_rates': response.data.flow_rates if response.data.flow_rates else [],
                     'fan_speeds': response.data.fan_speeds if response.data.fan_speeds else [],
                     'target_temperatures': response.data.target_temperatures if response.data.target_temperatures else [],
@@ -745,6 +745,7 @@ class CalibrationAgent:
                 recording_duration=recording_duration,
                 sampling_interval=sampling_interval
             )
+            self.current_session.config = config.dict()
 
             # Collect all data points
             all_data_points = []
@@ -771,6 +772,10 @@ class CalibrationAgent:
                     self.current_session.current_speed_step = step_count
                     self.current_session.current_fan_speed = fan_speed
                     self.current_session.current_temperature = target_temp
+                    
+                    # Notify status callback at step start
+                    if self.status_callback:
+                        self.status_callback(self.current_session)
 
                     # Stage 1: Stabilize the hotplate surface temperature
                     logger.info(f"Step {step_count}: Stage 1 - Stabilizing hotplate to {target_temp}°C")
@@ -781,6 +786,10 @@ class CalibrationAgent:
                     for hotplate_id in [0, 1]:
                         await self.arduino_comm.set_temperature(hotplate_id, target_temp)
                         await asyncio.sleep(0.5)
+                    
+                    # Notify status callback
+                    if self.status_callback:
+                        self.status_callback(self.current_session)
 
                     # Wait for stabilization
                     logger.info("Waiting for temperature stabilization (60 seconds)...")
@@ -793,6 +802,10 @@ class CalibrationAgent:
                     for fan_id in range(4):
                         await self.arduino_comm.set_fan_speed(fan_id, fan_speed)
                     await asyncio.sleep(2)  # Wait for fans to stabilize
+                    
+                    # Notify status callback
+                    if self.status_callback:
+                        self.status_callback(self.current_session)
 
                     # Stage 3 & 4: Run background task and capture data
                     start_time = datetime.now()
@@ -882,7 +895,7 @@ class CalibrationAgent:
                                 # Update captured data points counter
                                 self.current_session.captured_data_points += 1
 
-                            # Notify status callback
+                            # Notify status callback more frequently for smooth progress updates
                             if self.status_callback:
                                 self.status_callback(self.current_session)
 

@@ -48,7 +48,8 @@ class CalibrationConfig:
     
     def get_calibration_data_folder(self) -> str:
         """Get absolute path to calibration data folder from workspace root"""
-        workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # Get workspace root (parent of server folder)
+        workspace_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         return os.path.join(workspace_root, self.calibration_data_folder)
     
     def get_fan_speed_steps(self) -> List[int]:
