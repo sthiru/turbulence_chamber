@@ -96,6 +96,7 @@ double targetTemperatures[NUM_HOT_PLATES] = {100.0, 100.0};
 int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
 bool manualHotPlateControl[NUM_HOT_PLATES] = {false, false}; // Manual override flags
+bool debugEnabled = false; // Debug mode flag for verbose logging
 
 // Hotplate Surface Temperatures (separate variables)
 float temp_hotplate1 = 0.0;  // Surface sensor 13 (index 12)
@@ -228,9 +229,9 @@ void setup() {
   tempDeviceAddresses[2][0] = 0x28; tempDeviceAddresses[2][1] = 0x61; tempDeviceAddresses[2][2] = 0x64; tempDeviceAddresses[2][3] = 0x34;
   tempDeviceAddresses[2][4] = 0xCD; tempDeviceAddresses[2][5] = 0xBE; tempDeviceAddresses[2][6] = 0xBB; tempDeviceAddresses[2][7] = 0x2D;
 
-  // Sensor 13: 28A84B4800000086
-  tempDeviceAddresses[12][0] = 0x28; tempDeviceAddresses[12][1] = 0xA8; tempDeviceAddresses[12][2] = 0x4B; tempDeviceAddresses[12][3] = 0x48;
-  tempDeviceAddresses[12][4] = 0x00; tempDeviceAddresses[12][5] = 0x00; tempDeviceAddresses[12][6] = 0x00; tempDeviceAddresses[12][7] = 0x86;
+  // Sensor 13: 2866dd4800000021
+  tempDeviceAddresses[12][0] = 0x28; tempDeviceAddresses[12][1] = 0x66; tempDeviceAddresses[12][2] = 0xDD; tempDeviceAddresses[12][3] = 0x48;
+  tempDeviceAddresses[12][4] = 0x00; tempDeviceAddresses[12][5] = 0x00; tempDeviceAddresses[12][6] = 0x00; tempDeviceAddresses[12][7] = 0x21;
   
   // Sensor 14: 28F9624800000094
   tempDeviceAddresses[13][0] = 0x28; tempDeviceAddresses[13][1] = 0xF9; tempDeviceAddresses[13][2] = 0x62; tempDeviceAddresses[13][3] = 0x48;
@@ -293,10 +294,10 @@ void initializeBME280Sensors() {
   if (bmpFound[0]) {
     Serial.println("{\"type\":\"info\",\"sensor_type\":\"bme280\",\"sensor_id\":1,\"message\":\"found\",\"pin\":26}");
   } else {
-    Serial.println("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":1,\"message\":\"not_found\",\"pin\":26}");
-    Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":1,\"message\":\"sensor_id\",\"value\":\"0x");
-    Serial.print(bmp1.sensorID(),16);
-    Serial.println("\"}");
+      Serial.println("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":1,\"message\":\"not_found\",\"pin\":26}");
+      Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":1,\"message\":\"sensor_id\",\"value\":\"0x");
+      Serial.print(bmp1.sensorID(),16);
+      Serial.println("\"}");
   }
   
   // Initialize BME280 sensor 2
@@ -308,7 +309,7 @@ void initializeBME280Sensors() {
   if (bmpFound[1]) {
     Serial.println("{\"type\":\"info\",\"sensor_type\":\"bme280\",\"sensor_id\":2,\"message\":\"found\",\"pin\":28}");
   } else {
-    Serial.println("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":2,\"message\":\"not_found\",\"pin\":28}");
+      Serial.println("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":2,\"message\":\"not_found\",\"pin\":28}");
   }
   
   int foundCount = 0;
@@ -334,7 +335,7 @@ void initializeDHTSensors() {
     Serial.println("{\"type\":\"info\",\"sensor_type\":\"dht22\",\"sensor_id\":1,\"message\":\"found\",\"pin\":22}");
   } else {
     dhtFound[0] = false;
-    Serial.println("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":1,\"message\":\"not_found\",\"pin\":22}");
+      Serial.println("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":1,\"message\":\"not_found\",\"pin\":22}");
   }
   
   // Initialize DHT sensor 2
@@ -347,7 +348,7 @@ void initializeDHTSensors() {
     Serial.println("{\"type\":\"info\",\"sensor_type\":\"dht22\",\"sensor_id\":2,\"message\":\"found\",\"pin\":24}");
   } else {
     dhtFound[1] = false;
-    Serial.println("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":2,\"message\":\"not_found\",\"pin\":24}");
+      Serial.println("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":2,\"message\":\"not_found\",\"pin\":24}");
   }
   
   int foundCount = 0;
@@ -387,9 +388,11 @@ void updateTemperatures() {
     float temp = sensors.getTempC(tempDeviceAddresses[i]);
 
     if (temp == DEVICE_DISCONNECTED_C) {
-      Serial.print("{\"type\":\"error\",\"sensor_type\":\"ds18b20\",\"sensor_id\":");
-      Serial.print(i);
-      Serial.println(",\"message\":\"disconnected\"}");
+      if (debugEnabled) {
+        Serial.print("{\"type\":\"error\",\"sensor_type\":\"ds18b20\",\"sensor_id\":");
+        Serial.print(i);
+        Serial.println(",\"message\":\"disconnected\"}");
+      }
       
       // Store in separate variables for hotplate sensors, array for others
       if (i == 12) {
@@ -437,7 +440,9 @@ void updateBME280Sensors() {
     digitalWrite(BMP280_CS_1, HIGH);
     
     if (isnan(bmpTemperature_internal) || isnan(bmpPressure_internal)) {
-      Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":1,\"message\":\"read_failure\"}");
+      if (debugEnabled) {
+        Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":1,\"message\":\"read_failure\"}");
+      }
       bmpTemperature_internal = 0.0;
       bmpPressure_internal = 0.0;
     }
@@ -457,7 +462,9 @@ void updateBME280Sensors() {
     digitalWrite(BMP280_CS_2, HIGH);
     
     if (isnan(bmpTemperature_external) || isnan(bmpPressure_external)) {
-      Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":2,\"message\":\"read_failure\"}");
+      if (debugEnabled) {
+        Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":2,\"message\":\"read_failure\"}");
+      }
       bmpTemperature_external = 0.0;
       bmpPressure_external = 0.0;
     }
@@ -473,7 +480,9 @@ void updateDHTSensors() {
     dhtTemperature_internal = dht1.getTemperature();
     dhtHumidity_internal = dht1.getHumidity();
     if (isnan(dhtTemperature_internal) || isnan(dhtHumidity_internal)) {
-      Serial.print("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":1,\"message\":\"read_failure\"}");
+      if (debugEnabled) {
+        Serial.print("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":1,\"message\":\"read_failure\"}");
+      }
       dhtTemperature_internal = 0.0;
       dhtHumidity_internal = 0.0;
     }
@@ -487,7 +496,9 @@ void updateDHTSensors() {
     dhtTemperature_external = dht2.getTemperature();
     dhtHumidity_external = dht2.getHumidity();
     if (isnan(dhtTemperature_external) || isnan(dhtHumidity_external)) {
-      Serial.print("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":2,\"message\":\"read_failure\"}");
+      if (debugEnabled) {
+        Serial.print("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":2,\"message\":\"read_failure\"}");
+      }
       dhtTemperature_external = 0.0;
       dhtHumidity_external = 0.0;
     }
@@ -623,10 +634,12 @@ void processCommand(String command) {
   DeserializationError error = deserializeJson(doc, command);
   
   if (error) {
-    Serial.print("{\"type\":\"error\",\"message\":\"json_parsing_error\",\"error\":\"");
-    Serial.print(error.c_str());
-    Serial.println("\"}");
-    sendErrorResponse("Invalid JSON format");
+    if (debugEnabled) {
+      Serial.print("{\"type\":\"error\",\"message\":\"json_parsing_error\",\"error\":\"");
+      Serial.print(error.c_str());
+      Serial.println("\"}");
+    }
+    sendErrorResponse("json_parsing_error");
     return;
   }
   
@@ -768,6 +781,11 @@ void processCommand(String command) {
     }
     if (doc.containsKey("ambient_polling_interval")) {
       DHT_UPDATE_INTERVAL = (unsigned long)(doc["ambient_polling_interval"] | 10) * 1000;  // Convert seconds to milliseconds
+    }
+    
+    // Debug mode
+    if (doc.containsKey("debug_enabled")) {
+      debugEnabled = doc["debug_enabled"] | false;
     }
     
     sendStatusResponse();

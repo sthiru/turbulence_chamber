@@ -188,28 +188,22 @@ async function saveAllSettings() {
     const pollingInterval = parseFloat(document.getElementById('polling-interval').value);
     const ambientPollingInterval = parseFloat(document.getElementById('ambient-polling-interval').value);
     const historySize = parseInt(document.getElementById('history-size').value);
+    const debugEnabled = document.getElementById('debug-enabled').checked;
     
     try {
         await apiCall('/api/settings', 'POST', {
             target_temperatures: [targetTemp0, targetTemp1],
             safety_temperature: safetyTemp,
             pid_parameters: {
-                hotplate_0: {
-                    kp: pidKp0,
-                    ki: pidKi0,
-                    kd: pidKd0
-                },
-                hotplate_1: {
-                    kp: pidKp1,
-                    ki: pidKi1,
-                    kd: pidKd1
-                }
+                hotplate_0: {kp: pidKp0, ki: pidKi0, kd: pidKd0},
+                hotplate_1: {kp: pidKp1, ki: pidKi1, kd: pidKd1}
             },
             fan_start_behaviour: startBehaviour,
             arduino_port: arduinoPort,
             polling_interval: pollingInterval,
             ambient_polling_interval: ambientPollingInterval,
-            history_size: historySize
+            history_size: historySize,
+            debug_enabled: debugEnabled
         });
         showErrorMessage('All configuration settings saved successfully!', 'success');
     } catch (error) {
@@ -334,6 +328,14 @@ async function loadSettings() {
             const ambientPollingIntervalInput = document.getElementById('ambient-polling-interval');
             if (ambientPollingIntervalInput) {
                 ambientPollingIntervalInput.value = settings.ambient_polling_interval;
+            }
+        }
+        
+        // Load debug enabled
+        if (settings.debug_enabled !== undefined) {
+            const debugEnabledInput = document.getElementById('debug-enabled');
+            if (debugEnabledInput) {
+                debugEnabledInput.checked = settings.debug_enabled;
             }
         }
         

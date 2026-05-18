@@ -20,5 +20,6 @@
     "arduino_port": "",
     "polling_interval": 1,
     "ambient_polling_interval": 9.5,
-    "history_size": 100
+    "history_size": 100,
+    "debug_enabled": false
 }

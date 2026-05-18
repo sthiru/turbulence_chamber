@@ -521,7 +521,8 @@ async def apply_settings_to_arduino():
             }),
             "fan_start_behaviour": settings.get("fan_start_behaviour", "full_speed"),
             "polling_interval": settings.get("polling_interval", 1),
-            "ambient_polling_interval": settings.get("ambient_polling_interval", 10)
+            "ambient_polling_interval": settings.get("ambient_polling_interval", 10),
+            "debug_enabled": settings.get("debug_enabled", False)
         }
         
         logger.debug(f"Sending apply_settings command to Arduino: {command}")
