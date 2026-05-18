@@ -77,7 +77,7 @@ unsigned long UPDATE_INTERVAL = 1000;  // 1 second (default, can be modified)
 unsigned long DHT_UPDATE_INTERVAL = 10000;  // 10 seconds for DHT sensors (default, can be modified)
 
 const unsigned long WindowSize = 3000;   // 3 seconds window for the PID control logic
-unsigned long windowStartTime = 0
+unsigned long windowStartTime = 0;
 
 
 // Global Variables
@@ -142,7 +142,7 @@ bool systemReady = false;
 // PID Controller Variables
 // PID tuning parameters for each hotplate
 double kp0 = 5.0, ki0 = 0.1, kd0 = 60.0;
-double kp1 = 5.0, ki1 = 0.1 kd1 = 60.0;
+double kp1 = 5.0, ki1 = 0.1, kd1 = 60.0;
 
 // PID input/output variables for hotplate 0
 double pidInput0, pidOutput0;
@@ -570,7 +570,7 @@ void updateControl() {
     else {
       pidInput0 = temp_hotplate1;
       
-      if (pidInput0 > (Setpoint - 10)) {
+      if (pidInput0 > (targetTemperatures[0] - 10)) {
           pid0.SetOutputLimits(0, WindowSize * 0.5);
       } else {
           pid0.SetOutputLimits(0, WindowSize);
@@ -619,7 +619,7 @@ void updateControl() {
     else {
       pidInput1 = temp_hotplate2;
       
-      if (pidInput1 > (Setpoint - 10)) {
+      if (pidInput1 > (targetTemperatures[1] - 10)) {
           pid1.SetOutputLimits(0, WindowSize * 0.5);
       } else {
           pid1.SetOutputLimits(0, WindowSize);
