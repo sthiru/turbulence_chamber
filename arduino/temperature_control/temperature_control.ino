@@ -144,6 +144,9 @@ bool systemReady = false;
 double kp0 = 8.0, ki0 = 0.08, kd0 = 80.0;
 double kp1 = 8.0, ki1 = 0.08, kd1 = 80.0;
 
+static double last_hotplate1Temp = 0;
+static double last_hotplate2Temp = 0;
+
 // PID input/output variables for hotplate 0
 double pidInput0, pidOutput0;
 PID pid0(&pidInput0, &pidOutput0, &targetTemperatures[0], kp0, ki0, kd0, DIRECT);
@@ -583,6 +586,17 @@ void updateControl() {
               // prevent integral accumulation
               pid0.SetTunings(kp1, 0, kd1);
           } 
+          
+          double rate = temp_hotplate1 - last_hotplate1Temp;
+          last_hotplate1Temp = temp_hotplate1;
+
+          // braking condition
+          if (temp_hotplate1 > (targetTemperatures[0] - 5)) {
+              if (rate > 0.15) {   // from your slope (~0.12–0.18)
+                  pidOutput0 *= 0.25;
+              }
+          }
+
           unsigned long now = millis();
           // Start a new window if needed
           if (now - windowStartTime >= WindowSize) {
@@ -639,6 +653,16 @@ void updateControl() {
               // prevent integral accumulation
               pid0.SetTunings(kp1, 0, kd1);
           } 
+
+          double rate = temp_hotplate2 - last_hotplate2Temp;
+          last_hotplate2Temp = temp_hotplate2;
+
+          // braking condition
+          if (temp_hotplate2 > (targetTemperatures[1] - 5)) {
+              if (rate > 0.15) {   // from your slope (~0.12–0.18)
+                  pidOutput0 *= 0.25;
+              }
+          }
 
           unsigned long now = millis();
           // Start a new window if needed
