@@ -1,9 +1,9 @@
 {
   "session": {
-    "session_id": "windflow_calib_20260518_220417",
-    "start_time": "2026-05-18 22:04:17.195562",
+    "session_id": "windflow_calib_20260519_152243",
+    "start_time": "2026-05-19 15:22:43.305348",
     "end_time": null,
-    "status": "running",
+    "status": "paused",
     "total_steps": 49,
     "current_step": 0,
     "config": {
@@ -24,11 +24,11 @@
     "total_data_points": 0,
     "captured_data_points": 0,
     "notes": "Fan-to-Windflow calibration with 5 PWM step (parallel execution)",
-    "error_message": null
+    "error_message": "Server restarted - session paused. Can be resumed."
   },
-  "is_running": true,
-  "is_paused": false,
+  "is_running": false,
+  "is_paused": true,
   "stop_requested": false,
   "calibration_type": "windflow",
-  "timestamp": "2026-05-18T22:04:17.199909"
+  "timestamp": "2026-05-19T15:26:50.955716"
 }

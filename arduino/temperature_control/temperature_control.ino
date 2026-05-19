@@ -96,7 +96,7 @@ bool dhtFound[NUM_DHT_SENSORS] = {false, false};
 
 // System State
 float currentTemperatures[NUM_SENSORS];
-double targetTemperatures[NUM_HOT_PLATES] = {100.0, 100.0};
+double targetTemperatures[NUM_HOT_PLATES] = {85.0, 85.0};
 int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
 bool manualHotPlateControl[NUM_HOT_PLATES] = {false, false}; // Manual override flags
