@@ -949,6 +949,111 @@ async def clear_calibration_session():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/calibration/save")
+async def save_calibration_data(data: dict):
+    """Save calibration data to file with metadata"""
+    try:
+        from calibration.config import get_calibration_data_folder
+        
+        file_type = data.get("file_type")
+        csv_data = data.get("csv_data")
+        metadata = data.get("metadata", {})
+        
+        calibration_folder = get_calibration_data_folder()
+        os.makedirs(calibration_folder, exist_ok=True)
+        
+        # Determine filename based on file type
+        filename_map = {
+            'pid_data': 'pid_data.csv',
+            'fan_data': 'fan_data.csv',
+            'calibration_data': 'calibration_data.csv'
+        }
+        
+        filename = filename_map.get(file_type, f"{file_type}.csv")
+        csv_file = os.path.join(calibration_folder, filename)
+        
+        # Save CSV data
+        with open(csv_file, 'w', newline='') as f:
+            f.write(csv_data)
+        
+        # Save metadata
+        metadata_file = os.path.join(calibration_folder, f"{file_type}_metadata.json")
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=4)
+        
+        return {
+            "status": "success",
+            "message": f"{file_type} saved successfully",
+            "filename": filename
+        }
+    except Exception as e:
+        logger.error(f"Error saving calibration data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calibration/download/{file_type}")
+async def download_calibration_data(file_type: str):
+    """Download calibration data CSV file"""
+    try:
+        from calibration.config import get_calibration_data_folder
+        
+        calibration_folder = get_calibration_data_folder()
+        
+        # Map file type to filename
+        filename_map = {
+            'pid_data': 'pid_data.csv',
+            'fan_data': 'fan_data.csv',
+            'calibration_data': 'calibration_data.csv'
+        }
+        
+        filename = filename_map.get(file_type)
+        if not filename:
+            raise HTTPException(status_code=400, detail=f"Invalid file type: {file_type}")
+        
+        csv_file = os.path.join(calibration_folder, filename)
+        
+        if not os.path.exists(csv_file):
+            raise HTTPException(status_code=404, detail=f"{file_type} file not found")
+        
+        return FileResponse(
+            csv_file,
+            media_type="text/csv",
+            filename=filename
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading calibration data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calibration/latest-metadata")
+async def get_latest_metadata():
+    """Get latest calibration metadata"""
+    try:
+        from calibration.config import get_calibration_data_folder
+        
+        calibration_folder = get_calibration_data_folder()
+        
+        # Try to load metadata files in order of priority
+        metadata_files = ['fan_data_metadata.json', 'calibration_data_metadata.json', 'pid_data_metadata.json']
+        
+        for metadata_file in metadata_files:
+            metadata_path = os.path.join(calibration_folder, metadata_file)
+            if os.path.exists(metadata_path):
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                return {
+                    "status": "success",
+                    "metadata": metadata
+                }
+        
+        return {
+            "status": "success",
+            "metadata": None
+        }
+    except Exception as e:
+        logger.error(f"Error loading metadata: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/calibration/hotplate/start")
 async def start_hotplate_calibration(
     temp_min: float = 80.0,

@@ -55,28 +55,51 @@ async function loadPolynomials() {
 // Load latest calibration data from root folder
 async function loadLatestCalibrationData() {
     try {
-        const response = await fetch('/api/calibration/latest-data');
-        const result = await response.json();
+        const response = await fetch('/api/calibration/download/fan_data');
+        
+        if (response.ok) {
+            const text = await response.text();
+            const lines = text.split('\n').filter(line => line.trim());
+            
+            if (lines.length > 1) {
+                // Parse CSV
+                const headers = lines[0].split(',');
+                const data = [];
+                
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].split(',');
+                    if (values.length >= headers.length) {
+                        const row = {};
+                        headers.forEach((header, index) => {
+                            row[header.trim()] = values[index]?.trim() || '';
+                        });
+                        data.push(row);
+                    }
+                }
+                
+                calibrationData = data;
+                populateCalibrationTable(data);
+                document.getElementById('noDataMessage').style.display = 'none';
+                document.getElementById('dataTableContainer').style.display = 'block';
+                document.getElementById('downloadButtons').style.display = 'block';
 
-        if (result.status === 'success' && Array.isArray(result.data)) {
-            calibrationData = result.data;
-            populateCalibrationTable(result.data);
-            document.getElementById('noDataMessage').style.display = 'none';
-            document.getElementById('dataTableContainer').style.display = 'block';
-            document.getElementById('downloadButtons').style.display = 'block';
+                // Load session metadata to get session ID
+                const metadataResponse = await fetch('/api/calibration/latest-metadata');
+                const metadataResult = await metadataResponse.json();
 
-            // Load session metadata to get session ID
-            const metadataResponse = await fetch('/api/calibration/latest-metadata');
-            const metadataResult = await metadataResponse.json();
-
-            if (metadataResult.status === 'success' && metadataResult.metadata) {
-                document.getElementById('resultsSummary').style.display = 'block';
-                document.getElementById('resultsSessionId').textContent = `Session ID: ${metadataResult.metadata.session_id}`;
-                calibrationSessionId = metadataResult.metadata.session_id;
-                addLog('Latest calibration data loaded', 'success');
-            } else if (result.data.length > 0) {
-                document.getElementById('resultsSummary').style.display = 'block';
-                addLog('Latest calibration data loaded', 'success');
+                if (metadataResult.status === 'success' && metadataResult.metadata) {
+                    document.getElementById('resultsSummary').style.display = 'block';
+                    document.getElementById('resultsSessionId').textContent = `Session ID: ${metadataResult.metadata.session_id}`;
+                    calibrationSessionId = metadataResult.metadata.session_id;
+                    addLog('Latest calibration data loaded', 'success');
+                } else if (data.length > 0) {
+                    addLog('Calibration data loaded', 'success');
+                }
+            } else {
+                document.getElementById('noDataMessage').style.display = 'block';
+                document.getElementById('dataTableContainer').style.display = 'none';
+                document.getElementById('downloadButtons').style.display = 'none';
+                document.getElementById('resultsSummary').style.display = 'none';
             }
         } else {
             document.getElementById('noDataMessage').style.display = 'block';
@@ -246,6 +269,104 @@ function renderFanChart(fanId, data, polynomial) {
     });
 }
 
+// Save windflow calibration data to server
+async function saveWindflowCalibrationData(sessionId) {
+    try {
+        // Download existing data capture CSV
+        const response = await fetch('/api/data-capture/download');
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const text = await blob.text();
+            
+            // Prepare metadata
+            const metadata = {
+                calibration_type: 'fan',
+                session_id: sessionId,
+                start_time: new Date().toISOString(),
+                end_time: new Date().toISOString(),
+                data_points: calibrationData.length
+            };
+            
+            // Send to server for saving
+            const saveResponse = await fetch('/api/calibration/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    file_type: 'fan_data',
+                    csv_data: text,
+                    metadata: metadata
+                })
+            });
+            
+            if (saveResponse.ok) {
+                console.log('Fan calibration data saved successfully');
+                addLog('Fan calibration data saved successfully', 'success');
+            } else {
+                console.error('Failed to save fan calibration data');
+                addLog('Failed to save fan calibration data', 'error');
+            }
+        } else {
+            console.error('Failed to download data capture for fan calibration');
+            addLog('Failed to download data for fan calibration', 'error');
+        }
+    } catch (e) {
+        console.error('Error saving fan calibration data:', e);
+        addLog('Error saving fan calibration data', 'error');
+    }
+}
+
+// Save hotplate calibration data to server
+async function saveHotplateCalibrationData(sessionId) {
+    try {
+        // Download existing data capture CSV
+        const response = await fetch('/api/data-capture/download');
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const text = await blob.text();
+            
+            // Prepare metadata
+            const metadata = {
+                calibration_type: 'hotplate',
+                session_id: sessionId,
+                start_time: new Date().toISOString(),
+                end_time: new Date().toISOString(),
+                data_points: calibrationData.length
+            };
+            
+            // Send to server for saving
+            const saveResponse = await fetch('/api/calibration/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    file_type: 'calibration_data',
+                    csv_data: text,
+                    metadata: metadata
+                })
+            });
+            
+            if (saveResponse.ok) {
+                console.log('Hotplate calibration data saved successfully');
+                addLog('Hotplate calibration data saved successfully', 'success');
+            } else {
+                console.error('Failed to save hotplate calibration data');
+                addLog('Failed to save hotplate calibration data', 'error');
+            }
+        } else {
+            console.error('Failed to download data capture for hotplate calibration');
+            addLog('Failed to download data for hotplate calibration', 'error');
+        }
+    } catch (e) {
+        console.error('Error saving hotplate calibration data:', e);
+        addLog('Error saving hotplate calibration data', 'error');
+    }
+}
+
 // Display calibration results
 async function displayCalibrationResults(sessionId) {
     calibrationSessionId = sessionId;
@@ -282,32 +403,28 @@ async function displayCalibrationResults(sessionId) {
 }
 
 // Download CSV
-document.getElementById('downloadCSV').addEventListener('click', () => {
-    if (!calibrationSessionId || !Array.isArray(calibrationData) || calibrationData.length === 0) {
-        addLog('No calibration data to download', 'warning');
-        return;
+document.getElementById('downloadCSV').addEventListener('click', async () => {
+    try {
+        const response = await fetch('/api/calibration/download/fan_data');
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'fan_data.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            addLog('Fan calibration data downloaded', 'success');
+        } else {
+            addLog('Failed to download fan calibration data', 'error');
+        }
+    } catch (e) {
+        console.error('Error downloading fan calibration data:', e);
+        addLog('Error downloading fan calibration data', 'error');
     }
-    
-    const csvContent = [
-        ['timestamp', 'fan_speed', 'sensor_0_avg', 'sensor_1_avg', 'sensor_2_avg', 'sensor_3_avg'],
-        ...calibrationData.map(row => [
-            row.timestamp,
-            row.fan_speed,
-            row.sensor_0_avg || '',
-            row.sensor_1_avg || '',
-            row.sensor_2_avg || '',
-            row.sensor_3_avg || ''
-        ])
-    ].map(row => row.join(',')).join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `calibration_${calibrationSessionId}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    addLog('CSV downloaded', 'success');
 });
 
 // Download Polynomials
@@ -704,6 +821,8 @@ function connectWebSocket() {
                         
                         if (session.status === 'completed') {
                             addLog('Hot plate calibration completed successfully!', 'success');
+                            // Save calibration data to root folder
+                            saveHotplateCalibrationData(session.session_id);
                             // Display results if available
                             if (session.session_id) {
                                 displayCalibrationResults(session.session_id);
@@ -743,6 +862,8 @@ function connectWebSocket() {
                         
                         if (session.status === 'completed') {
                             addLog('Calibration completed successfully!', 'success');
+                            // Save calibration data to root folder
+                            saveWindflowCalibrationData(session.session_id);
                             // Automatically display results
                             displayCalibrationResults(session.session_id);
                         } else {
@@ -1050,6 +1171,7 @@ let pidCalibrating = false;
 let pidCalibrationData = [];
 let pidCharts = {};
 let pidWebSocket = null;
+let pidSessionId = null;
 
 // Load PID settings from settings.json
 async function loadPidSettings() {
@@ -1191,6 +1313,10 @@ async function startPidCalibration() {
     pidCalibrating = true;
     pidCalibrationData = [];
     
+    // Generate session ID
+    const now = new Date();
+    pidSessionId = `pid_calibration_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+    
     document.getElementById('startPidCalibration').disabled = true;
     document.getElementById('stopPidCalibration').disabled = false;
     document.getElementById('pidStatusSection').style.display = 'block';
@@ -1205,7 +1331,13 @@ async function startPidCalibration() {
     pidCharts[0].update();
     pidCharts[1].update();
     
-    // Connect WebSocket for real-time data
+    // Start data capture
+    if (typeof startDataCapture === 'function') {
+        await startDataCapture();
+        console.log('Data capture started for PID calibration');
+    }
+    
+    // Connect to WebSocket for real-time data
     connectPidWebSocket();
 }
 
@@ -1217,6 +1349,15 @@ async function stopPidCalibration() {
     document.getElementById('stopPidCalibration').disabled = true;
     document.getElementById('pidCalibrationStatus').textContent = 'Stopped';
     document.getElementById('pidCalibrationStatus').className = 'badge bg-warning status-badge';
+    
+    // Save PID calibration data to server
+    await savePidCalibrationData();
+    
+    // Show download button if data is available
+    const downloadBtn = document.getElementById('downloadPidCalibration');
+    if (downloadBtn && pidCalibrationData.length > 0) {
+        downloadBtn.style.display = 'inline-block';
+    }
     
     // Stop data capture after stopping calibration
     if (typeof stopDataCapture === 'function') {
@@ -1250,17 +1391,83 @@ function clearPidCalibrationData() {
     }
 }
 
+// Save PID calibration data to server
+async function savePidCalibrationData() {
+    if (pidCalibrationData.length === 0) {
+        console.log('No PID calibration data to save');
+        return;
+    }
+    
+    try {
+        // Get current PID parameters
+        const pidKp0 = parseFloat(document.getElementById('pid-kp-0').value);
+        const pidKi0 = parseFloat(document.getElementById('pid-ki-0').value);
+        const pidKd0 = parseFloat(document.getElementById('pid-kd-0').value);
+        const pidKp1 = parseFloat(document.getElementById('pid-kp-1').value);
+        const pidKi1 = parseFloat(document.getElementById('pid-ki-1').value);
+        const pidKd1 = parseFloat(document.getElementById('pid-kd-1').value);
+        
+        // Download existing data capture CSV
+        const response = await fetch('/api/data-capture/download');
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const text = await blob.text();
+            
+            // Prepare metadata
+            const metadata = {
+                calibration_type: 'pid',
+                session_id: pidSessionId,
+                start_time: pidCalibrationData[0].timestamp,
+                end_time: pidCalibrationData[pidCalibrationData.length - 1].timestamp,
+                data_points: pidCalibrationData.length,
+                pid_parameters: {
+                    hotplate_0: { kp: pidKp0, ki: pidKi0, kd: pidKd0 },
+                    hotplate_1: { kp: pidKp1, ki: pidKi1, kd: pidKd1 }
+                }
+            };
+            
+            // Send to server for saving
+            const saveResponse = await fetch('/api/calibration/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    file_type: 'pid_data',
+                    csv_data: text,
+                    metadata: metadata
+                })
+            });
+            
+            if (saveResponse.ok) {
+                console.log('PID calibration data saved successfully');
+                showPidMessage('PID calibration data saved successfully', 'success');
+            } else {
+                console.error('Failed to save PID calibration data');
+                showPidMessage('Failed to save PID calibration data', 'error');
+            }
+        } else {
+            console.error('Failed to download data capture for PID calibration');
+            showPidMessage('Failed to download data for PID calibration', 'error');
+        }
+    } catch (e) {
+        console.error('Error saving PID calibration data:', e);
+        showPidMessage('Error saving PID calibration data', 'error');
+    }
+}
+
 // Download PID calibration data
 async function downloadPidCalibrationData() {
     try {
-        const response = await fetch('/api/data-capture/download');
+        const response = await fetch('/api/calibration/download/pid_data');
         
         if (response.ok) {
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'pid_calibration_data.csv';
+            a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'pid_data.csv';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
