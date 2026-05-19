@@ -660,8 +660,8 @@
                     <button type="button" class="btn btn-danger btn-lg" id="stopPidCalibration" disabled>
                         <i class="fas fa-stop me-2"></i>Stop
                     </button>
-                    <button type="button" class="btn btn-outline-warning btn-lg" id="clearPidCalibration" onclick="clearPidCalibrationData()">
-                        <i class="fas fa-trash me-2"></i>Clear Data
+                    <button type="button" class="btn btn-outline-primary btn-lg" id="downloadPidCalibration" onclick="downloadPidCalibrationData()" style="display: none;">
+                        <i class="fas fa-download me-2"></i>Download Data
                     </button>
                 </div>
 
@@ -686,26 +686,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/calibration.js"></script>
-    <script src="/static/components/bottom-bar.js"></script>
     
     <!-- Connection Status Bottom Right -->
     <div id="connectionStatus" class="connection-status disconnected">
         <i class="fas fa-wifi"></i> Connecting...
     </div>
-    
-    <!-- Load Bottom Bar Component -->
-    <div id="bottomBarContainer"></div>
-    
-    <script>
-        // Load bottom bar component
-        fetch('/static/components/bottom-bar.html')
-            .then(response => response.text())
-            .then(html => {
-                document.getElementById('bottomBarContainer').innerHTML = html;
-                // Initialize bottom bar functionality after loading
-                initializeBottomBar();
-            })
-            .catch(error => console.error('Error loading bottom bar:', error));
-    </script>
 </body>
 </html>

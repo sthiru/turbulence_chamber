@@ -77,7 +77,7 @@ unsigned long UPDATE_INTERVAL = 1000;  // 1 second (default, can be modified)
 unsigned long DHT_UPDATE_INTERVAL = 10000;  // 10 seconds for DHT sensors (default, can be modified)
 
 const unsigned long WindowSize = 3000;   // 3 seconds window for the PID control logic
-unsigned long windowStartTime = 0;
+unsigned long windowStartTime = millis();
 
 
 // Global Variables
@@ -141,8 +141,8 @@ bool systemReady = false;
 
 // PID Controller Variables
 // PID tuning parameters for each hotplate
-double kp0 = 5.0, ki0 = 0.1, kd0 = 60.0;
-double kp1 = 5.0, ki1 = 0.1, kd1 = 60.0;
+double kp0 = 8.0, ki0 = 0.08, kd0 = 80.0;
+double kp1 = 8.0, ki1 = 0.08, kd1 = 80.0;
 
 // PID input/output variables for hotplate 0
 double pidInput0, pidOutput0;
@@ -547,12 +547,10 @@ void updateControl() {
   // Hotplate 1: uses temp_hotplate2
   
   // Hotplate 0 Control
-  {
-    int relayPin = SSR_RELAY_1;
-    
+  {    
     // Apply safety limits (always active, highest priority)
     if (temp_hotplate1 > MAX_TEMP) {
-      digitalWrite(relayPin, LOW);
+      digitalWrite(SSR_RELAY_1, LOW);
       hotPlateStates[0] = false;
       Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":1,\"temperature\":");
       Serial.print(temp_hotplate1);
@@ -560,23 +558,31 @@ void updateControl() {
     }
     // Manual OFF state has highest priority (after safety)
     else if (manualHotPlateControl[0] && !hotPlateStates[0]) {
-      digitalWrite(relayPin, LOW);
+      digitalWrite(SSR_RELAY_1, LOW);
     }
     // Manual ON state
     else if (manualHotPlateControl[0] && hotPlateStates[0]) {
-      digitalWrite(relayPin, HIGH);
+      digitalWrite(SSR_RELAY_1, HIGH);
     }
     // Automatic PID control mode
     else {
       pidInput0 = temp_hotplate1;
       
-      if (pidInput0 > (targetTemperatures[0] - 10)) {
-          pid0.SetOutputLimits(0, WindowSize * 0.5);
-      } else {
-          pid0.SetOutputLimits(0, WindowSize);
+      if (temp_hotplate1 < targetTemperatures[0] - 15) {
+          digitalWrite(SSR_RELAY_1, HIGH);
       }
-      
-      if (pid0.Compute()) {
+      else {
+        if (pidInput0 > (targetTemperatures[0] - 10)) {
+            pid0.SetOutputLimits(0, WindowSize * 0.5);
+        } else {
+            pid0.SetOutputLimits(0, WindowSize);
+        }
+        
+        if (pid0.Compute()) {
+          if (pidOutput0 == WindowSize || pidOutput0 == 0) {
+              // prevent integral accumulation
+              pid0.SetTunings(kp1, 0, kd1);
+          } 
           unsigned long now = millis();
           // Start a new window if needed
           if (now - windowStartTime >= WindowSize) {
@@ -585,23 +591,22 @@ void updateControl() {
 
           // Time-proportional control
           if (pidOutput0 > (now - windowStartTime)) {
-            digitalWrite(relayPin, HIGH);   // Heater ON
+            digitalWrite(SSR_RELAY_1, HIGH);   // Heater ON
             hotPlateStates[0] = true;
           } else {
-            digitalWrite(relayPin, LOW);    // Heater OFF
+            digitalWrite(SSR_RELAY_1, LOW);    // Heater OFF
             hotPlateStates[0] = false;
           }
         }
+      }
     }
   }
   
   // Hotplate 1 Control
-  {
-    int relayPin = SSR_RELAY_2;
-    
+  {  
     // Apply safety limits (always active, highest priority)
     if (temp_hotplate2 > MAX_TEMP) {
-      digitalWrite(relayPin, LOW);
+      digitalWrite(SSR_RELAY_2, LOW);
       hotPlateStates[1] = false;
       Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":2,\"temperature\":");
       Serial.print(temp_hotplate2);
@@ -609,23 +614,32 @@ void updateControl() {
     }
     // Manual OFF state has highest priority (after safety)
     else if (manualHotPlateControl[1] && !hotPlateStates[1]) {
-      digitalWrite(relayPin, LOW);
+      digitalWrite(SSR_RELAY_2, LOW);
     }
     // Manual ON state
     else if (manualHotPlateControl[1] && hotPlateStates[1]) {
-      digitalWrite(relayPin, HIGH);
+      digitalWrite(SSR_RELAY_2, HIGH);
     }
     // Automatic PID control mode
     else {
       pidInput1 = temp_hotplate2;
-      
-      if (pidInput1 > (targetTemperatures[1] - 10)) {
-          pid1.SetOutputLimits(0, WindowSize * 0.5);
-      } else {
-          pid1.SetOutputLimits(0, WindowSize);
+      if (temp_hotplate2 < targetTemperatures[1] - 15) {
+          digitalWrite(SSR_RELAY_2, HIGH);
       }
+      else {
+        if (pidInput1 > (targetTemperatures[1] - 10)) {
+            pid1.SetOutputLimits(0, WindowSize * 0.5);
+        } else {
+            pid1.SetOutputLimits(0, WindowSize);
+        }
 
-      if (pid1.Compute()) {
+        if (pid1.Compute()) {
+          
+          if (pidOutput1 == WindowSize || pidOutput0 == 0) {
+              // prevent integral accumulation
+              pid0.SetTunings(kp1, 0, kd1);
+          } 
+
           unsigned long now = millis();
           // Start a new window if needed
           if (now - windowStartTime >= WindowSize) {
@@ -634,13 +648,14 @@ void updateControl() {
 
           // Time-proportional control
           if (pidOutput1 > (now - windowStartTime)) {
-            digitalWrite(relayPin, HIGH);   // Heater ON
+            digitalWrite(SSR_RELAY_2, HIGH);   // Heater ON
             hotPlateStates[1] = true;
           } else {
-            digitalWrite(relayPin, LOW);    // Heater OFF
+            digitalWrite(SSR_RELAY_2, LOW);    // Heater OFF
             hotPlateStates[1] = false;
           }
         }
+      }
     }
   }
 }

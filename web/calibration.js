@@ -1242,6 +1242,38 @@ function clearPidCalibrationData() {
     pidCharts[1].update();
     
     document.getElementById('pidDataPoints').textContent = 'Data Points: 0';
+    
+    // Hide download button
+    const downloadBtn = document.getElementById('downloadPidCalibration');
+    if (downloadBtn) {
+        downloadBtn.style.display = 'none';
+    }
+}
+
+// Download PID calibration data
+async function downloadPidCalibrationData() {
+    try {
+        const response = await fetch('/api/data-capture/download');
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'pid_calibration_data.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            showPidMessage('PID calibration data downloaded successfully', 'success');
+        } else {
+            showPidMessage('Failed to download PID calibration data', 'error');
+        }
+    } catch (e) {
+        console.error('Error downloading PID calibration data:', e);
+        showPidMessage('Error downloading PID calibration data', 'error');
+    }
 }
 
 // Connect PID WebSocket
@@ -1291,6 +1323,12 @@ function connectPidWebSocket() {
                     
                     // Update data points counter
                     document.getElementById('pidDataPoints').textContent = `Data Points: ${pidCalibrationData.length}`;
+                    
+                    // Show download button when data is available
+                    const downloadBtn = document.getElementById('downloadPidCalibration');
+                    if (downloadBtn && pidCalibrationData.length > 0) {
+                        downloadBtn.style.display = 'inline-block';
+                    }
                 }
             }
         } catch (error) {
