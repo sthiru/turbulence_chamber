@@ -1,7 +1,7 @@
 {
   "session": {
-    "session_id": "windflow_calib_20260519_152243",
-    "start_time": "2026-05-19 15:22:43.305348",
+    "session_id": "windflow_calib_20260520_000405",
+    "start_time": "2026-05-20 00:04:05.886719",
     "end_time": null,
     "status": "paused",
     "total_steps": 49,
@@ -30,5 +30,5 @@
   "is_paused": true,
   "stop_requested": false,
   "calibration_type": "windflow",
-  "timestamp": "2026-05-19T15:26:50.955716"
+  "timestamp": "2026-05-20T00:09:05.553291"
 }
