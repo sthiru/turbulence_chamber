@@ -366,5 +366,36 @@ class ArduinoCommunicator:
             
             await asyncio.sleep(5)  # Check every 5 seconds (more frequent)
 
+async def apply_settings_to_arduino(arduino_comm: ArduinoCommunicator):
+    """Apply settings from configuration file to Arduino"""
+    from utils import load_configuration
+    settings = load_configuration()
+    try:
+        # Send apply_settings command to Arduino
+        command = {
+            "cmd": "apply_settings",
+            "target_temperatures": settings.get("target_temperatures", [80, 80]),
+            "safety_temperature": settings.get("safety_temperature", 120),
+            "pid_parameters": settings.get("pid_parameters", {
+                "hotplate_0": {"kp": 2.0, "ki": 0.5, "kd": 1.0},
+                "hotplate_1": {"kp": 2.0, "ki": 0.5, "kd": 1.0}
+            }),
+            "fan_start_behaviour": settings.get("fan_start_behaviour", "full_speed"),
+            "polling_interval": settings.get("polling_interval", 1),
+            "ambient_polling_interval": settings.get("ambient_polling_interval", 10),
+            "debug_enabled": settings.get("debug_enabled", False)
+        }
+        
+        logger.debug(f"Sending apply_settings command to Arduino: {command}")
+        response = await arduino_comm.send_command(command)
+        if response.status == "ok":
+            logger.info("Settings applied to Arduino successfully")
+        else:
+            logger.warning(f"Failed to apply settings to Arduino: {response.msg}")
+    except FileNotFoundError:
+        logger.warning("Configuration file not found, using default values")
+    except Exception as e:
+        logger.error(f"Error applying settings to Arduino: {e}")
+
 # Global Arduino communicator instance
 arduino_comm = ArduinoCommunicator()

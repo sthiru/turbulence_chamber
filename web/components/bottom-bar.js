@@ -39,7 +39,7 @@ function initDataCapture() {
 
 // Check capture status
 async function checkCaptureStatus() {
-    if (userActionInProgress) {
+    if (!userActionInProgress || !isCapturing) {
         return;
     }
     
@@ -102,16 +102,12 @@ async function startDataCapture() {
     } catch (e) {
         console.error('Error starting data capture:', e);
         showNotification('Error starting data capture', 'error');
-    } finally {
-        setTimeout(() => {
-            userActionInProgress = false;
-        }, 2000);
-    }
+    } 
 }
 
 // Stop data capture
 async function stopDataCapture() {
-    userActionInProgress = true;
+    userActionInProgress = false;
     
     try {
         const response = await fetch('/api/data-capture', {

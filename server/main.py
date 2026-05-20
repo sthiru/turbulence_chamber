@@ -6,15 +6,17 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Body
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import uvicorn
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 from functools import lru_cache
 import asyncio
+from fastapi.responses import StreamingResponse
 import json
 import time
 import logging
@@ -28,7 +30,8 @@ import cv2
 
 from models import (
     TemperatureCommand, FanCommand, HotPlateCommand, 
-    SystemStatus, ArduinoResponse, DeviceStatus
+    SystemStatus, ArduinoResponse, DeviceStatus,
+    ReconnectRequest, HotPlateToggleRequest, DataCaptureRequest, DataPointWithImage
 )
 from arduino_comm import arduino_comm
 from camera_acquisition import (
@@ -41,52 +44,70 @@ from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status
 from cn2.cn2_thermal import calculate_cn2
 from calibration.calibration_agent import CalibrationAgent
 from calibration.models import CalibrationRequest, CalibrationControl
-from calibration.config import CalibrationConfig, get_settings_file_path
-
-# Pydantic model for reconnect request
-class ReconnectRequest(BaseModel):
-    port: str = None
-
-# Pydantic model for hotplate toggle request
-class HotPlateToggleRequest(BaseModel):
-    state: bool
-
-# Pydantic model for data capture request
-class DataCaptureRequest(BaseModel):
-    start: bool
-    capture_id: Optional[str] = None
-
-# Pydantic model for data point with image
-class DataPointWithImage(BaseModel):
-    timestamp: str
-    temperatures: List[float]
-    temperature_bmp: List[float]
-    temperature_dht: List[float]
-    target_temperatures: List[float]
-    fan_speeds: List[int]
-    hot_plate_states: List[bool]  
-    pressure: List[float]
-    humidity: List[float]
-    cn2: Optional[float] = None
-    cn2_optical: Optional[float] = None
-    image_filename: Optional[str] = None
+from calibration.config import CalibrationConfig
+from csv_utils import init_csv_file, append_to_csv
+from utils import load_configuration, get_configuration, set_configuration, get_workspace_root, get_calibration_data_folder
+from websocket_manager import ConnectionManager
+from video_stream_manager import VideoStreamManager
+from calibration_websocket_manager import CalibrationConnectionManager
+from arduino_comm import apply_settings_to_arduino
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Constants
-MAX_HISTORY_SIZE = 1000
+MAX_HISTORY_SIZE = get_configuration("max_history_size", 1000)
+POLLING_INTERVAL = get_configuration("polling_interval", 1.0)
+
+# Global variables for background polling
+background_task = None
+video_streaming_task = None
+last_broadcast_time = 0
+polling_interval = POLLING_INTERVAL  # Current polling interval (can be updated at runtime)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    global background_task, video_streaming_task
+    
+    # Startup
+    logger.info("Starting Temperature Control System server...")
+    
+    # Connect to Arduino
+    logger.debug(f"Attempting to connect to Arduino on {arduino_comm.port}...")
+    success = await arduino_comm.connect()
+    if success:
+        logger.debug("Arduino connected successfully")
+        # Apply settings from JSON file to Arduino
+        await apply_settings_to_arduino(arduino_comm)        
+    else:
+        logger.warning("Failed to connect to Arduino - server will run without Arduino")
+        logger.info("Please check:")
+        logger.info("1. Arduino is connected via USB")
+        logger.info("2. Correct COM port is being used")
+        logger.info("3. Arduino sketch is uploaded and running")
+        logger.info("4. No other program is using the serial port")
+        
+    # Start background polling 
+    background_task = asyncio.create_task(background_status_polling())
+    
+    yield
+    
+    # Shutdown
+    await arduino_comm.disconnect()
+    cleanup_camera_system()
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Temperature Control System",
-    description="API for controlling Arduino-based temperature control system",
-    version="1.0.0"
+    title="Turbulance Control System",
+    description="API for controlling Arduino-based turbulance control system",
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Mount static files
-workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+workspace_root = get_workspace_root()
 static_dir = os.path.join(workspace_root, "web")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -106,70 +127,16 @@ app.add_middleware(
 )
 
 # WebSocket connection manager
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"WebSocket client connected. Total connections: {len(self.active_connections)}")
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-            logger.info(f"WebSocket client disconnected. Total connections: {len(self.active_connections)}")
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str):
-        logger.debug(f"Broadcasting message to {len(self.active_connections)} clients: {message[:100]}...")
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except:
-                # Connection closed, remove it
-                logger.warning("Failed to send to WebSocket client, removing connection")
-                self.active_connections.remove(connection)
+manager = ConnectionManager()
 
 # Video streaming connection manager
-class VideoStreamManager:
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-
-    async def connect(self, websocket: WebSocket, client_id: str):
-        await websocket.accept()
-        self.active_connections[client_id] = websocket
-        logger.info(f"Video stream client connected: {client_id}. Total video connections: {len(self.active_connections)}")
-        
-        # Add client to camera streaming
-        add_video_streaming_client(client_id, camera_images_folder)
-
-    def disconnect(self, client_id: str):
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
-            logger.info(f"Video stream client disconnected: {client_id}. Total video connections: {len(self.active_connections)}")
-            
-            # Remove client from camera streaming
-            remove_video_streaming_client(client_id, camera_images_folder)
-
-    async def send_frame(self, client_id: str, frame_data: str):
-        if client_id in self.active_connections:
-            try:
-                await self.active_connections[client_id].send_text(frame_data)
-            except Exception as e:
-                logger.warning(f"Failed to send video frame to client {client_id}: {e}")
-                # Remove disconnected client
-                self.disconnect(client_id)
-
-manager = ConnectionManager()
 video_manager = VideoStreamManager()
 
+# Status history storage
+status_history = deque(maxlen=MAX_HISTORY_SIZE)
+
 # Data storage for Arduino status records
-status_history = deque(maxlen=1000)  # Store last 1000 status updates
 status_update_queue = asyncio.Queue()
-video_stream_manager = VideoStreamManager()
 
 # Data capture state
 data_capture_active = False
@@ -234,25 +201,25 @@ def capture_and_save_image(capture_folder: str) -> Optional[str]:
         return None
 
 # Global variables for background polling
-polling_interval = 1.0  # Default polling interval in seconds
 background_task = None
 video_streaming_task = None
 last_broadcast_time = 0
-historical_data_sent = False  # Track if full historical data has been sent
+polling_interval = POLLING_INTERVAL  # Current polling interval (can be updated at runtime)
 
 # Background polling task
 async def background_status_polling():
     """Background task to poll Arduino for status and broadcast to WebSocket clients"""
-    global last_broadcast_time, historical_data_sent, last_system_status
-    
-    # Initialize last_system_status
-    last_system_status = None
+    global last_broadcast_time
     
     while True:
         try:
-            # Get status from Arduino
-            response = await arduino_comm.get_status()
-            
+            if arduino_comm.is_connected:
+                # Get status from Arduino
+                response = await arduino_comm.get_status()
+            else:
+                # logger.info("Arduino not connected, skipping status poll")
+                await asyncio.sleep(polling_interval)
+                continue
             if response.status == "ok":
                 if response.data is None:
                     logger.warning("Response data is None, skipping status update")
@@ -319,6 +286,12 @@ async def background_status_polling():
                     data_point["session_id"] = current_capture_session["id"]
                     captured_data_points.append(data_point)
                     logger.debug(f"Captured data point {len(captured_data_points)} with image: {image_filename}")
+                    
+                    # Append to CSV file if available
+                    if current_capture_session.get("csv_filepath"):
+                        csv_data = status_data.copy()
+                        csv_data["session_id"] = current_capture_session["id"]
+                        append_to_csv(current_capture_session["csv_filepath"], csv_data)
                 
                 # Broadcast to all connected clients
                 if manager.active_connections:
@@ -331,28 +304,8 @@ async def background_status_polling():
                     current_data_message = {
                         "type": "current_data",
                         "data": [{
-                            "temperatures": status_data.get("temperatures", []),
-                            "temp_hotplate1": status_data.get("temp_hotplate1"),
-                            "temp_hotplate2": status_data.get("temp_hotplate2"),
-                            "bmpTemperature_internal": status_data.get("bmpTemperature_internal"),
-                            "bmpTemperature_external": status_data.get("bmpTemperature_external"),
-                            "bmpPressure_internal": status_data.get("bmpPressure_internal"),
-                            "bmpPressure_external": status_data.get("bmpPressure_external"),
-                            "dhtTemperature_internal": status_data.get("dhtTemperature_internal"),
-                            "dhtTemperature_external": status_data.get("dhtTemperature_external"),
-                            "dhtHumidity_internal": status_data.get("dhtHumidity_internal"),
-                            "dhtHumidity_external": status_data.get("dhtHumidity_external"),
-                            "target_temperatures": status_data.get("target_temperatures", []),
-                            "fan_speeds": status_data.get("fan_speeds", []),
-                            "hot_plate_states": status_data.get("hot_plate_states", []),
-                            "flow_rates": status_data.get("flow_rates", []),
-                            "cn2": status_data.get("cn2"),
-                            "cn2_optical": status_data.get("cn2_optical"),
-                            "cn2_status": status_data.get("cn2_status"),
-                            "camera_image": status_data.get("camera_image"),
+                            **status_data,
                             "camera_status": camera_status,
-                            "image_filename": status_data.get("image_filename"),
-                            "timestamp": status_data.get("timestamp")
                         }],
                         "count": 1,
                         "latest_only": True
@@ -368,21 +321,10 @@ async def background_status_polling():
                         "arduino_port": status_data.get("arduino_port"),
                         "timestamp": status_data.get("timestamp")
                     }
-                    
-                    system_status_changed = (
-                        not last_system_status or
-                        current_system_status["device_status"] != last_system_status.get("device_status") or
-                        current_system_status["system_ready"] != last_system_status.get("system_ready") or
-                        current_system_status["arduino_port"] != last_system_status.get("arduino_port")
-                    )
-                    
-                    if system_status_changed:
-                        await manager.broadcast(json.dumps({
-                            "type": "system_status",
-                            **current_system_status
-                        }))
-                        last_system_status = current_system_status.copy()
-                        logger.debug(f"System status changed: {current_system_status['device_status']} | Ready: {current_system_status['system_ready']}")
+                    await manager.broadcast(json.dumps({
+                        "type": "system_status",
+                        **current_system_status
+                    }))
                 else:
                     logger.debug("No WebSocket clients connected, skipping broadcast")
                 
@@ -392,44 +334,16 @@ async def background_status_polling():
                     "device_status": "offline",
                     "error": response.msg if response.msg else "Arduino not connected",
                     "arduino_port": arduino_comm.port if arduino_comm.is_connected else None,
-                    "temperatures": [0.0] * 5,  # 5 sensors
-                    "target_temperatures": [80.0, 80.0],
-                    "fan_speeds": [0, 0, 0, 0],
-                    "hot_plate_states": [False, False],
                     "system_ready": False,
                     "timestamp": datetime.now().isoformat()
                 }
                 
-                # Store error in history
-                status_history.append(error_status.copy())
-                
                 if manager.active_connections:
-                    # Check if error status changed
-                    current_error_status = {
-                        "device_status": "offline",
-                        "system_ready": False,
-                        "arduino_port": error_status.get("arduino_port"),
-                        "polling_interval": polling_interval,
-                        "timestamp": error_status.get("timestamp"),
-                        "error": error_status.get("error")
-                    }
-                    
-                    error_status_changed = (
-                        not last_system_status or
-                        current_error_status["device_status"] != last_system_status.get("device_status") or
-                        current_error_status["error"] != last_system_status.get("error", "")
-                    )
-                    
-                    if error_status_changed:
-                        await manager.broadcast(json.dumps({
-                            "type": "system_status",
-                            **current_error_status
-                        }))
-                        last_system_status = current_error_status.copy()
-                        logger.warning(f"Error status changed: {error_status['error']}")
-                        
-                        # Reset historical data flag when error status changes
-                        historical_data_sent = False
+                    await manager.broadcast(json.dumps({
+                        "type": "system_status",
+                        **error_status
+                    }))
+                    logger.warning(f"Error status changed: {error_status['error']}")
                 else:
                     logger.debug("No WebSocket clients connected, skipping error broadcast")
                 
@@ -478,7 +392,7 @@ async def video_streaming_worker():
                     clients_to_remove = []
                     for client_id in list(video_manager.active_connections.keys()):
                         try:
-                            await video_manager.send_frame(client_id, message)
+                            await video_manager.send_frame(client_id, message, camera_images_folder)
                             logger.debug(f"Sent frame to client {client_id}")
                         except Exception as e:
                             logger.warning(f"Failed to send frame to client {client_id}: {e}")
@@ -486,7 +400,7 @@ async def video_streaming_worker():
                     
                     # Remove disconnected clients
                     for client_id in clients_to_remove:
-                        video_manager.disconnect(client_id)
+                        video_manager.disconnect(client_id, camera_images_folder)
                 else:
                     logger.debug("No video frame available")
                 
@@ -501,91 +415,6 @@ async def video_streaming_worker():
             await asyncio.sleep(1.0)  # Brief delay on error
     
     logger.debug("Video streaming worker stopped")
-
-async def apply_settings_to_arduino():
-    """Apply settings from JSON file to Arduino"""
-    settings_file = get_settings_file_path()
-    try:
-        with open(settings_file, 'r') as f:
-            settings = json.load(f)
-        
-        # Send apply_settings command to Arduino
-        command = {
-            "cmd": "apply_settings",
-            "target_temperatures": settings.get("target_temperatures", [80, 80]),
-            "safety_temperature": settings.get("safety_temperature", 120),
-            "pid_parameters": settings.get("pid_parameters", {
-                "hotplate_0": {"kp": 2.0, "ki": 0.5, "kd": 1.0},
-                "hotplate_1": {"kp": 2.0, "ki": 0.5, "kd": 1.0}
-            }),
-            "fan_start_behaviour": settings.get("fan_start_behaviour", "full_speed"),
-            "polling_interval": settings.get("polling_interval", 1),
-            "ambient_polling_interval": settings.get("ambient_polling_interval", 10),
-            "debug_enabled": settings.get("debug_enabled", False)
-        }
-        
-        logger.debug(f"Sending apply_settings command to Arduino: {command}")
-        response = await arduino_comm.send_command(command)
-        if response.status == "ok":
-            logger.info("Settings applied to Arduino successfully")
-        else:
-            logger.warning(f"Failed to apply settings to Arduino: {response.msg}")
-    except FileNotFoundError:
-        logger.warning("Settings file not found, using default values")
-    except Exception as e:
-        logger.error(f"Error applying settings to Arduino: {e}")
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize Arduino connection and start background polling"""
-    global background_task, video_streaming_task
-    
-    logger.info("Starting Temperature Control System server...")
-    
-    # Connect to Arduino
-    logger.debug(f"Attempting to connect to Arduino on {arduino_comm.port}...")
-    success = await arduino_comm.connect()
-    if success:
-        logger.debug("Arduino connected successfully")
-        
-        # Apply settings from JSON file to Arduino
-        await apply_settings_to_arduino()
-        
-        # Get initial status and store it
-        try:
-            response = await arduino_comm.get_status()
-            if response.status == "ok" and response.data:
-                status_data = response.data.dict()
-                status_data["device_status"] = "online"
-                status_data["arduino_port"] = arduino_comm.port
-                status_data["system_ready"] = True  # System is ready when Arduino responds successfully
-                status_data["timestamp"] = datetime.now().isoformat()
-                status_history.append(status_data.copy())
-                logger.debug("Initial Arduino status stored in history")
-            else:
-                logger.warning("Failed to get initial Arduino status")
-        except Exception as e:
-            logger.error(f"Error getting initial Arduino status: {e}")
-        
-        # Start background polling task
-        background_task = asyncio.create_task(background_status_polling())
-        
-    else:
-        logger.warning("Failed to connect to Arduino - server will run without Arduino")
-        logger.info("Please check:")
-        logger.info("1. Arduino is connected via USB")
-        logger.info("2. Correct COM port is being used")
-        logger.info("3. Arduino sketch is uploaded and running")
-        logger.info("4. No other program is using the serial port")
-        
-        # Start background polling anyway (will show offline status)
-        background_task = asyncio.create_task(background_status_polling())
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    await arduino_comm.disconnect()
-    cleanup_camera_system()
 
 # API Routes
 @app.get("/health")
@@ -696,30 +525,28 @@ async def toggle_hot_plate(plate_id: int, request: HotPlateToggleRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/settings")
-async def get_settings():
+async def get_settings(key: str = None):
     """Get configuration settings from JSON file"""
-    settings_file = get_settings_file_path()
     try:
-        with open(settings_file, 'r') as f:
-            settings = json.load(f)
+        settings = load_configuration()
+        if key:
+            return settings.get(key)
         return settings
     except FileNotFoundError:
-        return {"error": "Settings file not found"}
+        return {"error": "Configuration file not found"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/settings")
 async def save_settings(settings: dict):
     """Save configuration settings to JSON file"""
-    settings_file = get_settings_file_path()
     try:
-        with open(settings_file, 'w') as f:
-            json.dump(settings, f, indent=4)
+        set_configuration(settings)
         
         # Apply settings to Arduino
         await apply_settings_to_arduino()
         
-        return {"status": "success", "message": "Settings saved and applied to Arduino"}
+        return {"status": "success", "message": "Configuration saved and applied to Arduino"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -732,58 +559,11 @@ async def apply_settings():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/sensors")
-async def get_sensor_data():
-    """Get all sensor data"""
-    try:
-        response = await arduino_comm.get_status()
-        if response.status == "ok":
-            return {
-                "temperatures": response.data.temperatures,
-                "target_temperatures": response.data.target_temperatures,
-                "system_ready": response.data.system_ready
-            }
-        else:
-            raise HTTPException(status_code=500, detail=response.msg)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/test")
-async def test_endpoint():
-    """Simple test endpoint to verify server is working"""
-    return {
-        "status": "ok",
-        "message": "Server is working",
-        "arduino_port": arduino_comm.port,
-        "connected": arduino_comm.is_connected,
-        "camera_status": get_camera_status(camera_images_folder),
-        "cn2_optical_status": get_cn2_status(camera_images_folder)
-    }
-
 @app.get("/api/camera/status")
 async def get_camera_status_endpoint():
     """Get camera system status"""
     try:
         return get_camera_status(camera_images_folder)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/camera/capture")
-async def capture_camera_image_endpoint():
-    """Manually trigger camera image capture"""
-    try:
-        filename = capture_camera_image(camera_images_folder)
-        if filename:
-            return {
-                "status": "success",
-                "message": "Image captured successfully",
-                "filename": filename
-            }
-        else:
-            return {
-                "status": "error",
-                "message": "Failed to capture image"
-            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -949,111 +729,6 @@ async def clear_calibration_session():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/calibration/save")
-async def save_calibration_data(data: dict):
-    """Save calibration data to file with metadata"""
-    try:
-        from calibration.config import get_calibration_data_folder
-        
-        file_type = data.get("file_type")
-        csv_data = data.get("csv_data")
-        metadata = data.get("metadata", {})
-        
-        calibration_folder = get_calibration_data_folder()
-        os.makedirs(calibration_folder, exist_ok=True)
-        
-        # Determine filename based on file type
-        filename_map = {
-            'pid_data': 'pid_data.csv',
-            'fan_data': 'fan_data.csv',
-            'calibration_data': 'calibration_data.csv'
-        }
-        
-        filename = filename_map.get(file_type, f"{file_type}.csv")
-        csv_file = os.path.join(calibration_folder, filename)
-        
-        # Save CSV data
-        with open(csv_file, 'w', newline='') as f:
-            f.write(csv_data)
-        
-        # Save metadata
-        metadata_file = os.path.join(calibration_folder, f"{file_type}_metadata.json")
-        with open(metadata_file, 'w') as f:
-            json.dump(metadata, f, indent=4)
-        
-        return {
-            "status": "success",
-            "message": f"{file_type} saved successfully",
-            "filename": filename
-        }
-    except Exception as e:
-        logger.error(f"Error saving calibration data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/calibration/download/{file_type}")
-async def download_calibration_data(file_type: str):
-    """Download calibration data CSV file"""
-    try:
-        from calibration.config import get_calibration_data_folder
-        
-        calibration_folder = get_calibration_data_folder()
-        
-        # Map file type to filename
-        filename_map = {
-            'pid_data': 'pid_data.csv',
-            'fan_data': 'fan_data.csv',
-            'calibration_data': 'calibration_data.csv'
-        }
-        
-        filename = filename_map.get(file_type)
-        if not filename:
-            raise HTTPException(status_code=400, detail=f"Invalid file type: {file_type}")
-        
-        csv_file = os.path.join(calibration_folder, filename)
-        
-        if not os.path.exists(csv_file):
-            raise HTTPException(status_code=404, detail=f"{file_type} file not found")
-        
-        return FileResponse(
-            csv_file,
-            media_type="text/csv",
-            filename=filename
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error downloading calibration data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/calibration/latest-metadata")
-async def get_latest_metadata():
-    """Get latest calibration metadata"""
-    try:
-        from calibration.config import get_calibration_data_folder
-        
-        calibration_folder = get_calibration_data_folder()
-        
-        # Try to load metadata files in order of priority
-        metadata_files = ['fan_data_metadata.json', 'calibration_data_metadata.json', 'pid_data_metadata.json']
-        
-        for metadata_file in metadata_files:
-            metadata_path = os.path.join(calibration_folder, metadata_file)
-            if os.path.exists(metadata_path):
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                return {
-                    "status": "success",
-                    "metadata": metadata
-                }
-        
-        return {
-            "status": "success",
-            "metadata": None
-        }
-    except Exception as e:
-        logger.error(f"Error loading metadata: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/api/calibration/hotplate/start")
 async def start_hotplate_calibration(
     temp_min: float = 80.0,
@@ -1087,42 +762,6 @@ async def start_hotplate_calibration(
             "temp_max": temp_max,
             "temp_step": temp_step,
             "fan_speeds": fan_speeds_list,
-            "recording_duration": recording_duration,
-            "sampling_interval": sampling_interval,
-            "estimated_duration": f"~{total_duration_hours:.1f} hours"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/calibration/combined/start")
-async def start_combined_calibration(
-    temp_min: float = 80.0,
-    temp_max: float = 120.0,
-    temp_step: float = 2.0,
-    fan_speeds: str = "255,191,128,64",
-    recording_duration: int = 900,
-    sampling_interval: int = 10
-):
-    """Start combined hot plate and fan calibration"""
-    try:
-        # Parse fan speeds from comma-separated string
-        fan_speed_list = [int(x.strip()) for x in fan_speeds.split(",")]
-
-        session = await calibration_agent.start_combined_calibration(
-            temp_min, temp_max, temp_step, fan_speed_list, recording_duration, sampling_interval
-        )
-        num_temp_steps = int((temp_max - temp_min) / temp_step) + 1
-        total_steps = num_temp_steps * len(fan_speed_list)
-        total_duration_hours = (total_steps * recording_duration) / 3600
-        return {
-            "status": "success",
-            "message": "Combined calibration started",
-            "session_id": session.session_id,
-            "total_steps": session.total_steps,
-            "temp_min": temp_min,
-            "temp_max": temp_max,
-            "temp_step": temp_step,
-            "fan_speeds": fan_speed_list,
             "recording_duration": recording_duration,
             "sampling_interval": sampling_interval,
             "estimated_duration": f"~{total_duration_hours:.1f} hours"
@@ -1214,36 +853,6 @@ async def get_windflow_polynomials():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/calibration/latest-data")
-async def get_latest_calibration_data():
-    """Get the latest calibration data CSV from calibration_data root folder"""
-    try:
-        import csv
-        import os
-        from calibration.config import DEFAULT_CONFIG
-
-        # Load from calibration_data root folder
-        calib_folder = os.path.abspath(DEFAULT_CONFIG.calibration_data_folder)
-        filepath = os.path.join(calib_folder, "calibration_data.csv")
-
-        if os.path.exists(filepath):
-            data = []
-            with open(filepath, 'r') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    data.append(row)
-            return {
-                "status": "success",
-                "data": data
-            }
-        else:
-            return {
-                "status": "info",
-                "message": "No calibration data available. Run calibration to generate data."
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/api/calibration/latest-metadata")
 async def get_latest_calibration_metadata():
     """Get the latest session metadata from calibration_data root folder"""
@@ -1271,42 +880,63 @@ async def get_latest_calibration_metadata():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/calibration/data/{session_id}")
-async def get_calibration_data(session_id: str):
-    """Get calibration data for a specific session"""
+@app.get("/api/calibration/data")
+async def get_calibration_data(session_id: str = None):
+    """Get calibration data for a specific session, or latest data if session_id is None"""
     import csv
     import os
     from calibration.config import DEFAULT_CONFIG
     
     try:
-        # Construct path to session CSV file
-        session_folder = os.path.join(DEFAULT_CONFIG.calibration_data_folder, session_id)
-        csv_file = os.path.join(session_folder, "calibration_data.csv")
-        
-        if not os.path.exists(csv_file):
+        # If session_id is None, load from root calibration_data folder
+        if session_id is None or session_id == "none":
+            calib_folder = os.path.abspath(DEFAULT_CONFIG.calibration_data_folder)
+            csv_file = os.path.join(calib_folder, "calibration_data.csv")
+            
+            if os.path.exists(csv_file):
+                data = []
+                with open(csv_file, 'r') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        data.append(row)
+                return {
+                    "status": "success",
+                    "data": data
+                }
+            else:
+                return {
+                    "status": "info",
+                    "message": "No calibration data available. Run calibration to generate data."
+                }
+        else:
+            # Construct path to session CSV file
+            session_folder = os.path.join(DEFAULT_CONFIG.calibration_data_folder, session_id)
+            csv_file = os.path.join(session_folder, "calibration_data.csv")
+            
+            if not os.path.exists(csv_file):
+                return {
+                    "status": "error",
+                    "message": f"Calibration data not found for session {session_id}"
+                }
+            
+            # Read CSV data
+            data = []
+            with open(csv_file, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    data.append({
+                        "timestamp": row.get("timestamp", ""),
+                        "fan_speed": int(row.get("fan_speed", 0)),
+                        "sensor_0_avg": float(row.get("sensor_0_avg", 0)) if row.get("sensor_0_avg") else None,
+                        "sensor_1_avg": float(row.get("sensor_1_avg", 0)) if row.get("sensor_1_avg") else None,
+                        "sensor_2_avg": float(row.get("sensor_2_avg", 0)) if row.get("sensor_2_avg") else None,
+                        "sensor_3_avg": float(row.get("sensor_3_avg", 0)) if row.get("sensor_3_avg") else None
+                    })
+            
             return {
-                "status": "error",
-                "message": f"Calibration data not found for session {session_id}"
+                "status": "success",
+                "data": data
             }
-        
-        # Read CSV data
-        data = []
-        with open(csv_file, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                data.append({
-                    "timestamp": row.get("timestamp", ""),
-                    "fan_speed": int(row.get("fan_speed", 0)),
-                    "sensor_0_avg": float(row.get("sensor_0_avg", 0)) if row.get("sensor_0_avg") else None,
-                    "sensor_1_avg": float(row.get("sensor_1_avg", 0)) if row.get("sensor_1_avg") else None,
-                    "sensor_2_avg": float(row.get("sensor_2_avg", 0)) if row.get("sensor_2_avg") else None,
-                    "sensor_3_avg": float(row.get("sensor_3_avg", 0)) if row.get("sensor_3_avg") else None
-                })
-        
-        return {
-            "status": "success",
-            "data": data
-        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1320,23 +950,7 @@ async def toggle_data_capture(request: DataCaptureRequest):
             # Start data capture
             if data_capture_active:
                 return {"status": "error", "message": "Data capture already active"}
-            
-            # Check camera status before starting video streaming
-            camera_status = get_camera_status(camera_images_folder)
-            camera_available = camera_status.get("initialized", False)
-            
-            if camera_available:
-                # Start video streaming worker if not already running
-                if video_streaming_task is None or video_streaming_task.done():
-                    video_streaming_task = asyncio.create_task(video_streaming_worker())
-                    logger.info("Video streaming worker started for data capture")
-                
-                # Start camera video streaming
-                start_camera_video_stream(camera_images_folder)
-                logger.info("Camera video streaming started for data capture")
-            else:
-                logger.warning("Camera not available - starting data capture without video streaming")
-            
+                        
             # Create new capture session
             capture_folder = create_capture_folder()
             current_capture_session = {
@@ -1345,6 +959,13 @@ async def toggle_data_capture(request: DataCaptureRequest):
                 "folder": capture_folder,
                 "data_points": []
             }
+            
+            # Initialize CSV file for data capture
+            csv_filepath = init_csv_file(capture_folder, "hotplate")
+            if csv_filepath:
+                current_capture_session["csv_filepath"] = csv_filepath
+            else:
+                logger.warning("Failed to initialize CSV file, data will only be stored in memory")
             
             data_capture_active = True
             captured_data_points = []
@@ -1367,9 +988,12 @@ async def toggle_data_capture(request: DataCaptureRequest):
             session_info["end_time"] = datetime.now().isoformat()
             session_info["total_data_points"] = len(captured_data_points)
             
+            logger.info(f"Stopping data capture, data points count: {len(captured_data_points)}")
+             
             # Reset capture state
             data_capture_active = False
             current_capture_session = None
+            captured_data_points = []
             
             # Stop camera video streaming
             stop_camera_video_stream(camera_images_folder)
@@ -1410,168 +1034,29 @@ async def get_data_capture_status():
 @app.get("/api/data-capture/download")
 async def download_captured_data():
     """Download captured data as CSV"""
-    global captured_data_points
-    
-    if not captured_data_points:
-        raise HTTPException(status_code=404, detail="No captured data available")
+    global current_capture_session
     
     try:
-        # Create CSV content
-        output = io.StringIO()
-        writer = csv.writer(output)
+        # Try to return the existing CSV file if available
+        if current_capture_session and current_capture_session.get("csv_filepath"):
+            csv_filepath = current_capture_session["csv_filepath"]
+            if os.path.exists(csv_filepath):
+                filename = os.path.basename(csv_filepath)
+                return FileResponse(
+                    csv_filepath,
+                    media_type="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
         
-        # Write header
-        header = [
-            'timestamp', 'session_id',
-            'temp_sensor_1', 'temp_sensor_2', 'temp_sensor_3', 'temp_sensor_4', 'temp_sensor_5','temp_sensor_6', 'temp_sensor_7', 'temp_sensor_8', 'temp_sensor_9', 'temp_sensor_10','temp_sensor_11','temp_sensor_12',
-            'temp_hotplate1', 'temp_hotplate2',
-            'bmpTemperature_internal', 'bmpTemperature_external',
-            'bmpPressure_internal', 'bmpPressure_external',
-            'dhtTemperature_internal', 'dhtTemperature_external',
-            'dhtHumidity_internal', 'dhtHumidity_external',
-            'target_temp_1', 'target_temp_2',
-            'fan_speed_1', 'fan_speed_2', 'fan_speed_3', 'fan_speed_4',
-            'hot_plate_1', 'hot_plate_2',
-            'flow_rate_1', 'flow_rate_2', 'flow_rate_3', 'flow_rate_4',
-            'cn2_row1_500', 'cn2_row1_300', 'cn2_row2_500', 'cn2_row2_300',
-            'cn2_optical',
-            'image_filename'
-        ]
-        writer.writerow(header)
+        # Fallback: no CSV file available
+        logger.warning("No CSV file available for download")
+        raise HTTPException(status_code=404, detail="No captured data file available")
         
-        # Write data points
-        for point in captured_data_points:
-            temperatures = point.get('temperatures', [])
-            row = [
-                point['timestamp'],
-                point.get('session_id', ''),
-                # Temperature sensors (1-12)
-                temperatures[0] if len(temperatures) > 0 else '',
-                temperatures[1] if len(temperatures) > 1 else '',
-                temperatures[2] if len(temperatures) > 2 else '',
-                temperatures[3] if len(temperatures) > 3 else '',
-                temperatures[4] if len(temperatures) > 4 else '',
-                temperatures[5] if len(temperatures) > 5 else '',
-                temperatures[6] if len(temperatures) > 6 else '',
-                temperatures[7] if len(temperatures) > 7 else '',
-                temperatures[8] if len(temperatures) > 8 else '',
-                temperatures[9] if len(temperatures) > 9 else '',
-                temperatures[10] if len(temperatures) > 10 else '',
-                temperatures[11] if len(temperatures) > 11 else '',
-                # Hotplate temperatures
-                point.get('temp_hotplate1', ''),
-                point.get('temp_hotplate2', ''),
-                # BME280 temperatures
-                point.get('bmpTemperature_internal', ''),
-                point.get('bmpTemperature_external', ''),
-                # BME280 pressures
-                point.get('bmpPressure_internal', ''),
-                point.get('bmpPressure_external', ''),
-                # DHT temperatures
-                point.get('dhtTemperature_internal', ''),
-                point.get('dhtTemperature_external', ''),
-                # DHT humidities
-                point.get('dhtHumidity_internal', ''),
-                point.get('dhtHumidity_external', ''),
-                # Target temperatures
-                *(point.get('target_temperatures', [])),
-                # Fan speeds
-                *(point.get('fan_speeds', [])),
-                # Hot plate states
-                *(point.get('hot_plate_states', [])),
-                # Flow rates
-                *(point.get('flow_rates', [])),
-                # CN2 values - split into 4 columns
-                *(point.get('cn2', [])[:4] if isinstance(point.get('cn2', []), list) else ['', '', '', '']),
-                point.get('cn2_optical', ''),
-                point.get('image_filename', '')
-            ]
-            writer.writerow(row)
-        
-        # Create response
-        csv_content = output.getvalue()
-        output.close()
-        
-        filename = f"turbulence_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        
-        return StreamingResponse(
-            io.StringIO(csv_content),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error creating CSV download: {e}")
+        logger.error(f"Error downloading captured data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/camera/test-image")
-async def get_test_image():
-    """Get a test image for video display debugging"""
-    try:
-        # Create a simple test image using PIL
-        import numpy as np
-        from io import BytesIO
-        import base64
-        
-        # Create a colorful test pattern
-        width, height = 640, 480
-        image = np.zeros((height, width, 3), dtype=np.uint8)
-        
-        # Create a test pattern
-        for y in range(height):
-            for x in range(width):
-                # Create a gradient pattern
-                image[y, x, 0] = int((x / width) * 255)  # Red gradient
-                image[y, x, 1] = int((y / height) * 255)  # Green gradient
-                image[y, x, 2] = int(((x + y) / (width + height)) * 255)  # Blue gradient
-        
-        # Add some text or pattern
-        center_x, center_y = width // 2, height // 2
-        cv2.circle(image, (center_x, center_y), 100, (255, 255, 255), 2)
-        cv2.putText(image, "TEST IMAGE", (center_x - 80, center_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        
-        # Convert to JPEG and base64
-        pil_image = Image.fromarray(image)
-        buffer = BytesIO()
-        pil_image.save(buffer, format='JPEG', quality=90)
-        img_str = base64.b64encode(buffer.getvalue()).decode()
-        
-        return {
-            "status": "success",
-            "image_data": img_str,
-            "timestamp": datetime.now().isoformat(),
-            "message": "Test image generated successfully"
-        }
-        
-    except Exception as e:
-        # If OpenCV is not available, create a simple pattern with PIL
-        try:
-            from PIL import Image, ImageDraw
-            import base64
-            from io import BytesIO
-            
-            # Create a simple test image
-            image = Image.new('RGB', (640, 480), color='black')
-            draw = ImageDraw.Draw(image)
-            
-            # Draw some test patterns
-            draw.rectangle([50, 50, 590, 430], outline='white', width=2)
-            draw.ellipse([270, 190, 370, 290], fill='red', outline='white')
-            draw.text([250, 240], "TEST", fill='white')
-            
-            # Convert to JPEG and base64
-            buffer = BytesIO()
-            image.save(buffer, format='JPEG', quality=90)
-            img_str = base64.b64encode(buffer.getvalue()).decode()
-            
-            return {
-                "status": "success",
-                "image_data": img_str,
-                "timestamp": datetime.now().isoformat(),
-                "message": "Test image generated successfully (PIL only)"
-            }
-        except Exception as e2:
-            raise HTTPException(status_code=500, detail=f"Failed to generate test image: {str(e)}")
 
 @app.post("/api/polling_interval")
 async def set_polling_interval(interval: float):
@@ -1651,182 +1136,6 @@ async def force_reconnect_arduino():
             "status": "error",
             "message": f"Force reconnect failed: {str(e)}"
         }
-
-def generate_csv(data: list, filename_prefix: str = "arduino_status"):
-    """Generate CSV content from status data"""
-    output = io.StringIO()
-    
-    if not data:
-        # Create empty CSV with headers
-        writer = csv.writer(output)
-        writer.writerow([
-            "timestamp", "device_status", "arduino_port", "system_ready",
-            "temp_sensor_1", "temp_sensor_2", "temp_sensor_3", "temp_sensor_4", "temp_sensor_5",
-            "temp_sensor_6", "temp_sensor_7", "temp_sensor_8", "temp_sensor_9", "temp_sensor_10",
-            "temp_sensor_11", "temp_sensor_12",
-            "temp_hotplate1", "temp_hotplate2",
-            "bmpTemperature_internal", "bmpTemperature_external",
-            "bmpPressure_internal", "bmpPressure_external",
-            "dhtTemperature_internal", "dhtTemperature_external",
-            "dhtHumidity_internal", "dhtHumidity_external",
-            "target_temp_1", "target_temp_2",
-            "fan_speed_1", "fan_speed_2", "fan_speed_3", "fan_speed_4",
-            "hot_plate_1", "hot_plate_2",
-            "cn2_thermal", "cn2_optical", "error"
-        ])
-        return output.getvalue(), filename_prefix
-    
-    writer = csv.writer(output)
-    
-    # Write header
-    writer.writerow([
-        "timestamp", "device_status", "arduino_port", "system_ready",
-        "temp_sensor_1", "temp_sensor_2", "temp_sensor_3", "temp_sensor_4", "temp_sensor_5",
-        "temp_sensor_6", "temp_sensor_7", "temp_sensor_8", "temp_sensor_9", "temp_sensor_10",
-        "temp_sensor_11", "temp_sensor_12",
-        "temp_hotplate1", "temp_hotplate2",
-        "bmpTemperature_internal", "bmpTemperature_external",
-        "bmpPressure_internal", "bmpPressure_external",
-        "dhtTemperature_internal", "dhtTemperature_external",
-        "dhtHumidity_internal", "dhtHumidity_external",
-        "target_temp_1", "target_temp_2",
-        "fan_speed_1", "fan_speed_2", "fan_speed_3", "fan_speed_4",
-        "hot_plate_1", "hot_plate_2",
-        "flow_rate_1", "flow_rate_2", "flow_rate_3", "flow_rate_4",
-        "cn2_thermal", "cn2_optical", "error"
-    ])
-    
-    # Write data rows
-    for record in data:
-        row = [
-            record.get("timestamp", ""),
-            record.get("device_status", ""),
-            record.get("arduino_port", ""),
-            record.get("system_ready", ""),
-        ]
-        
-        # Temperature sensors (1-12)
-        temps = record.get("temperatures", [])
-        for i in range(12):
-            row.append(temps[i] if i < len(temps) else "")
-        
-        # Hotplate temperatures
-        row.append(record.get("temp_hotplate1", ""))
-        row.append(record.get("temp_hotplate2", ""))
-        
-        # BME280 temperatures
-        row.append(record.get("bmpTemperature_internal", ""))
-        row.append(record.get("bmpTemperature_external", ""))
-        
-        # BME280 pressures
-        row.append(record.get("bmpPressure_internal", ""))
-        row.append(record.get("bmpPressure_external", ""))
-        
-        # DHT temperatures
-        row.append(record.get("dhtTemperature_internal", ""))
-        row.append(record.get("dhtTemperature_external", ""))
-        
-        # DHT humidities
-        row.append(record.get("dhtHumidity_internal", ""))
-        row.append(record.get("dhtHumidity_external", ""))
-        
-        # Target temperatures
-        target_temps = record.get("target_temperatures", [])
-        for i in range(2):
-            row.append(target_temps[i] if i < len(target_temps) else "")
-        
-        # Fan speeds
-        fan_speeds = record.get("fan_speeds", [])
-        for i in range(4):
-            row.append(fan_speeds[i] if i < len(fan_speeds) else "")
-        
-        # Hot plate states
-        hot_plates = record.get("hot_plate_states", [])
-        for i in range(2):
-            row.append(hot_plates[i] if i < len(hot_plates) else "")
-        
-        # Flow rates
-        flow_rates = record.get("flow_rates", [])
-        for i in range(4):
-            row.append(flow_rates[i] if i < len(flow_rates) else "")
-        
-        # CN2 values
-        bme_temps = record.get("temperature_bmp", [])
-        for i in range(4):
-            row.append(bme_temps[i] if i < len(bme_temps) else "")
-        
-        # BME280 pressure
-        bme_pressure = record.get("pressure", [])
-        for i in range(4):
-            row.append(bme_pressure[i] if i < len(bme_pressure) else "")
-        
-        # CN² thermal (semicolon-separated values)
-        cn2_thermal = record.get("cn2", [])
-        if cn2_thermal and isinstance(cn2_thermal, list):
-            # Convert array to semicolon-separated string
-            cn2_thermal_str = ";".join(str(val) for val in cn2_thermal)
-        else:
-            cn2_thermal_str = str(cn2_thermal) if cn2_thermal else ""
-        row.append(cn2_thermal_str)
-        
-        # CN² optical
-        cn2_optical = record.get("cn2_optical")
-        row.append(str(cn2_optical) if cn2_optical is not None else "")
-        
-        # Error message
-        row.append(record.get("error", ""))
-        
-        writer.writerow(row)
-    
-    return output.getvalue(), filename_prefix
-
-@app.get("/api/download/csv")
-async def download_csv():
-    """Download all available historical data as CSV"""
-    try:
-        csv_content, filename = generate_csv(list(status_history))
-        
-        # Generate filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"arduino_status_{timestamp}.csv"
-        
-        # Create streaming response
-        return StreamingResponse(
-            io.StringIO(csv_content),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-    except Exception as e:
-        logger.error(f"Error generating CSV: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate CSV: {str(e)}")
-
-@app.get("/api/download/csv/{limit:int}")
-async def download_csv_limit(limit: int):
-    """Download limited number of recent records as CSV"""
-    try:
-        if limit <= 0:
-            raise HTTPException(status_code=400, detail="Limit must be greater than 0")
-        
-        # Get the most recent records
-        recent_data = list(status_history)[-limit:] if limit < len(status_history) else list(status_history)
-        
-        csv_content, filename = generate_csv(recent_data, f"arduino_status_recent_{limit}")
-        
-        # Generate filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"arduino_status_recent_{limit}_{timestamp}.csv"
-        
-        # Create streaming response
-        return StreamingResponse(
-            io.StringIO(csv_content),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error generating limited CSV: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate CSV: {str(e)}")
 
 @app.post("/api/history_size")
 async def set_history_size(request: dict = Body(...)):
@@ -1920,12 +1229,11 @@ async def websocket_endpoint(websocket: WebSocket):
     while True:
         try:
             message = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
-            
             # Parse incoming message
             try:
                 data = json.loads(message)
                 if data.get("type") == "ping":
-                    await websocket.send_text('{"type":"pong"}')
+                    await websocket.send_text(json.dumps(current_status))
                 elif data.get("type") == "get_status":
                     # Send current status
                     await websocket.send_text(json.dumps(current_status))
@@ -1967,7 +1275,7 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
         await websocket.close()
         return
     
-    await video_manager.connect(websocket, client_id)
+    await video_manager.connect(websocket, client_id, camera_images_folder)
     
     # Start video streaming worker if not already running
     if video_streaming_task is None or video_streaming_task.done():
@@ -2054,7 +1362,7 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
             logger.error(f"Error handling video WebSocket message from {client_id}: {e}")
             break
     
-    video_manager.disconnect(client_id)
+    video_manager.disconnect(client_id, camera_images_folder)
     
     # Stop video streaming worker if no active connections and not in data capture
     if len(video_manager.active_connections) == 0 and not data_capture_active:
@@ -2066,30 +1374,6 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
             except asyncio.CancelledError:
                 pass
         video_streaming_task = None
-
-# Calibration WebSocket connection manager
-class CalibrationConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-    
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"Calibration WebSocket client connected. Total: {len(self.active_connections)}")
-    
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-            logger.info(f"Calibration WebSocket client disconnected. Total: {len(self.active_connections)}")
-    
-    async def broadcast(self, message: dict):
-        """Broadcast calibration status to all connected clients"""
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(json.dumps(message))
-            except Exception as e:
-                logger.error(f"Error sending calibration status to client: {e}")
-                self.disconnect(connection)
 
 calibration_ws_manager = CalibrationConnectionManager()
 

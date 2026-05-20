@@ -23,6 +23,8 @@ from .models import (
 from .windflow_calibration import WindflowCalibrator
 from .hotplate_calibration import HotplateCalibrator, HotplateCalibrationConfig
 from .combined_calibration import CombinedCalibrator, CombinedCalibrationConfig, CombinedDataPoint
+from csv_utils import init_csv_file, append_to_csv, get_csv_keys
+from utils import get_calibration_data_folder
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +60,7 @@ class CalibrationAgent:
         self.hotplate_calibrator = HotplateCalibrator()
         
         # Session persistence
-        calibration_data_folder = self.config.get_calibration_data_folder()
+        calibration_data_folder = get_calibration_data_folder()
         self.session_file = os.path.join(calibration_data_folder, "current_session.json")
         
         # Try to recover existing session on startup
@@ -181,99 +183,6 @@ class CalibrationAgent:
                 logger.info("Session file removed")
         except Exception as e:
             logger.error(f"Failed to remove session file: {e}")
-    
-    def _init_csv_file(self, session_folder: str, calibration_type: str) -> str:
-        """Initialize CSV file for data capture"""
-        csv_filename = f"{calibration_type}_data.csv"
-        csv_filepath = os.path.join(session_folder, csv_filename)
-        
-        try:
-            # Create CSV file with headers based on calibration type
-            if calibration_type == "hotplate":
-                headers = [
-                    'timestamp', 'step', 'fan_speed', 'target_temperature',
-                    'sensor_temp_0', 'sensor_temp_1', 'sensor_temp_2', 'sensor_temp_3',
-                    'sensor_temp_4', 'sensor_temp_5', 'sensor_temp_6', 'sensor_temp_7',
-                    'sensor_temp_8', 'sensor_temp_9', 'sensor_temp_10', 'sensor_temp_11',
-                    'temp_hotplate1', 'temp_hotplate2',
-                    'bmpTemperature_internal', 'bmpTemperature_external',
-                    'bmpPressure_internal', 'bmpPressure_external',
-                    'dhtTemperature_internal', 'dhtTemperature_external',
-                    'dhtHumidity_internal', 'dhtHumidity_external',
-                    'air_flow_0', 'air_flow_1', 'air_flow_2', 'air_flow_3',
-                    'cn2_thermal', 'chamber_temp_avg', 'phase', 'phase_details'
-                ]
-            elif calibration_type == "windflow":
-                headers = [
-                    'timestamp', 'step', 'fan_id', 'fan_speed',
-                    'flow_rate_sensor_0', 'flow_rate_sensor_1', 'flow_rate_sensor_2', 'flow_rate_sensor_3',
-                    'sensor_temp_0', 'sensor_temp_1', 'sensor_temp_2', 'sensor_temp_3',
-                    'sensor_temp_4', 'sensor_temp_5', 'sensor_temp_6', 'sensor_temp_7',
-                    'sensor_temp_8', 'sensor_temp_9', 'sensor_temp_10', 'sensor_temp_11',
-                    'temp_hotplate1', 'temp_hotplate2',
-                    'bmpTemperature_internal', 'bmpTemperature_external',
-                    'bmpPressure_internal', 'bmpPressure_external',
-                    'dhtTemperature_internal', 'dhtTemperature_external',
-                    'dhtHumidity_internal', 'dhtHumidity_external',
-                    'air_flow_0', 'air_flow_1', 'air_flow_2', 'air_flow_3'
-                ]
-            else:
-                # Default headers for combined calibration
-                headers = [
-                    'timestamp', 'step', 'fan_speed', 'target_temperature',
-                    'sensor_temp_0', 'sensor_temp_1', 'sensor_temp_2', 'sensor_temp_3',
-                    'sensor_temp_4', 'sensor_temp_5', 'sensor_temp_6', 'sensor_temp_7',
-                    'sensor_temp_8', 'sensor_temp_9', 'sensor_temp_10', 'sensor_temp_11',
-                    'temp_hotplate1', 'temp_hotplate2',
-                    'bmpTemperature_internal', 'bmpTemperature_external',
-                    'bmpPressure_internal', 'bmpPressure_external',
-                    'dhtTemperature_internal', 'dhtTemperature_external',
-                    'dhtHumidity_internal', 'dhtHumidity_external',
-                    'air_flow_0', 'air_flow_1', 'air_flow_2', 'air_flow_3',
-                    'cn2_thermal', 'chamber_temp_avg', 'phase', 'phase_details'
-                ]
-            
-            with open(csv_filepath, 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(headers)
-            
-            logger.info(f"CSV file initialized: {csv_filepath}")
-            return csv_filepath
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize CSV file: {e}")
-            return None
-    
-    def _append_to_csv(self, csv_filepath: str, data: Dict):
-        """Append data row to CSV file"""
-        try:
-            with open(csv_filepath, 'a', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                
-                # Prepare row data based on available keys
-                row = []
-                for key in self._get_csv_keys(csv_filepath):
-                    value = data.get(key, '')
-                    # Convert numpy types to Python native types
-                    if hasattr(value, 'item'):
-                        value = value.item()
-                    row.append(value)
-                
-                writer.writerow(row)
-                
-        except Exception as e:
-            logger.error(f"Failed to append to CSV file: {e}")
-    
-    def _get_csv_keys(self, csv_filepath: str) -> List[str]:
-        """Get CSV column keys from file header"""
-        try:
-            with open(csv_filepath, 'r') as csvfile:
-                reader = csv.reader(csvfile)
-                headers = next(reader)
-                return headers
-        except Exception as e:
-            logger.error(f"Failed to read CSV headers: {e}")
-            return []
     
     async def _capture_sensor_data(self) -> Optional[Dict]:
         """Unified method to capture sensor data from Arduino"""
@@ -525,7 +434,7 @@ class CalibrationAgent:
             # Convert settling time to seconds
             settling_time_sec = settling_time_ms / 1000.0
             
-            # Create session folder for incremental saving
+            # Create session folder for metadata
             session_folder = os.path.join(
                 self.calibration_data_folder,
                 self.current_session.session_id
@@ -534,11 +443,6 @@ class CalibrationAgent:
             
             # Save session metadata
             self._save_session_metadata(session_folder)
-            
-            # Initialize CSV file for data capture
-            csv_filepath = self._init_csv_file(session_folder, "windflow")
-            if not csv_filepath:
-                logger.error("Failed to initialize CSV file, calibration will continue without data logging")
             
             for idx, fan_speed in enumerate(fan_speeds):
                 if self.stop_requested:
@@ -558,8 +462,6 @@ class CalibrationAgent:
                 
                 # Record multiple readings for all sensors
                 all_flow_readings = [[] for _ in range(4)]  # Store readings for each sensor
-                sensor_temps_data = []  # Store sensor temperature data for CSV
-                response_data = None  # Store response data for CSV
                 
                 for sample_idx in range(num_samples):
                     sensor_data = await self._capture_sensor_data()
@@ -567,11 +469,6 @@ class CalibrationAgent:
                         flow_rates = sensor_data['flow_rates']
                         for sensor_id in range(min(4, len(flow_rates))):
                             all_flow_readings[sensor_id].append(flow_rates[sensor_id])
-                        
-                        # Store sensor temperatures for CSV (only once per fan speed)
-                        if sample_idx == 0:
-                            sensor_temps_data = sensor_data['temperatures']
-                            response_data = sensor_data
                 
                 # Calculate averages for each sensor
                 avg_flows = []
@@ -581,49 +478,10 @@ class CalibrationAgent:
                     fan_data[sensor_id].append((fan_speed, avg_flow))
                     logger.debug(f"Sensor {sensor_id} @ {fan_speed} PWM → Flow: {avg_flow:.3f}")
                 
-                # Save data to CSV
-                if csv_filepath and sensor_temps_data and response_data:
-                    csv_data = {
-                        'timestamp': response_data['timestamp'],
-                        'step': idx + 1,
-                        'fan_id': 'all',  # All fans set to same speed
-                        'fan_speed': fan_speed,
-                        'flow_rate_sensor_0': avg_flows[0] if len(avg_flows) > 0 else '',
-                        'flow_rate_sensor_1': avg_flows[1] if len(avg_flows) > 1 else '',
-                        'flow_rate_sensor_2': avg_flows[2] if len(avg_flows) > 2 else '',
-                        'flow_rate_sensor_3': avg_flows[3] if len(avg_flows) > 3 else '',
-                        'sensor_temp_0': sensor_temps_data[0] if len(sensor_temps_data) > 0 else '',
-                        'sensor_temp_1': sensor_temps_data[1] if len(sensor_temps_data) > 1 else '',
-                        'sensor_temp_2': sensor_temps_data[2] if len(sensor_temps_data) > 2 else '',
-                        'sensor_temp_3': sensor_temps_data[3] if len(sensor_temps_data) > 3 else '',
-                        'sensor_temp_4': sensor_temps_data[4] if len(sensor_temps_data) > 4 else '',
-                        'sensor_temp_5': sensor_temps_data[5] if len(sensor_temps_data) > 5 else '',
-                        'sensor_temp_6': sensor_temps_data[6] if len(sensor_temps_data) > 6 else '',
-                        'sensor_temp_7': sensor_temps_data[7] if len(sensor_temps_data) > 7 else '',
-                        'sensor_temp_8': sensor_temps_data[8] if len(sensor_temps_data) > 8 else '',
-                        'sensor_temp_9': sensor_temps_data[9] if len(sensor_temps_data) > 9 else '',
-                        'sensor_temp_10': sensor_temps_data[10] if len(sensor_temps_data) > 10 else '',
-                        'sensor_temp_11': sensor_temps_data[11] if len(sensor_temps_data) > 11 else '',
-                        'temp_hotplate1': response_data.get('temp_hotplate1', ''),
-                        'temp_hotplate2': response_data.get('temp_hotplate2', ''),
-                        'bmpTemperature_internal': response_data.get('bmpTemperature_internal', ''),
-                        'bmpTemperature_external': response_data.get('bmpTemperature_external', ''),
-                        'bmpPressure_internal': response_data.get('bmpPressure_internal', ''),
-                        'bmpPressure_external': response_data.get('bmpPressure_external', ''),
-                        'dhtTemperature_internal': response_data.get('dhtTemperature_internal', ''),
-                        'dhtTemperature_external': response_data.get('dhtTemperature_external', ''),
-                        'dhtHumidity_internal': response_data.get('dhtHumidity_internal', ''),
-                        'dhtHumidity_external': response_data.get('dhtHumidity_external', '')
-                    }
-                    self._append_to_csv(csv_filepath, csv_data)
-                
                 # Update session with all flow rates
                 self.current_session = self.current_session.model_copy(update={
                     "current_flow_rates": avg_flows
                 })
-                
-                # Save incremental data after each step
-                self._save_incremental_data(session_folder, fan_speed, avg_flows, all_flow_readings)
                 
                 # Call status callback
                 if self.status_callback:
@@ -718,7 +576,7 @@ class CalibrationAgent:
             self._save_session_metadata(session_folder)
 
             # Initialize CSV file for data capture
-            csv_filepath = self._init_csv_file(session_folder, "hotplate")
+            csv_filepath = init_csv_file(session_folder, "hotplate")
             if not csv_filepath:
                 logger.error("Failed to initialize CSV file, calibration will continue without data logging")
 
@@ -890,7 +748,7 @@ class CalibrationAgent:
                                     'phase': self.current_session.phase,
                                     'phase_details': self.current_session.phase_details
                                 }
-                                self._append_to_csv(csv_filepath, csv_data)
+                                append_to_csv(csv_filepath, csv_data)
                                 
                                 # Update captured data points counter
                                 self.current_session.captured_data_points += 1

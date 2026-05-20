@@ -100,18 +100,18 @@
         <!-- Calibration Type Tabs -->
         <ul class="nav nav-tabs mb-4" id="calibrationTabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="windflow-tab" data-bs-toggle="tab" data-bs-target="#windflow" type="button" role="tab">
+                <button class="nav-link active" id="pid-tab" data-bs-toggle="tab" data-bs-target="#pid" type="button" role="tab">
+                    <i class="fas fa-cogs me-2"></i>PID Tuning
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="windflow-tab" data-bs-toggle="tab" data-bs-target="#windflow" type="button" role="tab">
                     <i class="fas fa-wind me-2"></i>Fan-to-Windflow
                 </button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="hotplate-tab" data-bs-toggle="tab" data-bs-target="#hotplate" type="button" role="tab">
-                    <i class="fas fa-fire me-2"></i>Hot Plate (4D Calibration)
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="pid-tab" data-bs-toggle="tab" data-bs-target="#pid" type="button" role="tab">
-                    <i class="fas fa-cogs me-2"></i>PID Calibration
+                    <i class="fas fa-fire me-2"></i>Lookup Table (4D Calibration)
                 </button>
             </li>
         </ul>
@@ -119,13 +119,219 @@
         <!-- Tab Content -->
         <div class="tab-content" id="calibrationTabContent">
 
+        <!-- PID Calibration Tab -->
+        <div class="tab-pane fade show active" id="pid" role="tabpanel">
+            <h5 class="mb-3">PID Parameter Calibration</h5>
+            <p class="text-muted mb-4">
+                Tune PID parameters for hotplate temperature control. Record temperature response curves and adjust parameters for optimal performance.
+            </p>
+
+        <!-- Calibration Control Section -->
+        <div class="control-section mt-4 mb-4">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#pidCalibrationControl">
+                    <i class="fas fa-play-circle me-2"></i>Calibration Control
+                </button>
+            </h5>
+            <div class="collapse show" id="pidCalibrationControl">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Click <strong>Start Calibration</strong> to begin recording temperature data with current PID parameters.
+                    The system will record hotplate surface temperatures over time for analysis.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-success btn-lg" id="startPidCalibration">
+                        <i class="fas fa-play me-2"></i>Start Calibration
+                    </button>
+                    <button type="button" class="btn btn-danger btn-lg" id="stopPidCalibration" disabled>
+                        <i class="fas fa-stop me-2"></i>Stop
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-lg" id="downloadPidCalibration" onclick="downloadPidCalibrationData()" style="display: none;">
+                        <i class="fas fa-download me-2"></i>Download Data
+                    </button>
+                </div>
+
+                <!-- Calibration Status -->
+                <div class="progress-section mt-4" id="pidStatusSection" style="display: none;">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <span id="pidCalibrationStatus" class="badge bg-secondary status-badge">Idle</span>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="text-end">
+                                <span id="pidDataPoints" class="text-muted">Data Points: 0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Section -->
+        <div class="control-section">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#pidControlSection">
+                    <i class="fas fa-chevron-down me-2"></i>PID Parameters
+                </button>
+            </h5>
+            <div class="collapse show" id="pidControlSection">
+                <div class="row">
+                    <!-- Hot Plate 1 PID Parameters -->
+                    <div class="col-md-6">
+                        <h6 class="mb-3">Hot Plate 1 PID Parameters</h6>
+                        <div class="mb-3">
+                            <label for="pid-kp-0" class="form-label">Kp (Proportional)</label>
+                            <input type="number" class="form-control" id="pid-kp-0" value="35" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="pid-ki-0" class="form-label">Ki (Integral)</label>
+                            <input type="number" class="form-control" id="pid-ki-0" value="0.5" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="pid-kd-0" class="form-label">Kd (Derivative)</label>
+                            <input type="number" class="form-control" id="pid-kd-0" value="0" step="0.1">
+                        </div>
+                    </div>
+
+                    <!-- Hot Plate 2 PID Parameters -->
+                    <div class="col-md-6">
+                        <h6 class="mb-3">Hot Plate 2 PID Parameters</h6>
+                        <div class="mb-3">
+                            <label for="pid-kp-1" class="form-label">Kp (Proportional)</label>
+                            <input type="number" class="form-control" id="pid-kp-1" value="80" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="pid-ki-1" class="form-label">Ki (Integral)</label>
+                            <input type="number" class="form-control" id="pid-ki-1" value="0.5" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="pid-kd-1" class="form-label">Kd (Derivative)</label>
+                            <input type="number" class="form-control" id="pid-kd-1" value="1" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary" onclick="savePidSettings()">
+                        <i class="fas fa-save me-2"></i>Save PID Settings
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="loadPidSettings()">
+                        <i class="fas fa-sync me-2"></i>Reload from Settings
+                    </button>
+                </div>
+
+                <div id="pid-settings-message" class="alert alert-sm mt-3 d-none"></div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="control-section mt-4">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#pidChartsSection">
+                    <i class="fas fa-chart-line me-2"></i>Temperature Response Charts
+                </button>
+            </h5>
+            <div class="collapse show" id="pidChartsSection">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-center mb-3">Hot Plate 1 Temperature Response</h6>
+                        <canvas id="pidChart0"></canvas>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-center mb-3">Hot Plate 2 Temperature Response</h6>
+                        <canvas id="pidChart1"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div> <!-- End PID Calibration Tab -->
+
         <!-- Fan-to-Windflow Calibration Tab -->
-        <div class="tab-pane fade show active" id="windflow" role="tabpanel">
+        <div class="tab-pane fade" id="windflow" role="tabpanel">
             <h5 class="mb-3">Fan-to-Windflow Sensor Calibration</h5>
             <p class="text-muted mb-4">
                 Establishes linear relationship between fan PWM and windflow sensor readings.
                 Each windflow sensor is placed 40cm directly in front of its corresponding fan.
             </p>
+
+        <!-- Calibration Controls Section -->
+        <div class="control-section mb-4">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#calibrationControlsSection">
+                    <i class="fas fa-chevron-down me-2"></i>Calibration Controls
+                </button>
+            </h5>
+            <div class="collapse show" id="calibrationControlsSection">
+                <div class="alert alert-info" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Calibration Process:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Each fan will be tested at multiple speed levels</li>
+                        <li>Windflow sensor readings will be recorded at each level</li>
+                        <li>A polynomial curve will be fitted for each fan-sensor pair</li>
+                        <li>Estimated duration: ~5-10 minutes for all 4 fans</li>
+                    </ul>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-success btn-lg" id="startCalibration">
+                        <i class="fas fa-play me-2"></i>Start Calibration
+                    </button>
+                    <button type="button" class="btn btn-danger btn-lg" id="stopCalibration" disabled>
+                        <i class="fas fa-stop me-2"></i>Stop
+                    </button>
+                    <button type="button" class="btn btn-primary btn-lg" id="downloadCalibrationData">
+                        <i class="fas fa-download me-2"></i>Download Data
+                    </button>
+                </div>
+
+                <!-- Calibration Status Section (hidden by default) -->
+                <div class="progress-section mt-4" id="statusSection" style="display: none;">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <span id="calibrationStatus" class="badge bg-secondary status-badge">Idle</span>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Progress</span>
+                                <span id="progressPercent">0%</span>
+                            </div>
+                            <div class="progress" style="height: 25px;">
+                                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="mt-2 text-muted">
+                                <small>Step <span id="currentStep">0</span> of <span id="totalSteps">0</span></small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h6>Estimated Remaining Time</h6>
+                                <h4 id="estimatedTime">--:--:--</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h6>Session ID</h6>
+                                <h4 id="sessionId">--</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h6>Current Step Type</h6>
+                                <h4 id="stepType">--</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Control Section -->
         <div class="control-section">
@@ -176,78 +382,6 @@
                     </div>
                 </div>
 
-                <div class="alert alert-info" role="alert">
-                    <button type="button" class="btn btn-link text-decoration-none p-0 ms-auto float-end" data-bs-toggle="collapse" data-bs-target="#calibrationProcessInfo">
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
-                    <i class="fas fa-info-circle me-2"></i>
-                    <strong>Calibration Process:</strong>
-                    <div class="collapse mt-2" id="calibrationProcessInfo">
-                        <ul class="mb-0">
-                            <li>Each fan will be tested at multiple speed levels</li>
-                            <li>Windflow sensor readings will be recorded at each level</li>
-                            <li>A polynomial curve will be fitted for each fan-sensor pair</li>
-                            <li>Estimated duration: ~5-10 minutes for all 4 fans</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <hr>
-                
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-lg" id="startCalibration">
-                        <i class="fas fa-play me-2"></i>Start Calibration
-                    </button>
-                    <button type="button" class="btn btn-danger btn-lg" id="stopCalibration" disabled>
-                        <i class="fas fa-stop me-2"></i>Stop
-                    </button>
-                    <button type="button" class="btn btn-outline-warning btn-lg" id="clearSessionBtn" onclick="clearCurrentSession()">
-                        <i class="fas fa-trash me-2"></i>Clear Session
-                    </button>
-                </div>
-
-                <!-- Calibration Status Section (hidden by default) -->
-                <div class="progress-section mt-4" id="statusSection" style="display: none;">
-                    <div class="row align-items-center">
-                        <div class="col-md-6">
-                            <span id="calibrationStatus" class="badge bg-secondary status-badge">Idle</span>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Progress</span>
-                                <span id="progressPercent">0%</span>
-                            </div>
-                            <div class="progress" style="height: 25px;">
-                                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"
-                                     role="progressbar" style="width: 0%"></div>
-                            </div>
-                            <div class="mt-2 text-muted">
-                                <small>Step <span id="currentStep">0</span> of <span id="totalSteps">0</span></small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row mt-3">
-                        <div class="col-md-4">
-                            <div class="text-center">
-                                <h6>Estimated Remaining Time</h6>
-                                <h4 id="estimatedTime">--:--:--</h4>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="text-center">
-                                <h6>Session ID</h6>
-                                <h4 id="sessionId">--</h4>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="text-center">
-                                <h6>Current Step Type</h6>
-                                <h4 id="stepType">--</h4>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </form>
             </div>
         </div>
@@ -385,11 +519,98 @@
 
         <!-- Hot Plate Calibration Tab -->
         <div class="tab-pane fade" id="hotplate" role="tabpanel">
-            <h5 class="mb-3">Hot Plate 4D Calibration</h5>
+            <h5 class="mb-3">Lookup Table 4D Calibration</h5>
             <p class="text-muted mb-4">
                 Establishes 4D lookup table mapping hot plate temperature × fan speed → chamber temperature/Cn².
                 Varies both hot plate temperature and fan speed in nested loops to generate comprehensive calibration data.
             </p>
+
+        <!-- Hot Plate Calibration Controls Section -->
+        <div class="control-section mb-4">
+            <h5 class="mb-3">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#hotplateCalibrationControlsSection">
+                    <i class="fas fa-chevron-down me-2"></i>Calibration Controls
+                </button>
+            </h5>
+            <div class="collapse show" id="hotplateCalibrationControlsSection">
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> This is a long-running calibration. For 1 fan speed and 9 temperature steps (80-120°C), this could take ~2.4 hours. Additional fan speeds will multiply this duration.
+                </div>
+
+                <div class="alert alert-info" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Calibration Process:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Nested loops: fan speeds × hot plate temperatures</li>
+                        <li>4D lookup table will be generated (temperature × fan speed → chamber temp, Cn²)</li>
+                        <li>Enables interpolation for any temperature/fan speed combination</li>
+                        <li>Supports Cn² control system lookup</li>
+                    </ul>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-success btn-lg" id="startHotplateCalibration">
+                        <i class="fas fa-play me-2"></i>Start 4D Calibration
+                    </button>
+                    <button type="button" class="btn btn-danger btn-lg" id="stopHotplateCalibration" disabled>
+                        <i class="fas fa-stop me-2"></i>Stop
+                    </button>
+                    <button type="button" class="btn btn-primary btn-lg" id="downloadHotplateData">
+                        <i class="fas fa-download me-2"></i>Download Data
+                    </button>
+                </div>
+
+                <!-- Hot Plate Calibration Progress Section (hidden by default) -->
+                <div class="progress-section mt-4" id="hotplateStatusSection" style="display: none;">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <span id="hotplateCalibrationStatus" class="badge bg-secondary status-badge">Idle</span>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Progress</span>
+                                <span id="hotplateProgressPercent">0%</span>
+                            </div>
+                            <div class="progress" style="height: 25px;">
+                                <div id="hotplateProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="mt-2 text-muted">
+                                <small>Step <span id="hotplateCurrentStep">0</span> of <span id="hotplateTotalSteps">0</span></small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Current Temperature</h6>
+                                <h4 id="hotplateCurrentTemp">--°C</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Current Fan Speed</h6>
+                                <h4 id="hotplateCurrentFan">-- PWM</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Time Remaining</h6>
+                                <h4 id="hotplateEstimatedTime">--:--:--</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Session ID</h6>
+                                <h4 id="hotplateSessionId">--</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="control-section">
             <h5 class="mb-3">
@@ -453,238 +674,15 @@
                     </div>
                 </div>
 
-                <div class="alert alert-warning" role="alert">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>Warning:</strong> This is a long-running calibration. For 1 fan speed and 9 temperature steps (80-120°C), this could take ~2.4 hours. Additional fan speeds will multiply this duration.
-                </div>
-
-                <div class="alert alert-info" role="alert">
-                    <i class="fas fa-info-circle me-2"></i>
-                    <strong>Calibration Process:</strong>
-                    <ul class="mb-0 mt-2">
-                        <li>Nested loops: fan speeds × hot plate temperatures</li>
-                        <li>4D lookup table will be generated (temperature × fan speed → chamber temp, Cn²)</li>
-                        <li>Enables interpolation for any temperature/fan speed combination</li>
-                        <li>Supports Cn² control system lookup</li>
-                    </ul>
-                </div>
-
-                <hr>
-
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-lg" id="startHotplateCalibration">
-                        <i class="fas fa-play me-2"></i>Start 4D Calibration
-                    </button>
-                    <button type="button" class="btn btn-danger btn-lg" id="stopHotplateCalibration" disabled>
-                        <i class="fas fa-stop me-2"></i>Stop
-                    </button>
-                    <button type="button" class="btn btn-outline-warning btn-lg" id="clearHotplateSessionBtn" onclick="clearCurrentSession()">
-                        <i class="fas fa-trash me-2"></i>Clear Session
-                    </button>
-                </div>
-
-                <!-- Hot Plate Calibration Progress Section (hidden by default) -->
-                <div class="progress-section mt-4" id="hotplateStatusSection" style="display: none;">
-                    <div class="row align-items-center">
-                        <div class="col-md-6">
-                            <span id="hotplateCalibrationStatus" class="badge bg-secondary status-badge">Idle</span>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Progress</span>
-                                <span id="hotplateProgressPercent">0%</span>
-                            </div>
-                            <div class="progress" style="height: 25px;">
-                                <div id="hotplateProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
-                                     role="progressbar" style="width: 0%"></div>
-                            </div>
-                            <div class="mt-2 text-muted">
-                                <small>Step <span id="hotplateCurrentStep">0</span> of <span id="hotplateTotalSteps">0</span></small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row mt-3">
-                        <div class="col-md-3">
-                            <div class="text-center">
-                                <h6>Current Temperature</h6>
-                                <h4 id="hotplateCurrentTemp">--°C</h4>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="text-center">
-                                <h6>Current Fan Speed</h6>
-                                <h4 id="hotplateCurrentFan">-- PWM</h4>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="text-center">
-                                <h6>Time Remaining</h6>
-                                <h4 id="hotplateEstimatedTime">--:--:--</h4>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="text-center">
-                                <h6>Session ID</h6>
-                                <h4 id="hotplateSessionId">--</h4>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row mt-3">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-header bg-info text-white">
-                                    <strong>Current Phase</strong>
-                                </div>
-                                <div class="card-body">
-                                    <h5 id="hotplatePhase" class="text-center mb-0">Initializing...</h5>
-                                    <div class="mt-2">
-                                        <small class="text-muted" id="hotplatePhaseDetails">Preparing calibration setup</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </form>
             </div>
         </div>
         </div> <!-- End Hot Plate Tab -->
 
-        <!-- PID Calibration Tab -->
-        <div class="tab-pane fade" id="pid" role="tabpanel">
-            <h5 class="mb-3">PID Parameter Calibration</h5>
-            <p class="text-muted mb-4">
-                Tune PID parameters for hotplate temperature control. Record temperature response curves and adjust parameters for optimal performance.
-            </p>
-
-        <!-- Control Section -->
-        <div class="control-section">
-            <h5 class="mb-3">
-                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#pidControlSection">
-                    <i class="fas fa-chevron-down me-2"></i>PID Parameters
-                </button>
-            </h5>
-            <div class="collapse show" id="pidControlSection">
-                <div class="row">
-                    <!-- Hot Plate 1 PID Parameters -->
-                    <div class="col-md-6">
-                        <h6 class="mb-3">Hot Plate 1 PID Parameters</h6>
-                        <div class="mb-3">
-                            <label for="pid-kp-0" class="form-label">Kp (Proportional)</label>
-                            <input type="number" class="form-control" id="pid-kp-0" value="35" step="0.1">
-                        </div>
-                        <div class="mb-3">
-                            <label for="pid-ki-0" class="form-label">Ki (Integral)</label>
-                            <input type="number" class="form-control" id="pid-ki-0" value="0.5" step="0.1">
-                        </div>
-                        <div class="mb-3">
-                            <label for="pid-kd-0" class="form-label">Kd (Derivative)</label>
-                            <input type="number" class="form-control" id="pid-kd-0" value="0" step="0.1">
-                        </div>
-                    </div>
-
-                    <!-- Hot Plate 2 PID Parameters -->
-                    <div class="col-md-6">
-                        <h6 class="mb-3">Hot Plate 2 PID Parameters</h6>
-                        <div class="mb-3">
-                            <label for="pid-kp-1" class="form-label">Kp (Proportional)</label>
-                            <input type="number" class="form-control" id="pid-kp-1" value="80" step="0.1">
-                        </div>
-                        <div class="mb-3">
-                            <label for="pid-ki-1" class="form-label">Ki (Integral)</label>
-                            <input type="number" class="form-control" id="pid-ki-1" value="0.5" step="0.1">
-                        </div>
-                        <div class="mb-3">
-                            <label for="pid-kd-1" class="form-label">Kd (Derivative)</label>
-                            <input type="number" class="form-control" id="pid-kd-1" value="1" step="0.1">
-                        </div>
-                    </div>
-                </div>
-
-                <hr>
-
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-primary" onclick="savePidSettings()">
-                        <i class="fas fa-save me-2"></i>Save PID Settings
-                    </button>
-                    <button type="button" class="btn btn-secondary" onclick="loadPidSettings()">
-                        <i class="fas fa-sync me-2"></i>Reload from Settings
-                    </button>
-                </div>
-
-                <div id="pid-settings-message" class="alert alert-sm mt-3 d-none"></div>
-            </div>
-        </div>
-
-        <!-- Charts Section -->
-        <div class="control-section mt-4">
-            <h5 class="mb-3">
-                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#pidChartsSection">
-                    <i class="fas fa-chart-line me-2"></i>Temperature Response Charts
-                </button>
-            </h5>
-            <div class="collapse show" id="pidChartsSection">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6 class="text-center mb-3">Hot Plate 1 Temperature Response</h6>
-                        <canvas id="pidChart0"></canvas>
-                    </div>
-                    <div class="col-md-6">
-                        <h6 class="text-center mb-3">Hot Plate 2 Temperature Response</h6>
-                        <canvas id="pidChart1"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Calibration Control Section -->
-        <div class="control-section mt-4">
-            <h5 class="mb-3">
-                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#pidCalibrationControl">
-                    <i class="fas fa-play-circle me-2"></i>Calibration Control
-                </button>
-            </h5>
-            <div class="collapse show" id="pidCalibrationControl">
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle me-2"></i>
-                    Click <strong>Start Calibration</strong> to begin recording temperature data with current PID parameters.
-                    The system will record hotplate surface temperatures over time for analysis.
-                </div>
-
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-lg" id="startPidCalibration">
-                        <i class="fas fa-play me-2"></i>Start Calibration
-                    </button>
-                    <button type="button" class="btn btn-danger btn-lg" id="stopPidCalibration" disabled>
-                        <i class="fas fa-stop me-2"></i>Stop
-                    </button>
-                    <button type="button" class="btn btn-outline-primary btn-lg" id="downloadPidCalibration" onclick="downloadPidCalibrationData()" style="display: none;">
-                        <i class="fas fa-download me-2"></i>Download Data
-                    </button>
-                </div>
-
-                <!-- Calibration Status -->
-                <div class="progress-section mt-4" id="pidStatusSection" style="display: none;">
-                    <div class="row align-items-center">
-                        <div class="col-md-6">
-                            <span id="pidCalibrationStatus" class="badge bg-secondary status-badge">Idle</span>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="text-end">
-                                <span id="pidDataPoints" class="text-muted">Data Points: 0</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        </div> <!-- End PID Calibration Tab -->
-
         </div> <!-- End Tab Content -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/components/bottom-bar.js"></script>
     <script src="/static/calibration.js"></script>
     
     <!-- Connection Status Bottom Right -->
