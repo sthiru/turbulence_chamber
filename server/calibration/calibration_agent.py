@@ -23,7 +23,6 @@ from .models import (
 from .windflow_calibration import WindflowCalibrator
 from .hotplate_calibration import HotplateCalibrator, HotplateCalibrationConfig
 from .combined_calibration import CombinedCalibrator, CombinedCalibrationConfig, CombinedDataPoint
-from csv_utils import init_csv_file, append_to_csv, get_csv_keys
 from utils import get_calibration_data_folder
 
 logger = logging.getLogger(__name__)
@@ -144,8 +143,6 @@ class CalibrationAgent:
             return "hotplate"
         elif "windflow" in session_id:
             return "windflow"
-        elif "combined" in session_id:
-            return "combined"
         else:
             return "unknown"
     
@@ -183,28 +180,6 @@ class CalibrationAgent:
                 logger.info("Session file removed")
         except Exception as e:
             logger.error(f"Failed to remove session file: {e}")
-    
-    async def _capture_sensor_data(self) -> Optional[Dict]:
-        """Unified method to capture sensor data from Arduino"""
-        try:
-            response = await self.arduino_comm.get_status()
-            if response.status == "ok" and response.data:
-                return {
-                    'timestamp': datetime.now().isoformat(),
-                    'temperatures': response.data.temperatures if response.data.temperatures else [],
-                    'temperature_bmp': [response.data.bmpTemperature_internal, response.data.bmpTemperature_external] if response.data.bmpTemperature_internal or response.data.bmpTemperature_external else [],
-                    'temperature_dht': [response.data.dhtTemperature_internal, response.data.dhtTemperature_external] if response.data.dhtTemperature_internal or response.data.dhtTemperature_external else [],
-                    'pressure': [response.data.bmpPressure_internal, response.data.bmpPressure_external] if response.data.bmpPressure_internal or response.data.bmpPressure_external else [],
-                    'humidity': [response.data.dhtHumidity_internal, response.data.dhtHumidity_external] if response.data.dhtHumidity_internal or response.data.dhtHumidity_external else [],
-                    'flow_rates': response.data.flow_rates if response.data.flow_rates else [],
-                    'fan_speeds': response.data.fan_speeds if response.data.fan_speeds else [],
-                    'target_temperatures': response.data.target_temperatures if response.data.target_temperatures else [],
-                    'hot_plate_states': response.data.hot_plate_states if response.data.hot_plate_states else []
-                }
-            return None
-        except Exception as e:
-            logger.error(f"Error capturing sensor data: {e}")
-            return None
     
     def set_status_callback(self, callback: Callable):
         """Set callback for status updates"""
@@ -502,7 +477,6 @@ class CalibrationAgent:
                 )
                 
                 # Save results to session folder
-                self._save_windflow_calibration(session_folder)
                 
                 self.current_session.status = CalibrationStatus.COMPLETED
                 self.current_session.end_time = datetime.now()
@@ -698,61 +672,6 @@ class CalibrationAgent:
                             # Calculate Cn² (placeholder - would use optical data)
                             cn2_value = 0.0
 
-                            # Create data point
-                            data_point = CombinedDataPoint(
-                                hotplate_temp=target_temp,
-                                fan_speed=fan_speed,
-                                chamber_temp_avg=float(chamber_temp_avg),
-                                cn2_value=cn2_value,
-                                sensor_temps={
-                                    'sensor_1': float(sensor_temps[0]) if len(sensor_temps) > 0 else 0,
-                                    'sensor_3': float(sensor_temps[2]) if len(sensor_temps) > 2 else 0,
-                                    'sensor_5': float(sensor_temps[4]) if len(sensor_temps) > 4 else 0,
-                                    'sensor_7': float(sensor_temps[6]) if len(sensor_temps) > 6 else 0
-                                },
-                                timestamp=timestamp
-                            )
-                            all_data_points.append(data_point)
-                            
-                            # Stage 5: Save data to CSV immediately for each data point
-                            if csv_filepath:
-                                csv_data = {
-                                    'timestamp': sensor_data['timestamp'],
-                                    'step': step_count,
-                                    'fan_speed': fan_speed,
-                                    'target_temperature': target_temp,
-                                    'sensor_temp_0': sensor_temps[0] if len(sensor_temps) > 0 else '',
-                                    'sensor_temp_1': sensor_temps[1] if len(sensor_temps) > 1 else '',
-                                    'sensor_temp_2': sensor_temps[2] if len(sensor_temps) > 2 else '',
-                                    'sensor_temp_3': sensor_temps[3] if len(sensor_temps) > 3 else '',
-                                    'sensor_temp_4': sensor_temps[4] if len(sensor_temps) > 4 else '',
-                                    'sensor_temp_5': sensor_temps[5] if len(sensor_temps) > 5 else '',
-                                    'sensor_temp_6': sensor_temps[6] if len(sensor_temps) > 6 else '',
-                                    'sensor_temp_7': sensor_temps[7] if len(sensor_temps) > 7 else '',
-                                    'sensor_temp_8': sensor_temps[8] if len(sensor_temps) > 8 else '',
-                                    'sensor_temp_9': sensor_temps[9] if len(sensor_temps) > 9 else '',
-                                    'sensor_temp_10': sensor_temps[10] if len(sensor_temps) > 10 else '',
-                                    'sensor_temp_11': sensor_temps[11] if len(sensor_temps) > 11 else '',
-                                    'temp_hotplate1': sensor_data.get('temp_hotplate1', ''),
-                                    'temp_hotplate2': sensor_data.get('temp_hotplate2', ''),
-                                    'bmpTemperature_internal': sensor_data.get('bmpTemperature_internal', ''),
-                                    'bmpTemperature_external': sensor_data.get('bmpTemperature_external', ''),
-                                    'bmpPressure_internal': sensor_data.get('bmpPressure_internal', ''),
-                                    'bmpPressure_external': sensor_data.get('bmpPressure_external', ''),
-                                    'dhtTemperature_internal': sensor_data.get('dhtTemperature_internal', ''),
-                                    'dhtTemperature_external': sensor_data.get('dhtTemperature_external', ''),
-                                    'dhtHumidity_internal': sensor_data.get('dhtHumidity_internal', ''),
-                                    'dhtHumidity_external': sensor_data.get('dhtHumidity_external', ''),
-                                    'cn2_thermal': cn2_value,
-                                    'chamber_temp_avg': chamber_temp_avg,
-                                    'phase': self.current_session.phase,
-                                    'phase_details': self.current_session.phase_details
-                                }
-                                append_to_csv(csv_filepath, csv_data)
-                                
-                                # Update captured data points counter
-                                self.current_session.captured_data_points += 1
-
                             # Notify status callback more frequently for smooth progress updates
                             if self.status_callback:
                                 self.status_callback(self.current_session)
@@ -807,279 +726,6 @@ class CalibrationAgent:
 
             if self.status_callback:
                 self.status_callback(self.current_session)
-
-    def _save_hotplate_incremental_data(self, session_folder: str, target_temp: float, hotplate_data: dict):
-        """Save incremental hot plate calibration data to CSV"""
-        try:
-            csv_file = os.path.join(session_folder, "hotplate_calibration_data.csv")
-            file_exists = os.path.exists(csv_file)
-
-            with open(csv_file, 'a', newline='') as f:
-                writer = csv.writer(f)
-
-                if not file_exists:
-                    header = ["timestamp", "target_temp", "hotplate_id", "hotplate_temp"]
-                    for i in range(12):  # 12 DS18B20 sensors
-                        header.append(f"sensor_{i}")
-                    writer.writerow(header)
-
-                for hotplate_id, data_points in hotplate_data.items():
-                    for timestamp, hotplate_temp, sensor_temps in data_points:
-                        row = [timestamp, target_temp, hotplate_id, hotplate_temp]
-                        row.extend(sensor_temps[:12])  # Limit to 12 sensors
-                        writer.writerow(row)
-
-            logger.debug(f"Saved incremental data for {target_temp}°C")
-        except Exception as e:
-            logger.error(f"Error saving incremental data: {e}")
-
-    def _save_hotplate_calibration(self, session_folder: str):
-        """Save hot plate calibration results"""
-        if not self.hotplate_calibration_result:
-            return
-
-        try:
-            # Save to session folder
-            filepath = os.path.join(session_folder, "hotplate_calibration.json")
-            self.hotplate_calibrator.export_calibration(filepath)
-            logger.info(f"Hot plate calibration saved to session: {filepath}")
-
-            # Also save to calibration_data folder root
-            calib_folder_abs = os.path.abspath(self.calibration_data_folder)
-            latest_filepath = os.path.join(calib_folder_abs, "hotplate_calibration.json")
-            self.hotplate_calibrator.export_calibration(latest_filepath)
-            logger.info(f"Hot plate calibration saved to calibration_data root: {latest_filepath}")
-
-        except Exception as e:
-            logger.error(f"Error saving hot plate calibration: {e}")
-
-    async def _run_combined_calibration(self,
-                                       temp_min: float = 80.0,
-                                       temp_max: float = 120.0,
-                                       temp_step: float = 2.0,
-                                       fan_speeds: List[int] = None,
-                                       recording_duration: int = 900,
-                                       sampling_interval: int = 10):
-        """Main combined calibration loop - nested loops: fan speeds × hot plate temps"""
-        try:
-            if fan_speeds is None:
-                fan_speeds = [255, 191, 128, 64]
-
-            # Capture ambient conditions at start
-            ambient_temp = None
-            ambient_pressure = None
-            ambient_humidity = None
-            try:
-                sensor_data = await self._capture_sensor_data()
-                if sensor_data:
-                    if sensor_data['temperature_bmp'] and len(sensor_data['temperature_bmp']) > 0:
-                        ambient_temp = sensor_data['temperature_bmp'][0]
-                    if sensor_data['pressure'] and len(sensor_data['pressure']) > 0:
-                        ambient_pressure = sensor_data['pressure'][0]
-                    if sensor_data['humidity'] and len(sensor_data['humidity']) > 0:
-                        ambient_humidity = sensor_data['humidity'][0]
-                    logger.info(f"Ambient conditions: {ambient_temp}°C, {ambient_pressure} hPa, {ambient_humidity}% RH")
-            except Exception as e:
-                logger.warning(f"Could not capture ambient conditions: {e}")
-
-            # Create session folder
-            session_folder = os.path.join(
-                self.calibration_data_folder,
-                self.current_session.session_id
-            )
-            os.makedirs(session_folder, exist_ok=True)
-
-            # Save session metadata
-            self._save_session_metadata(session_folder)
-
-            # Generate temperature steps
-            temp_steps = []
-            current_temp = temp_min
-            while current_temp <= temp_max:
-                temp_steps.append(current_temp)
-                current_temp += temp_step
-
-            logger.info(f"Testing {len(fan_speeds)} fan speeds × {len(temp_steps)} temperature steps")
-
-            # Initialize config
-            config = CombinedCalibrationConfig(
-                temp_min=temp_min,
-                temp_max=temp_max,
-                temp_step=temp_step,
-                fan_speeds=fan_speeds,
-                recording_duration=recording_duration,
-                sampling_interval=sampling_interval
-            )
-
-            # Collect all data points
-            all_data_points = []
-
-            step_count = 0
-            for fan_speed in fan_speeds:
-                if self.stop_requested:
-                    break
-
-                logger.info(f"Setting all fans to {fan_speed} PWM")
-                for fan_id in range(4):
-                    await self.arduino_comm.set_fan_speed(fan_id, fan_speed)
-                await asyncio.sleep(2)  # Wait for fans to stabilize
-
-                for target_temp in temp_steps:
-                    if self.stop_requested:
-                        break
-
-                    step_count += 1
-                    self.current_session.current_step = step_count
-                    self.current_session.current_speed_step = step_count
-
-                    logger.info(f"Step {step_count}: Fan {fan_speed} PWM, Hot plates to {target_temp}°C")
-
-                    # Set hot plate temperatures
-                    for hotplate_id in [0, 1]:
-                        await self.arduino_comm.set_temperature(hotplate_id, target_temp)
-                        await asyncio.sleep(0.5)
-
-                    # Wait for heating
-                    logger.info("Waiting for temperature stabilization...")
-                    await asyncio.sleep(60)
-
-                    # Record data
-                    start_time = datetime.now()
-                    end_time = start_time.timestamp() + recording_duration
-
-                    logger.info(f"Recording data for {recording_duration} seconds at {sampling_interval}s intervals")
-
-                    while datetime.now().timestamp() < end_time and not self.stop_requested:
-                        sensor_data = await self._capture_sensor_data()
-
-                        if sensor_data:
-                            timestamp = datetime.now().timestamp() - start_time.timestamp()
-
-                            # Get sensor temperatures
-                            sensor_temps = sensor_data['temperatures']
-
-                            # Calculate chamber temperature average (sensors 1, 3, 5, 7)
-                            relevant_sensors = [0, 2, 4, 6]  # 0-indexed for sensors 1, 3, 5, 7
-                            chamber_temps = [sensor_temps[i] for i in relevant_sensors if i < len(sensor_temps)]
-                            chamber_temp_avg = np.mean(chamber_temps) if chamber_temps else 0.0
-
-                            # Calculate Cn² (simplified - use thermal formula)
-                            # This would normally use the optical CN² calculation
-                            cn2_value = 0.0  # Placeholder - would be calculated from optical data
-
-                            # Create data point
-                            data_point = CombinedDataPoint(
-                                hotplate_temp=target_temp,
-                                fan_speed=fan_speed,
-                                chamber_temp_avg=float(chamber_temp_avg),
-                                cn2_value=cn2_value,
-                                sensor_temps={
-                                    'sensor_1': float(sensor_temps[0]) if 0 < len(sensor_temps) else 0.0,
-                                    'sensor_3': float(sensor_temps[2]) if 2 < len(sensor_temps) else 0.0,
-                                    'sensor_5': float(sensor_temps[4]) if 4 < len(sensor_temps) else 0.0,
-                                    'sensor_7': float(sensor_temps[6]) if 6 < len(sensor_temps) else 0.0,
-                                },
-                                timestamp=timestamp
-                            )
-                            all_data_points.append(data_point)
-
-                        await asyncio.sleep(sampling_interval)
-
-                    logger.info(f"Completed recording for Fan {fan_speed} PWM @ {target_temp}°C")
-
-                    # Save incremental data
-                    self._save_combined_incremental_data(session_folder, all_data_points)
-
-            if not self.stop_requested:
-                # Build lookup table
-                logger.info("Building 4D lookup table...")
-                lookup_table = self.combined_calibrator.build_lookup_table(all_data_points, config)
-
-                # Create calibration result
-                from .combined_calibration import CombinedCalibrationResult
-                self.combined_calibration_result = CombinedCalibrationResult(
-                    calibration_id=self.current_session.session_id,
-                    timestamp=datetime.now(),
-                    config=config,
-                    lookup_table=lookup_table,
-                    ambient_temperature=ambient_temp,
-                    ambient_pressure=ambient_pressure,
-                    ambient_humidity=ambient_humidity
-                )
-
-                # Save results
-                self._save_combined_calibration(session_folder)
-
-                self.current_session.status = CalibrationStatus.COMPLETED
-                self.current_session.end_time = datetime.now()
-                logger.info("Combined calibration completed successfully")
-
-                self._save_session_metadata(session_folder)
-            else:
-                self.current_session.status = CalibrationStatus.FAILED
-                self.current_session.error_message = "Calibration stopped"
-                self.current_session.end_time = datetime.now()
-                self._save_session_metadata(session_folder)
-
-        except Exception as e:
-            logger.error(f"Combined calibration error: {e}")
-            self.current_session.status = CalibrationStatus.FAILED
-            self.current_session.error_message = str(e)
-            self.current_session.end_time = datetime.now()
-
-            if 'session_folder' in locals():
-                self._save_session_metadata(session_folder)
-
-        finally:
-            self.is_running = False
-            await self._reset_hardware()
-
-            if self.status_callback:
-                self.status_callback(self.current_session)
-
-    def _save_combined_incremental_data(self, session_folder: str, data_points: List):
-        """Save incremental combined calibration data to CSV"""
-        try:
-            csv_file = os.path.join(session_folder, "combined_calibration_data.csv")
-            file_exists = os.path.exists(csv_file)
-
-            with open(csv_file, 'a', newline='') as f:
-                writer = csv.writer(f)
-
-                if not file_exists:
-                    header = ["timestamp", "hotplate_temp", "fan_speed", "chamber_temp_avg", "cn2_value"]
-                    for sensor in ['sensor_1', 'sensor_3', 'sensor_5', 'sensor_7']:
-                        header.append(sensor)
-                    writer.writerow(header)
-
-                for dp in data_points:
-                    row = [dp.timestamp, dp.hotplate_temp, dp.fan_speed, dp.chamber_temp_avg, dp.cn2_value]
-                    row.extend([dp.sensor_temps[sensor] for sensor in ['sensor_1', 'sensor_3', 'sensor_5', 'sensor_7']])
-                    writer.writerow(row)
-
-            logger.debug(f"Saved incremental combined calibration data")
-        except Exception as e:
-            logger.error(f"Error saving incremental combined data: {e}")
-
-    def _save_combined_calibration(self, session_folder: str):
-        """Save combined calibration results"""
-        if not self.combined_calibration_result:
-            return
-
-        try:
-            # Save to session folder
-            filepath = os.path.join(session_folder, "combined_calibration.json")
-            self.combined_calibrator.export_calibration(filepath)
-            logger.info(f"Combined calibration saved to session: {filepath}")
-
-            # Also save to calibration_data folder root
-            calib_folder_abs = os.path.abspath(self.calibration_data_folder)
-            latest_filepath = os.path.join(calib_folder_abs, "combined_calibration.json")
-            self.combined_calibrator.export_calibration(latest_filepath)
-            logger.info(f"Combined calibration saved to calibration_data root: {latest_filepath}")
-
-        except Exception as e:
-            logger.error(f"Error saving combined calibration: {e}")
     
     def _save_session_metadata(self, session_folder: str):
         """Save session metadata to file"""
@@ -1089,75 +735,7 @@ class CalibrationAgent:
                 json.dump(self.current_session.model_dump(mode='json'), f, indent=2)
             logger.info(f"Session metadata saved to {metadata_file}")
         except Exception as e:
-            logger.error(f"Error saving session metadata: {e}")
-    
-    def _save_incremental_data(self, session_folder: str, fan_speed: int, avg_flows: List[float], all_readings: List[List[float]]):
-        """Save incremental data for a single speed step"""
-        try:
-            step_data = {
-                "fan_speed": fan_speed,
-                "timestamp": datetime.now().isoformat(),
-                "avg_flow_rates": avg_flows,
-                "raw_readings": all_readings
-            }
-            
-            # Append to CSV file
-            csv_file = os.path.join(session_folder, "calibration_data.csv")
-            file_exists = os.path.exists(csv_file)
-            
-            with open(csv_file, 'a', newline='') as f:
-                writer = csv.writer(f)
-                
-                # Write header if file doesn't exist
-                if not file_exists:
-                    header = ["timestamp", "fan_speed", "sensor_0_avg", "sensor_1_avg", "sensor_2_avg", "sensor_3_avg"]
-                    writer.writerow(header)
-                
-                # Write data row
-                row = [datetime.now().isoformat(), fan_speed] + avg_flows
-                writer.writerow(row)
-            
-            logger.debug(f"Saved incremental data for fan_speed={fan_speed}")
-            
-        except Exception as e:
-            logger.error(f"Error saving incremental data: {e}")
-    
-    def _save_windflow_calibration(self, session_folder: str):
-        """Save windflow calibration results to session-specific folder"""
-        if not self.windflow_calibration_result:
-            return
-
-        try:
-            # Save to session folder
-            filepath = os.path.join(session_folder, "windflow_polynomials.json")
-            self.windflow_calibrator.export_polynomials(filepath)
-            logger.info(f"Windflow calibration saved to session: {filepath}")
-
-            # Also save to calibration_data folder root (latest)
-            calib_folder_abs = os.path.abspath(self.calibration_data_folder)
-            latest_filepath = os.path.join(calib_folder_abs, "windflow_polynomials.json")
-            self.windflow_calibrator.export_polynomials(latest_filepath)
-            logger.info(f"Windflow calibration saved to calibration_data root: {latest_filepath}")
-
-            # Copy session metadata to root
-            session_metadata_src = os.path.join(session_folder, "session_metadata.json")
-            session_metadata_dst = os.path.join(calib_folder_abs, "session_metadata.json")
-            if os.path.exists(session_metadata_src):
-                import shutil
-                shutil.copy2(session_metadata_src, session_metadata_dst)
-                logger.info(f"Session metadata copied to calibration_data root: {session_metadata_dst}")
-
-            # Copy calibration CSV to root
-            csv_src = os.path.join(session_folder, "calibration_data.csv")
-            csv_dst = os.path.join(calib_folder_abs, "calibration_data.csv")
-            if os.path.exists(csv_src):
-                import shutil
-                shutil.copy2(csv_src, csv_dst)
-                logger.info(f"Calibration CSV copied to calibration_data root: {csv_dst}")
-
-        except Exception as e:
-            logger.error(f"Error saving windflow calibration: {e}")
-     
+            logger.error(f"Error saving session metadata: {e}")    
         
     async def _reset_hardware(self):
         """Reset hardware to safe state"""

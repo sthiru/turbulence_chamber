@@ -112,6 +112,11 @@ static_dir = os.path.join(workspace_root, "web")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+# Mount assets folder for local libraries
+assets_dir = os.path.join(workspace_root, "web", "assets")
+if os.path.exists(assets_dir):
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
 # Mount camera images directory
 camera_images_dir = os.path.join(workspace_root, "camera_images")
 if os.path.exists(camera_images_dir):
@@ -290,6 +295,10 @@ async def background_status_polling():
                     # Append to CSV file if available
                     if current_capture_session.get("csv_filepath"):
                         csv_data = status_data.copy()
+                        # Convert temperatures list to comma-separated string
+                        if "temperatures" in csv_data:
+                            for i in range(len(csv_data["temperatures"])):
+                                csv_data[f"temp_sensor{i}"] = csv_data["temperatures"][i]
                         csv_data["session_id"] = current_capture_session["id"]
                         append_to_csv(current_capture_session["csv_filepath"], csv_data)
                 
@@ -306,6 +315,8 @@ async def background_status_polling():
                         "data": [{
                             **status_data,
                             "camera_status": camera_status,
+                            "image_filename": status_data.get("image_filename"),
+                            "timestamp": status_data.get("timestamp")
                         }],
                         "count": 1,
                         "latest_only": True
@@ -946,13 +957,17 @@ async def toggle_data_capture(request: DataCaptureRequest):
     global data_capture_active, current_capture_session, captured_data_points, video_streaming_task
     
     try:
+        # Check camera availability
+        camera_status = get_camera_status()
+        camera_available = camera_status.get("initialized", False)
+        
         if request.start:
             # Start data capture
             if data_capture_active:
                 return {"status": "error", "message": "Data capture already active"}
                         
             # Create new capture session
-            capture_folder = create_capture_folder()
+            capture_folder = get_calibration_data_folder()
             current_capture_session = {
                 "id": request.capture_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 "start_time": datetime.now().isoformat(),
@@ -961,7 +976,7 @@ async def toggle_data_capture(request: DataCaptureRequest):
             }
             
             # Initialize CSV file for data capture
-            csv_filepath = init_csv_file(capture_folder, "hotplate")
+            csv_filepath = init_csv_file(capture_folder, f"turbulance_data{datetime.now().strftime('%Y%m%d_%H%M%S')}")
             if csv_filepath:
                 current_capture_session["csv_filepath"] = csv_filepath
             else:
@@ -992,7 +1007,7 @@ async def toggle_data_capture(request: DataCaptureRequest):
              
             # Reset capture state
             data_capture_active = False
-            current_capture_session = None
+            # current_capture_session = None
             captured_data_points = []
             
             # Stop camera video streaming
