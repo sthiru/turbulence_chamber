@@ -3,16 +3,16 @@
 # Device = Basler::vvb_imx676c_bas -- Basler GigEVision camera interface -- Device version = 1.0.0 -- Product GUID = 52556b32-ab96-305e-9f17-b1f53789a63f -- Product version GUID = f33b8535-0976-393f-a3e5-ae13432dae02
 ReverseX	0
 ReverseY	0
-Width	2000
-Height	2000
-OffsetX	772
-OffsetY	776
+Width	400
+Height	400
+OffsetX	1628
+OffsetY	1348
 PixelFormat	BayerRG8
 TestPattern	Off
 AcquisitionStopMode	AbortExposure
 ExposureTimeMode	Common
 ExposureTimeSelector	Common
-ExposureTime	10000.0
+ExposureTime	5000.0
 ExposureTimeSelector	Common
 ExposureAuto	Off
 ExposureMode	Timed

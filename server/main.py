@@ -297,8 +297,20 @@ async def background_status_polling():
                         csv_data = status_data.copy()
                         # Convert temperatures list to comma-separated string
                         if "temperatures" in csv_data:
-                            for i in range(len(csv_data["temperatures"])):
-                                csv_data[f"temp_sensor{i}"] = csv_data["temperatures"][i]
+                            for i in range(len(csv_data["temperatures"])+1):
+                                csv_data[f"temp_sensor_{i}"] = csv_data["temperatures"][i]                            
+                            for i in range(len(csv_data["target_temperatures"])+1):
+                                csv_data[f"target_temp_{i}"] = csv_data["target_temperatures"][i]
+                            for i in range(len(csv_data["fan_speeds"])+1):
+                                csv_data[f"fan_speed_{i}"] = csv_data["fan_speeds"][i]
+                            for i in range(len(csv_data["hot_plate_states"])+1):
+                                csv_data[f"hot_plate_{i}"] = csv_data["hot_plate_states"][i]
+                            for i in range(len(csv_data["flow_rates"])+1):
+                                csv_data[f"flow_rate_{i}"] = csv_data["flow_rates"][i]
+                            csv_data["cn2_row1_500"] = csv_data["cn2"][0]
+                            csv_data["cn2_row1_300"] = csv_data["cn2"][1]
+                            csv_data["cn2_row2_500"] = csv_data["cn2"][2]
+                            csv_data["cn2_row2_300"] = csv_data["cn2"][3]
                         csv_data["session_id"] = current_capture_session["id"]
                         append_to_csv(current_capture_session["csv_filepath"], csv_data)
                 
