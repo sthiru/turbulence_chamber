@@ -21,7 +21,7 @@
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/turbulence_controller/server"
+                "PYTHONPATH": "${workspaceFolder}/.venv/bin/python"
             }
         }
     ]

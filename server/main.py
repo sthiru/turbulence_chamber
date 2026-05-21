@@ -1424,12 +1424,7 @@ pfs_file_path = os.path.join(workspace_root, "camera_settings.pfs")  # Default P
 calibration_agent = CalibrationAgent(arduino_comm)
 
 # Check if PFS file exists
-if os.path.exists(pfs_file_path):
-    logger.info(f"Found PFS file: {pfs_file_path}")
-    camera_initialized = initialize_camera_system(camera_images_folder, pfs_file_path)
-else:
-    logger.info(f"No PFS file found at {pfs_file_path}, using default camera settings")
-    camera_initialized = initialize_camera_system(camera_images_folder)
+camera_initialized = initialize_camera_system(camera_images_folder, pfs_file_path)
 if camera_initialized:
     logger.info(f"Camera system initialized successfully")
 else:

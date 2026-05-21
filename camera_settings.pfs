@@ -12,7 +12,7 @@ TestPattern	Off
 AcquisitionStopMode	AbortExposure
 ExposureTimeMode	Common
 ExposureTimeSelector	Common
-ExposureTime	25000.0
+ExposureTime	10000.0
 ExposureTimeSelector	Common
 ExposureAuto	Off
 ExposureMode	Timed

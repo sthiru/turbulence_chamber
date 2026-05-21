@@ -284,54 +284,22 @@ class BaslerCamera:
                 logger.warning("Pylon SDK not available - using simulation mode")
                 self.is_initialized = True
                 return True
-                
+                           
             # Create an instant camera object
             tlFactory = pylon.TlFactory.GetInstance()
-            
-            # Debug: Print transport layer factory info
-            logger.debug("Available transport layers:")
-            for tl in tlFactory.EnumerateTls():
-                tl_name = tl.GetFriendlyName() if tl.IsFriendlyNameAvailable() else "Unknown"
-                tl_type = tl.GetTLType() if tl.IsTLTypeAvailable() else "Unknown"
-                logger.debug(f"  - {tl_name}: {tl_type}")
-            
+
             # Enumerate all devices with detailed info
             devices = tlFactory.EnumerateDevices()
             logger.info(f"Found {len(devices)} Basler devices")
-            
+            # Try to force GigE transport layer
+
             if len(devices) == 0:
                 # Try alternative enumeration methods
-                logger.warning("No devices found with standard enumeration, trying alternative methods...")
-                
-                # Try to get device info from transport layers
-                for tl in tlFactory.EnumerateTls():
-                    try:
-                        tl_devices = tl.EnumerateDevices()
-                        tl_name = tl.GetFriendlyName() if tl.IsFriendlyNameAvailable() else "Unknown"
-                        logger.info(f"Transport layer {tl_name} has {len(tl_devices)} devices")
-                        for device in tl_devices:
-                            logger.info(f"  Device: {device.GetModelName()} ({device.GetSerialNumber()})")
-                    except Exception as e:
-                        tl_name = tl.GetFriendlyName() if tl.IsFriendlyNameAvailable() else "Unknown"
-                        logger.debug(f"Could not enumerate devices for TL {tl_name}: {e}")
-                
-                # Try to force GigE transport layer
-                try:
-                    gige_tl = tlFactory.CreateTl(pylon.TLTypeGigE)
-                    if gige_tl:
-                        logger.info("GigE transport layer found")
-                        gige_devices = gige_tl.EnumerateDevices()
-                        logger.info(f"GigE devices: {len(gige_devices)}")
-                        for device in gige_devices:
-                            logger.info(f"  GigE Device: {device.GetModelName()} ({device.GetSerialNumber()})")
-                except Exception as e:
-                    logger.debug(f"GigE transport layer not available: {e}")
-                
                 logger.error("No Basler cameras found")
-                return False
+                #return False
                 
             # Create camera object
-            self.camera = pylon.InstantCamera(tlFactory.CreateDevice(devices[0]))
+            self.camera = pylon.InstantCamera(tlFactory.CreateFirstDevice())
             
             # Open camera
             self.camera.Open()
@@ -751,6 +719,10 @@ def get_camera_instance(camera_images_folder: str = "camera_images") -> BaslerCa
     global camera_instance
     if camera_instance is None:
         camera_instance = BaslerCamera(camera_images_folder)
+        if(camera_instance.initialize_camera()):
+            return camera_instance
+        else:
+            return None
     return camera_instance
 
 def initialize_camera_system(camera_images_folder: str = "camera_images", pfs_file_path: Optional[str] = None) -> bool:
@@ -766,12 +738,12 @@ def initialize_camera_system(camera_images_folder: str = "camera_images", pfs_fi
     camera = get_camera_instance(camera_images_folder)
     
     # Load PFS settings if provided
-    if pfs_file_path:
+    if pfs_file_path and camera:
         logger.info(f"Initializing camera system with PFS file: {pfs_file_path}")
         if not camera.load_pfs_settings(pfs_file_path):
-            logger.warning("Failed to load PFS settings, proceeding with defaults")
-    
-    return camera.initialize_camera()
+            logger.warning("Failed to load PFS settings, proceeding with defaults")    
+        return True
+    return False
 
 def load_camera_pfs_settings(pfs_file_path: str, camera_images_folder: str = "camera_images") -> bool:
     """Load PFS settings for camera
