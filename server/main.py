@@ -263,6 +263,7 @@ async def background_status_polling():
                 status_data["arduino_port"] = arduino_comm.port if arduino_comm.is_connected else None
                 status_data["system_ready"] = True  # System is ready when Arduino responds successfully
                 status_data["timestamp"] = datetime.now().isoformat()
+                status_data["image_filename"] = 'camera_images'
                 
                 # Calculate CN² and add to status data
                 try:
@@ -276,38 +277,33 @@ async def background_status_polling():
                     logger.warning(f"Error calculating CN²: {e}")
                     status_data["cn2"] = None
                 
-                # Calculate optical CN² if we have temperature differences
-                try:
-                    cn2_optical = calculate_cn2_optical(camera_images_folder)
-                    status_data["cn2_optical"] = cn2_optical
-                except Exception as e:
-                    logger.warning(f"Error calculating optical CN²: {e}")
-                    status_data["cn2_optical"] = None
-                
-                # Capture camera image if data capture is active
-                image_filename = None
                 global data_capture_active, current_capture_session, captured_data_points
-                
-                if data_capture_active and current_capture_session:
-                    try:
-                        logger.debug(f"Data capture active, session: {current_capture_session['id']}")
-                        logger.debug(f"Capture folder: {current_capture_session['folder']}")
-                        
-                        image_filename = capture_and_save_image(camera_images_folder)
-                        
-                        if image_filename:
-                            logger.info(f"Successfully captured image: {image_filename}")
-                        else:
-                            logger.warning("Image capture returned None")
-                    except Exception as e:
-                        logger.warning(f"Failed to capture image during data capture: {e}")
-                        import traceback
-                        traceback.print_exc()
-                else:
-                    logger.debug("Data capture not active or no session")
-                
-                # Add image filename to status data
-                status_data["image_filename"] = image_filename
+                # Calculate optical CN² if we have temperature differences
+                if(camera_initialized):               
+                    if data_capture_active and current_capture_session:
+                        try:
+                            logger.debug(f"Data capture active, session: {current_capture_session['id']}")
+                            logger.debug(f"Capture folder: {current_capture_session['folder']}")
+                            image_filename = capture_and_save_image(camera_images_folder)
+                            
+                            if image_filename:
+                                # Add image filename to status data
+                                status_data["image_filename"] = image_filename
+                                logger.debug(f"Successfully captured image: {image_filename}")
+                            else:
+                                logger.warning("Image capture returned None")
+                        except Exception as e:
+                            logger.warning(f"Failed to capture image during data capture: {e}")
+                            import traceback
+                            traceback.print_exc()
+                        try:
+                            cn2_optical = calculate_cn2_optical(camera_images_folder)
+                            status_data["cn2_optical"] = cn2_optical
+                        except Exception as e:
+                            logger.warning(f"Error calculating optical CN²: {e}")
+                            status_data["cn2_optical"] = None
+                    else:
+                        logger.debug("Data capture not active or no session")                    
                 
                 # Store in history
                 status_history.append(status_data.copy())
@@ -317,23 +313,23 @@ async def background_status_polling():
                     data_point = status_data.copy()
                     data_point["session_id"] = current_capture_session["id"]
                     captured_data_points.append(data_point)
-                    logger.debug(f"Captured data point {len(captured_data_points)} with image: {image_filename}")
+                    logger.debug(f"Captured data point {len(captured_data_points)}")
                     
                     # Append to CSV file if available
                     if current_capture_session.get("csv_filepath"):
                         csv_data = status_data.copy()
                         # Convert temperatures list to comma-separated string
                         if "temperatures" in csv_data:
-                            for i in range(len(csv_data["temperatures"])+1):
-                                csv_data[f"temp_sensor_{i}"] = csv_data["temperatures"][i]                            
-                            for i in range(len(csv_data["target_temperatures"])+1):
-                                csv_data[f"target_temp_{i}"] = csv_data["target_temperatures"][i]
-                            for i in range(len(csv_data["fan_speeds"])+1):
-                                csv_data[f"fan_speed_{i}"] = csv_data["fan_speeds"][i]
-                            for i in range(len(csv_data["hot_plate_states"])+1):
-                                csv_data[f"hot_plate_{i}"] = csv_data["hot_plate_states"][i]
-                            for i in range(len(csv_data["flow_rates"])+1):
-                                csv_data[f"flow_rate_{i}"] = csv_data["flow_rates"][i]
+                            for i in range(len(csv_data["temperatures"])):
+                                csv_data[f"temp_sensor_{i+1}"] = csv_data["temperatures"][i]                            
+                            for i in range(len(csv_data["target_temperatures"])):
+                                csv_data[f"target_temp_{i+1}"] = csv_data["target_temperatures"][i]
+                            for i in range(len(csv_data["fan_speeds"])):
+                                csv_data[f"fan_speed_{i+1}"] = csv_data["fan_speeds"][i]
+                            for i in range(len(csv_data["hot_plate_states"])):
+                                csv_data[f"hot_plate_{i+1}"] = csv_data["hot_plate_states"][i]
+                            for i in range(len(csv_data["flow_rates"])):
+                                csv_data[f"flow_rate_{i+1}"] = csv_data["flow_rates"][i]
                             csv_data["cn2_row1_500"] = csv_data["cn2"][0]
                             csv_data["cn2_row1_300"] = csv_data["cn2"][1]
                             csv_data["cn2_row2_500"] = csv_data["cn2"][2]
