@@ -28,13 +28,13 @@ from models import (
 )
 from arduino_comm import arduino_comm
 from camera_acquisition import BaslerCamera, PYLON_AVAILABLE
-from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status, CN2OpticalCalculator
+from cn2.cn2_optical import CN2OpticalCalculator
 from cn2.cn2_thermal import calculate_cn2
 from calibration.calibration_agent import CalibrationAgent
 from calibration.models import CalibrationRequest, CalibrationControl
 from calibration.config import CalibrationConfig
 from csv_utils import init_csv_file, append_to_csv
-from utils import load_configuration, get_configuration, set_configuration, get_workspace_root, get_calibration_data_folder, create_capture_folder
+from utils import load_configuration, get_configuration, set_configuration, get_workspace_root, get_calibration_data_folder, create_capture_folder, calculate_beam_centroid
 from ws_connection_manager import ConnectionManager
 from ws_video_stream_manager import VideoStreamManager
 from ws_calibration_manager import CalibrationConnectionManager
@@ -171,6 +171,7 @@ status_update_queue = asyncio.Queue()
 data_capture_active = False
 current_capture_session = None
 captured_data_points = []
+centroid_history = []  # Store centroid values with timestamps for CN² calculation
 # Global variables for background polling
 background_task = None
 video_streaming_task = None
@@ -216,7 +217,7 @@ async def background_status_polling():
                     logger.warning(f"Error calculating CN²: {e}")
                     status_data["cn2"] = None
                 
-                global data_capture_active, current_capture_session, captured_data_points
+                global data_capture_active, current_capture_session, captured_data_points, cn2_calculator, centroid_history
                 # Calculate optical CN² if we have temperature differences
                 if(camera_initialized):               
                     if data_capture_active and current_capture_session:
@@ -232,10 +233,20 @@ async def background_status_polling():
                                 
                                 # Calculate beam centroid for the captured image
                                 try:
-                                    cn2_calculator = CN2OpticalCalculator(current_capture_session['image_folder'])
-                                    status_data["centroid_x"], status_data["centroid_y"] = cn2_calculator.calculate_beam_centroid(image_filename)
+                                    status_data["centroid_x"], status_data["centroid_y"] = calculate_beam_centroid(image_filename)
+                                    
+                                    # Store centroid in history with timestamp
+                                    centroid_history.append({
+                                        "timestamp": datetime.now(),
+                                        "centroid_x": status_data["centroid_x"],
+                                        "centroid_y": status_data["centroid_y"]
+                                    })
+                                    
+                                    # Calculate optical CN² from stored centroids
+                                    cn2_optical = cn2_calculator.calculate_cn2_from_centroids(centroid_history)
+                                    status_data["cn2_optical"] = cn2_optical
                                 except Exception as e:
-                                    logger.warning(f"Error calculating beam centroid: {e}")
+                                    logger.warning(f"Error calculating beam centroid or optical CN²: {e}")
                                     status_data["centroid_x"] = None
                                     status_data["centroid_y"] = None
                             else:
@@ -246,12 +257,6 @@ async def background_status_polling():
                             logger.warning(f"Failed to capture image during data capture: {e}")
                             import traceback
                             traceback.print_exc()
-                        try:
-                            cn2_optical = calculate_cn2_optical(camera_images_folder)
-                            status_data["cn2_optical"] = cn2_optical
-                        except Exception as e:
-                            logger.warning(f"Error calculating optical CN²: {e}")
-                            status_data["cn2_optical"] = None
                     else:
                         logger.debug("Data capture not active or no session")                    
                 
@@ -562,35 +567,6 @@ async def get_camera_status_endpoint():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/cn2/optical/status")
-async def get_cn2_optical_status():
-    """Get CN² optical calculation status"""
-    try:
-        return get_cn2_status(camera_images_folder)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/cn2/optical/calculate")
-async def calculate_cn2_optical_endpoint():
-    """Manually trigger CN² optical calculation"""
-    try:
-        cn2_value = calculate_cn2_optical(camera_images_folder)
-        if cn2_value is not None:
-            return {
-                "status": "success",
-                "message": "CN² optical calculated successfully",
-                "cn2_optical": cn2_value,
-                "cn2_optical_scientific": f"{cn2_value:.2e} m^(-2/3)"
-            }
-        else:
-            return {
-                "status": "info",
-                "message": "CN² optical calculation not ready - insufficient images",
-                "cn2_optical": None
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 # Calibration API endpoints
 @app.post("/api/calibration/windflow/start")
 async def start_windflow_calibration(fan_speed_step: int = 5, settling_time_ms: int = 1000, num_samples: int = 3):
@@ -874,7 +850,7 @@ async def get_calibration_data(session_id: str = None):
 @app.post("/api/data-capture")
 async def toggle_data_capture(request: DataCaptureRequest):
     """Start or stop data capture with camera images"""
-    global data_capture_active, current_capture_session, captured_data_points, video_streaming_task
+    global data_capture_active, current_capture_session, captured_data_points, video_streaming_task, cn2_calculator, centroid_history
     
     try:
         # Check camera availability
@@ -896,6 +872,10 @@ async def toggle_data_capture(request: DataCaptureRequest):
                 "image_folder": image_capture_folder,
                 "data_points": []
             }
+            cn2_calculator = CN2OpticalCalculator(current_capture_session['image_folder'])
+            
+            # Clear centroid history for new session
+            centroid_history.clear()
             
             # Initialize CSV file for data capture
             csv_filepath = init_csv_file(capture_folder, f"turbulance_data{datetime.now().strftime('%Y%m%d_%H%M%S')}")

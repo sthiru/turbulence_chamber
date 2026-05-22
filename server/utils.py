@@ -5,6 +5,8 @@ import os
 import json
 import logging
 import datetime
+import cv2
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -70,3 +72,41 @@ def create_capture_folder() -> str:
         logger.error(f"Failed to create capture folder: {e}")
         return os.path.join(workspace_root, "camera_images")  # Fallback to base folder
 
+
+def calculate_beam_centroid(image_path: str, threshold_value: int = 20) -> Optional[Tuple[float, float]]:
+    """
+    Calculate beam centroid from a single image
+    
+    Args:
+        image_path: Path to the image file
+        threshold_value: Image threshold for noise removal (default: 20)
+        
+    Returns:
+        Tuple of (centroid_x, centroid_y) or (0,0) if calculation fails
+    """
+    try:
+        # Load image in grayscale
+        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            logger.warning(f"Could not load image: {image_path}")
+            return (0, 0)
+            
+        # Apply thresholding to remove noise
+        _, thresh = cv2.threshold(img, threshold_value, 255, cv2.THRESH_TOZERO)
+        
+        # Calculate moments for centroid
+        M = cv2.moments(thresh)
+        
+        if M["m00"] == 0:
+            logger.warning(f"No valid pixels found in image: {image_path}")
+            return (0, 0)
+            
+        # Calculate centroid coordinates
+        cx = M["m10"] / M["m00"]
+        cy = M["m01"] / M["m00"]
+        
+        return (cx, cy)
+        
+    except Exception as e:
+        logger.error(f"Error calculating centroid for {image_path}: {e}")
+        return (0, 0)
