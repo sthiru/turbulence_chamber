@@ -233,20 +233,12 @@ async function initVideoDisplay() {
 // Start video stream
 async function startVideoStream() {
     try {
-        const response = await fetch('/api/camera/video/start', {
-            method: 'POST'
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            // Send start stream command via WebSocket
-            if (videoWs && videoWs.readyState === WebSocket.OPEN) {
-                videoWs.send('{"type":"start_stream"}');
-            }
+        // Send start stream command via WebSocket
+        if (videoWs && videoWs.readyState === WebSocket.OPEN) {
+            videoWs.send('{"type":"start_stream"}');
             showNotification('Video stream started', 'success');
         } else {
-            showNotification('Failed to start video stream: ' + result.message, 'error');
+            showNotification('WebSocket not connected', 'error');
         }
     } catch (e) {
         console.error('Error starting video stream:', e);

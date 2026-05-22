@@ -378,6 +378,10 @@ async def video_streaming_worker():
             if ws_video_manager.active_connections:
                 logger.debug(f"Active video clients: {len(ws_video_manager.active_connections)}")
                 
+                # Ensure camera streaming is active
+                if not camera.is_streaming:
+                    camera.start_video_stream()
+                
                 # Get latest frame from camera
                 frame_data = camera.get_latest_frame()
                 
@@ -410,7 +414,11 @@ async def video_streaming_worker():
                 # Small delay to control frame rate
                 await asyncio.sleep(0.033)  # ~30 FPS
             else:
-                # No video clients, wait longer
+                # No video clients, stop camera streaming to save resources
+                if camera.is_streaming and not data_capture_active:
+                    logger.info("No video clients, stopping camera streaming")
+                    camera.stop_video_stream()
+                # Wait before checking again
                 await asyncio.sleep(1.0)
                 
         except Exception as e:
@@ -587,56 +595,6 @@ async def calculate_cn2_optical_endpoint():
                 "message": "CN² optical calculation not ready - insufficient images",
                 "cn2_optical": None
             }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/camera/video/start")
-async def start_video_stream():
-    """Start video streaming from camera"""
-    try:
-        # Check camera status before starting video streaming
-        camera_status = camera.get_camera_status()
-        camera_available = camera_status.get("initialized", False)
-        
-        if not camera_available:
-            return {
-                "status": "error",
-                "message": "Camera not connected or not available"
-            }
-        
-        success = camera.start_video_stream()
-        if success:
-            return {
-                "status": "success",
-                "message": "Video streaming started successfully"
-            }
-        else:
-            return {
-                "status": "error",
-                "message": "Failed to start video streaming"
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/camera/video/stop")
-async def stop_video_stream():
-    """Stop video streaming from camera"""
-    try:
-        camera.stop_video_stream()
-        #camera.remove_streaming_client(client_id)
-        #ws_video_manager.disconnect(client_id)
-        return {
-            "status": "success",
-            "message": "Video streaming stopped successfully"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/camera/video/status")
-async def get_video_stream_status():
-    """Get video streaming status"""
-    try:
-        return camera.get_streaming_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1309,7 +1267,7 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
                             "timestamp": datetime.now().isoformat()
                         }))
                 elif data.get("type") == "stop_stream":
-                    # Stop video streaming
+                    # Stop video streaming and disconnect client
                     camera.stop_video_stream()
                     await websocket.send_text(json.dumps({
                         "type": "stream_response",
@@ -1318,6 +1276,9 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
                         "message": "Video streaming stopped successfully",
                         "timestamp": datetime.now().isoformat()
                     }))
+                    await websocket.close()
+                    ws_video_manager.disconnect(client_id)
+                    break
                 elif data.get("type") == "test_frame":
                     # Send a test frame
                     test_frame = camera.get_latest_frame()
