@@ -90,7 +90,7 @@ def calculate_cn2(temperatures, bme_temperatures, bme_pressure):
             temp2 = temperatures[idx2]
             
             # Filter out error values
-            if temp1 <= -100 or temp2 <= -100:
+            if temp1 <= 0 or temp2 <= 0:
                 cn2_results.append(0.0)
                 continue
             

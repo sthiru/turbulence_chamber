@@ -28,13 +28,13 @@ from models import (
 )
 from arduino_comm import arduino_comm
 from camera_acquisition import BaslerCamera, PYLON_AVAILABLE
-from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status
+from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status, CN2OpticalCalculator
 from cn2.cn2_thermal import calculate_cn2
 from calibration.calibration_agent import CalibrationAgent
 from calibration.models import CalibrationRequest, CalibrationControl
 from calibration.config import CalibrationConfig
 from csv_utils import init_csv_file, append_to_csv
-from utils import load_configuration, get_configuration, set_configuration, get_workspace_root, get_calibration_data_folder
+from utils import load_configuration, get_configuration, set_configuration, get_workspace_root, get_calibration_data_folder, create_capture_folder
 from ws_connection_manager import ConnectionManager
 from ws_video_stream_manager import VideoStreamManager
 from ws_calibration_manager import CalibrationConnectionManager
@@ -177,24 +177,6 @@ video_streaming_task = None
 last_broadcast_time = 0
 polling_interval = POLLING_INTERVAL  # Current polling interval (can be updated at runtime)
 
-def create_capture_folder() -> str:
-    """Create a date-based folder for camera images"""
-    now = datetime.now()
-    date_folder = now.strftime("%d_%b_%Y")  # e.g., "03_Apr_2026"
-    time_folder = now.strftime("%H_%M")     # e.g., "14_30"
-    
-    # Create folder structure: camera_images/DD_MMM_YYYY/HH_MM
-    base_folder = os.path.join(workspace_root, "camera_images", date_folder, time_folder)
-    
-    try:
-        os.makedirs(base_folder, exist_ok=True)
-        logger.info(f"Created capture folder: {base_folder}")
-        return base_folder
-    except Exception as e:
-        logger.error(f"Failed to create capture folder: {e}")
-        return os.path.join(workspace_root, "camera_images")  # Fallback to base folder
-
-
 # Background polling task
 async def background_status_polling():
     """Background task to poll Arduino for status and broadcast to WebSocket clients"""
@@ -247,8 +229,19 @@ async def background_status_polling():
                                 # Add image filename to status data
                                 status_data["image_filename"] = image_filename
                                 logger.debug(f"Successfully captured image: {image_filename}")
+                                
+                                # Calculate beam centroid for the captured image
+                                try:
+                                    cn2_calculator = CN2OpticalCalculator(current_capture_session['image_folder'])
+                                    status_data["centroid_x"], status_data["centroid_y"] = cn2_calculator.calculate_beam_centroid(image_filename)
+                                except Exception as e:
+                                    logger.warning(f"Error calculating beam centroid: {e}")
+                                    status_data["centroid_x"] = None
+                                    status_data["centroid_y"] = None
                             else:
                                 logger.warning("Image capture returned None")
+                                status_data["centroid_x"] = None
+                                status_data["centroid_y"] = None
                         except Exception as e:
                             logger.warning(f"Failed to capture image during data capture: {e}")
                             import traceback

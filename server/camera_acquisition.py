@@ -400,8 +400,8 @@ class BaslerCamera:
             success = cv2.imwrite(filepath, image)
             
             if success:
-                logger.info(f"Image saved: {filename}")
-                return filename
+                logger.info(f"Image saved: {filepath}")
+                return filepath
             else:
                 logger.error(f"Failed to save image: {filepath}")
                 return None

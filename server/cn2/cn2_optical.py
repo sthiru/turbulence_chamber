@@ -79,7 +79,7 @@ class CN2OpticalCalculator:
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             if img is None:
                 logger.warning(f"Could not load image: {image_path}")
-                return None
+                return (0,0)
                 
             # Apply thresholding to remove noise
             _, thresh = cv2.threshold(img, self.threshold_value, 255, cv2.THRESH_TOZERO)
@@ -89,7 +89,7 @@ class CN2OpticalCalculator:
             
             if M["m00"] == 0:
                 logger.warning(f"No valid pixels found in image: {image_path}")
-                return None
+                return (0,0)
                 
             # Calculate centroid coordinates
             cx = M["m10"] / M["m00"]
@@ -99,7 +99,7 @@ class CN2OpticalCalculator:
             
         except Exception as e:
             logger.error(f"Error calculating centroid for {image_path}: {e}")
-            return None
+            return (0,0)
     
     def calculate_cn2_from_images(self, image_paths: List[str]) -> Optional[float]:
         """

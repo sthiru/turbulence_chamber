@@ -29,6 +29,7 @@ def init_csv_file(session_folder: str, calibration_type: str) -> str:
             'hot_plate_1', 'hot_plate_2',
             'flow_rate_1', 'flow_rate_2', 'flow_rate_3', 'flow_rate_4',
             'cn2_row1_500', 'cn2_row1_300', 'cn2_row2_500', 'cn2_row2_300',
+            'centroid_x', 'centroid_y',
             'cn2_optical',
             'image_filename'
         ]
