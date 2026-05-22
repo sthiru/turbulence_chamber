@@ -70,7 +70,10 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     await arduino_comm.disconnect()
-    cleanup_camera_system()
+    if video_streaming_task:
+        video_streaming_task.cancel()
+    if background_task:
+        background_task.cancel()
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -130,9 +133,8 @@ pfs_file_path = os.path.join(workspace_root, "camera_settings.pfs")  # Default P
 
 # Initialize camera (singleton)
 camera = BaslerCamera.get_instance(camera_images_folder)
-if pfs_file_path and os.path.exists(pfs_file_path):
-    camera.load_pfs_settings(pfs_file_path)
-camera.initialize_camera()
+
+camera_initialized = camera.initialize_camera(pfs_file_path)
 
 # WebSocket connection manager
 ws_connection_manager = ConnectionManager()
@@ -377,7 +379,7 @@ async def video_streaming_worker():
                 logger.debug(f"Active video clients: {len(ws_video_manager.active_connections)}")
                 
                 # Get latest frame from camera
-                frame_data = camera.get_latest_video_frame()
+                frame_data = camera.get_latest_frame()
                 
                 if frame_data:
                     logger.debug(f"Got video frame, length: {len(frame_data)}")
@@ -621,6 +623,8 @@ async def stop_video_stream():
     """Stop video streaming from camera"""
     try:
         camera.stop_video_stream()
+        #camera.remove_streaming_client(client_id)
+        #ws_video_manager.disconnect(client_id)
         return {
             "status": "success",
             "message": "Video streaming stopped successfully"
@@ -1316,7 +1320,7 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
                     }))
                 elif data.get("type") == "test_frame":
                     # Send a test frame
-                    test_frame = camera.get_latest_video_frame()
+                    test_frame = camera.get_latest_frame()
                     if test_frame:
                         await websocket.send_text(json.dumps({
                             "type": "video_frame",

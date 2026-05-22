@@ -115,7 +115,7 @@ function displayVideoFrame(frameData) {
     
     if (videoStreamElement && frameData) {
         const dataUrl = `data:image/jpeg;base64,${frameData}`;
-        videoStreamElement.setAttribute('href', dataUrl);
+        videoStreamElement.setAttribute('src', dataUrl);
         
         // Hide loading indicator and show streaming status
         if (videoLoadingIndicator) {

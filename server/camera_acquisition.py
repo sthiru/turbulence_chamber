@@ -18,8 +18,6 @@ import base64
 from io import BytesIO
 from PIL import Image
 
-from server.utils import get_workspace_root
-
 # Try to import pylon, provide fallback if not available
 try:
     from pypylon import pylon
@@ -214,7 +212,7 @@ class BaslerCamera:
             logger.error(f"Failed to apply PFS settings: {e}")
             return False
     
-    def initialize_camera(self) -> bool:
+    def initialize_camera(self, pfs_file_path: str = None) -> bool:
         """Initialize the camera"""
         try:
             if not PYLON_AVAILABLE:
@@ -236,19 +234,15 @@ class BaslerCamera:
                 
             # Create camera object
             self.camera = pylon.InstantCamera(tlFactory.CreateFirstDevice())
-            workspace_root = get_workspace_root()
-            self.load_pfs_settings(os.path.join(workspace_root, "camera_settings.pfs"))
+            
             # Open camera
             self.camera.Open()
-            
-            # Apply PFS settings if loaded
-            if self.camera_settings:
-                logger.info("Applying loaded PFS settings to camera...")
-                if not self.apply_pfs_settings_to_camera():
-                    logger.error("Failed to apply PFS settings")
-                    return False
-            
-            # Get camera info
+
+            if pfs_file_path and os.path.exists(pfs_file_path):
+                if self.load_pfs_settings(pfs_file_path):
+                    if not self.apply_pfs_settings_to_camera(): # Apply PFS settings if loaded
+                        logger.error("Failed to apply PFS settings")
+                        
             # Get camera info with compatibility handling
             device_info = self.camera.GetDeviceInfo()
             self.camera_info = {
