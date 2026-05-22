@@ -28,10 +28,10 @@ from models import (
 )
 from arduino_comm import arduino_comm
 from camera_acquisition import (
-    initialize_camera_system, capture_camera_image, get_camera_status, cleanup_camera_system,
+    get_camera_instance, get_camera_status, cleanup_camera_system,
     start_camera_video_stream, stop_camera_video_stream, get_latest_video_frame,
     get_camera_streaming_status, add_video_streaming_client, remove_video_streaming_client,
-    diagnose_camera_connection, get_camera_instance
+    diagnose_camera_connection
 )
 from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status
 from cn2.cn2_thermal import calculate_cn2
@@ -134,7 +134,8 @@ camera_images_folder = os.path.join(workspace_root, "camera_images")
 pfs_file_path = os.path.join(workspace_root, "camera_settings.pfs")  # Default PFS file path
 
 # Check if PFS file exists
-camera_initialized = initialize_camera_system(camera_images_folder, pfs_file_path)
+camera_initialized = get_camera_instance(camera_images_folder)
+
 if camera_initialized:
     logger.info(f"Camera system initialized successfully")
 else:

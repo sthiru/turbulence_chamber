@@ -18,6 +18,8 @@ import base64
 from io import BytesIO
 from PIL import Image
 
+from server.utils import get_workspace_root
+
 # Try to import pylon, provide fallback if not available
 try:
     from pypylon import pylon
@@ -204,6 +206,8 @@ class BaslerCamera:
                 
             # Create camera object
             self.camera = pylon.InstantCamera(tlFactory.CreateFirstDevice())
+            workspace_root = get_workspace_root()
+            self.load_pfs_settings(os.path.join(workspace_root, "camera_settings.pfs"))
             # Open camera
             self.camera.Open()
             
@@ -296,16 +300,6 @@ class BaslerCamera:
             if not self.is_connected:
                 if not self.connect_camera():
                     return None
-                    
-            if not PYLON_AVAILABLE:
-                # Simulate image capture for testing
-                logger.debug("Simulating camera capture")
-                # Create a random grayscale image
-                simulated_image = np.random.randint(0, 255, (480, 640), dtype=np.uint8)
-                # Add some structure to make it look more realistic
-                cv2.circle(simulated_image, (320, 240), 50, 200, -1)
-                cv2.rectangle(simulated_image, (200, 150), (440, 330), 150, -1)
-                return simulated_image
                 
             # Check if camera object is valid
             if not self.camera or not hasattr(self.camera, 'RetrieveResult'):
@@ -619,44 +613,6 @@ def get_camera_instance(camera_images_folder: str = "camera_images") -> BaslerCa
         else:
             return None
     return camera_instance
-
-def initialize_camera_system(camera_images_folder: str = "camera_images", pfs_file_path: Optional[str] = None) -> bool:
-    """Initialize the camera system with optional PFS settings
-    
-    Args:
-        camera_images_folder: Directory to save captured images
-        pfs_file_path: Optional path to PFS file for camera settings
-        
-    Returns:
-        bool: True if initialization successful, False otherwise
-    """
-    camera = get_camera_instance(camera_images_folder)
-    
-    # Load PFS settings if provided
-    if pfs_file_path and camera:
-        logger.info(f"Initializing camera system with PFS file: {pfs_file_path}")
-        if not camera.load_pfs_settings(pfs_file_path):
-            logger.warning("Failed to load PFS settings, proceeding with defaults")    
-        return True
-    return False
-
-def load_camera_pfs_settings(pfs_file_path: str, camera_images_folder: str = "camera_images") -> bool:
-    """Load PFS settings for camera
-    
-    Args:
-        pfs_file_path: Path to the PFS file
-        camera_images_folder: Directory to save captured images
-        
-    Returns:
-        bool: True if settings loaded successfully, False otherwise
-    """
-    camera = get_camera_instance(camera_images_folder)
-    return camera.load_pfs_settings(pfs_file_path)
-
-def capture_camera_image(camera_images_folder: str = "camera_images") -> Optional[str]:
-    """Capture and save an image"""
-    camera = get_camera_instance(camera_images_folder)
-    return camera.capture_and_save()
 
 def get_camera_status(camera_images_folder: str = "camera_images") -> dict:
     """Get camera system status"""

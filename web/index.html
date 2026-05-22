@@ -78,18 +78,41 @@
     </div>
     
     <!-- Load Bottom Bar Component -->
-    <div id="bottomBarContainer"></div>
-    <script>
-        // Load bottom bar component
-        fetch('/static/components/bottom-bar.html')
-            .then(response => response.text())
-            .then(html => {
-                document.getElementById('bottomBarContainer').innerHTML = html;
-                // Initialize bottom bar functionality after loading
-                initializeBottomBar();
-            })
-            .catch(error => console.error('Error loading bottom bar:', error));
-    </script>
+    <div id="bottomBarContainer">
+        <!-- Fixed Bottom Control Bar -->
+        <div class="container-fluid py-2 fixed-bottom bg-light border-top">
+            <div class="row justify-content-center align-items-center">
+                <div class="col-auto">
+                    <button id="startVideoBtn" class="btn btn-outline-primary btn-sm me-2" data-bs-toggle="modal" data-bs-target="#cameraOverlay">
+                        <i class="fas fa-video me-1"></i> Open Camera
+                    </button>
+                    <button id="showTemperatureGraphBtn" class="btn btn-outline-info btn-sm me-2" data-bs-toggle="modal" data-bs-target="#temperatureGraphOverlay">
+                        <i class="fas fa-chart-line me-1"></i> Temperature Trend
+                    </button>
+                    <button id="startCaptureBtn" class="btn btn-primary btn-sm me-2">
+                        <i class="fas fa-play me-1"></i> Start Data Capture
+                    </button>
+                    <button id="stopCaptureBtn" class="btn btn-danger btn-sm me-2 d-none">
+                        <i class="fas fa-stop me-1"></i> Stop Capture
+                    </button>
+                    <span class="text-muted me-2">
+                        Data: <span id="dataCounter" class="badge bg-secondary">0</span>
+                    </span>
+                    <button id="downloadIconBtn" class="btn btn-outline-success btn-sm d-none" title="Download CSV">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button id="stopVideoBtn" class="btn btn-sm btn-outline-danger me-2 d-none" style="font-size: 0.8rem;">
+                        <i class="fas fa-stop me-1"></i> Stop Stream
+                    </button>
+                    <button id="refreshCameraBtn" class="btn btn-sm btn-outline-primary d-none" style="font-size: 0.8rem;">
+                        <i class="fas fa-sync-alt me-1"></i> Refresh Camera
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    
     <script src="/static/components/bottom-bar.js"></script>
     <script src="/assets/bootstrap.bundle.min.js"></script>
     <script src="/static/overlays.js"></script>

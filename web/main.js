@@ -11,6 +11,9 @@ const CONFIG = {
     DANGER_TEMP: 80
 };
 
+// Initialize bottom bar functionality after loading
+initializeBottomBar();
+
 // Initialize WebSocket connection
 function initWebSocket() {
     try {
