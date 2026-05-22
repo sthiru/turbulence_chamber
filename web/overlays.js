@@ -34,9 +34,7 @@ if (cameraModalElement) {
             cameraModalInstance = new bootstrap.Modal(cameraModalElement);
         }
         // Connect to video stream when modal opens
-        if (typeof startVideoStream === 'function') {
-            startVideoStream();
-        }
+        startVideoStream();
     });
 
     cameraModalElement.addEventListener('hidden.bs.modal', function() {

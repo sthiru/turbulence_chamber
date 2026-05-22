@@ -79,11 +79,6 @@
     
     <!-- Load Bottom Bar Component -->
     <div id="bottomBarContainer"></div>
-
-    <script src="/assets/bootstrap.bundle.min.js"></script>
-    <script src="/static/camera.js"></script>
-    <script src="/static/main.js"></script>
-    <script src="/static/components/bottom-bar.js"></script>
     <script>
         // Load bottom bar component
         fetch('/static/components/bottom-bar.html')
@@ -95,6 +90,10 @@
             })
             .catch(error => console.error('Error loading bottom bar:', error));
     </script>
+    <script src="/static/components/bottom-bar.js"></script>
+    <script src="/assets/bootstrap.bundle.min.js"></script>
     <script src="/static/overlays.js"></script>
+    <script src="/static/camera.js"></script>
+    <script src="/static/main.js"></script>
 </body>
 </html>

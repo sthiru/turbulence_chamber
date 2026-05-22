@@ -12,20 +12,13 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
-from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional
 from functools import lru_cache
 import asyncio
-from fastapi.responses import StreamingResponse
 import json
-import time
 import logging
 from datetime import datetime
 from collections import deque
-import csv
-import io
-import math
-import os
 import cv2
 
 from models import (
@@ -51,20 +44,6 @@ from websocket_manager import ConnectionManager
 from video_stream_manager import VideoStreamManager
 from calibration_websocket_manager import CalibrationConnectionManager
 from arduino_comm import apply_settings_to_arduino
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Constants
-MAX_HISTORY_SIZE = get_configuration("max_history_size", 1000)
-POLLING_INTERVAL = get_configuration("polling_interval", 1.0)
-
-# Global variables for background polling
-background_task = None
-video_streaming_task = None
-last_broadcast_time = 0
-polling_interval = POLLING_INTERVAL  # Current polling interval (can be updated at runtime)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -106,6 +85,29 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Constants
+MAX_HISTORY_SIZE = get_configuration("max_history_size", 1000)
+POLLING_INTERVAL = get_configuration("polling_interval", 1.0)
+
+# Global variables for background polling
+background_task = None
+video_streaming_task = None
+last_broadcast_time = 0
+polling_interval = POLLING_INTERVAL  # Current polling interval (can be updated at runtime)
+
 # Mount static files
 workspace_root = get_workspace_root()
 static_dir = os.path.join(workspace_root, "web")
@@ -117,25 +119,51 @@ assets_dir = os.path.join(workspace_root, "web", "assets")
 if os.path.exists(assets_dir):
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
+# Mount webfonts folder for Font Awesome (inside assets)
+webfonts_dir = os.path.join(workspace_root, "web", "assets", "webfonts")
+if os.path.exists(webfonts_dir):
+    app.mount("/webfonts", StaticFiles(directory=webfonts_dir), name="webfonts")
+
 # Mount camera images directory
 camera_images_dir = os.path.join(workspace_root, "camera_images")
 if os.path.exists(camera_images_dir):
     app.mount("/camera_images", StaticFiles(directory=camera_images_dir), name="camera_images")
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Initialize camera system
+camera_images_folder = os.path.join(workspace_root, "camera_images")
+pfs_file_path = os.path.join(workspace_root, "camera_settings.pfs")  # Default PFS file path
+
+# Check if PFS file exists
+camera_initialized = initialize_camera_system(camera_images_folder, pfs_file_path)
+if camera_initialized:
+    logger.info(f"Camera system initialized successfully")
+else:
+    logger.warning("Camera system initialization failed!")
 
 # WebSocket connection manager
-manager = ConnectionManager()
+ws_connection_manager = ConnectionManager()
 
-# Video streaming connection manager
-video_manager = VideoStreamManager()
+# Video websocket streaming connection manager
+ws_video_manager = VideoStreamManager(camera_images_folder)
+
+# Calibration Callback
+def calibration_status_callback(session):
+    """Callback to broadcast calibration status updates to all WebSocket clients"""
+    # Broadcast directly when session updates
+    asyncio.create_task(ws_calibration_manager.broadcast({
+        "type": "calibration_status",
+        "session": session.model_dump(mode='json'),
+        "progress": session.get_progress(),
+        "estimated_remaining_time": session.get_estimated_remaining_time()
+    }))
+
+# Calibration Webscoket connection manager
+ws_calibration_manager = CalibrationConnectionManager()
+
+# Initialize calibration agent
+calibration_agent = CalibrationAgent(arduino_comm)
+# Set status callback (only set once globally, but safe to set again)
+calibration_agent.set_status_callback(calibration_status_callback)
 
 # Status history storage
 status_history = deque(maxlen=MAX_HISTORY_SIZE)
@@ -147,6 +175,11 @@ status_update_queue = asyncio.Queue()
 data_capture_active = False
 current_capture_session = None
 captured_data_points = []
+# Global variables for background polling
+background_task = None
+video_streaming_task = None
+last_broadcast_time = 0
+polling_interval = POLLING_INTERVAL  # Current polling interval (can be updated at runtime)
 
 def create_capture_folder() -> str:
     """Create a date-based folder for camera images"""
@@ -205,12 +238,6 @@ def capture_and_save_image(capture_folder: str) -> Optional[str]:
         traceback.print_exc()
         return None
 
-# Global variables for background polling
-background_task = None
-video_streaming_task = None
-last_broadcast_time = 0
-polling_interval = POLLING_INTERVAL  # Current polling interval (can be updated at runtime)
-
 # Background polling task
 async def background_status_polling():
     """Background task to poll Arduino for status and broadcast to WebSocket clients"""
@@ -266,7 +293,7 @@ async def background_status_polling():
                         logger.debug(f"Data capture active, session: {current_capture_session['id']}")
                         logger.debug(f"Capture folder: {current_capture_session['folder']}")
                         
-                        image_filename = capture_and_save_image(current_capture_session["folder"])
+                        image_filename = capture_and_save_image(camera_images_folder)
                         
                         if image_filename:
                             logger.info(f"Successfully captured image: {image_filename}")
@@ -315,8 +342,8 @@ async def background_status_polling():
                         append_to_csv(current_capture_session["csv_filepath"], csv_data)
                 
                 # Broadcast to all connected clients
-                if manager.active_connections:
-                    logger.debug(f"Broadcasting data to {len(manager.active_connections)} clients")
+                if ws_connection_manager.active_connections:
+                    logger.debug(f"Broadcasting data to {len(ws_connection_manager.active_connections)} clients")
                     
                     # Get camera status for streaming
                     camera_status = get_camera_status(camera_images_folder)
@@ -334,7 +361,7 @@ async def background_status_polling():
                         "latest_only": True
                     }
                     
-                    await manager.broadcast(json.dumps(current_data_message))
+                    await ws_connection_manager.broadcast(json.dumps(current_data_message))
                     logger.debug("Sent current data to WebSocket clients")
                     
                     # Also send system status only when it changed
@@ -344,7 +371,7 @@ async def background_status_polling():
                         "arduino_port": status_data.get("arduino_port"),
                         "timestamp": status_data.get("timestamp")
                     }
-                    await manager.broadcast(json.dumps({
+                    await ws_connection_manager.broadcast(json.dumps({
                         "type": "system_status",
                         **current_system_status
                     }))
@@ -361,8 +388,8 @@ async def background_status_polling():
                     "timestamp": datetime.now().isoformat()
                 }
                 
-                if manager.active_connections:
-                    await manager.broadcast(json.dumps({
+                if ws_connection_manager.active_connections:
+                    await ws_connection_manager.broadcast(json.dumps({
                         "type": "system_status",
                         **error_status
                     }))
@@ -381,8 +408,8 @@ async def background_status_polling():
                 "timestamp": datetime.now().isoformat()
             }
             
-            if manager.active_connections:
-                await manager.broadcast(json.dumps(error_status))
+            if ws_connection_manager.active_connections:
+                await ws_connection_manager.broadcast(json.dumps(error_status))
         
         # Wait for next polling interval
         await asyncio.sleep(polling_interval)
@@ -395,8 +422,8 @@ async def video_streaming_worker():
     while True:
         try:
             # Check if there are active video streaming clients
-            if video_manager.active_connections:
-                logger.debug(f"Active video clients: {len(video_manager.active_connections)}")
+            if ws_video_manager.active_connections:
+                logger.debug(f"Active video clients: {len(ws_video_manager.active_connections)}")
                 
                 # Get latest frame from camera
                 frame_data = get_latest_video_frame(camera_images_folder)
@@ -413,9 +440,9 @@ async def video_streaming_worker():
                     
                     # Send to each video client
                     clients_to_remove = []
-                    for client_id in list(video_manager.active_connections.keys()):
+                    for client_id in list(ws_video_manager.active_connections.keys()):
                         try:
-                            await video_manager.send_frame(client_id, message, camera_images_folder)
+                            await ws_video_manager.send_frame(client_id, message)
                             logger.debug(f"Sent frame to client {client_id}")
                         except Exception as e:
                             logger.warning(f"Failed to send frame to client {client_id}: {e}")
@@ -423,7 +450,7 @@ async def video_streaming_worker():
                     
                     # Remove disconnected clients
                     for client_id in clients_to_remove:
-                        video_manager.disconnect(client_id, camera_images_folder)
+                        ws_video_manager.disconnect(client_id)
                 else:
                     logger.debug("No video frame available")
                 
@@ -458,15 +485,6 @@ async def root():
         return FileResponse(web_file)
     else:
         raise HTTPException(status_code=404, detail="Main page not found")
-
-@app.get("/video-test", response_class=HTMLResponse)
-async def video_test():
-    """Serve the video test page"""
-    web_file = os.path.join(workspace_root, "web", "video_test.html")
-    if os.path.exists(web_file):
-        return FileResponse(web_file)
-    else:
-        raise HTTPException(status_code=404, detail="Video test page not found")
 
 @app.get("/configuration")
 async def configuration():
@@ -1026,7 +1044,7 @@ async def toggle_data_capture(request: DataCaptureRequest):
             stop_camera_video_stream(camera_images_folder)
             
             # Stop video streaming worker if no other active connections
-            if len(video_manager.active_connections) == 0:
+            if len(ws_video_manager.active_connections) == 0:
                 logger.info("Stopping video streaming worker - no active connections")
                 if video_streaming_task and not video_streaming_task.done():
                     video_streaming_task.cancel()
@@ -1239,7 +1257,7 @@ async def get_history_limit(limit: int):
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time status updates"""
     logger.info("New WebSocket connection attempt...")
-    await manager.connect(websocket)
+    await ws_connection_manager.connect(websocket)
     
     # Send system status immediately for fast footer update
     current_status = {
@@ -1279,7 +1297,7 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.error(f"WebSocket connection error: {e}")
             break
     
-    manager.disconnect(websocket)
+    ws_connection_manager.disconnect(websocket)
 
 @app.websocket("/ws/video/{client_id}")
 async def video_streaming_websocket(websocket: WebSocket, client_id: str):
@@ -1302,7 +1320,7 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
         await websocket.close()
         return
     
-    await video_manager.connect(websocket, client_id, camera_images_folder)
+    await ws_video_manager.connect(websocket, client_id)
     
     # Start video streaming worker if not already running
     if video_streaming_task is None or video_streaming_task.done():
@@ -1389,10 +1407,10 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
             logger.error(f"Error handling video WebSocket message from {client_id}: {e}")
             break
     
-    video_manager.disconnect(client_id, camera_images_folder)
+    ws_video_manager.disconnect(client_id)
     
     # Stop video streaming worker if no active connections and not in data capture
-    if len(video_manager.active_connections) == 0 and not data_capture_active:
+    if len(ws_video_manager.active_connections) == 0 and not data_capture_active:
         logger.info("Stopping video streaming worker - no active connections and not in data capture")
         if video_streaming_task and not video_streaming_task.done():
             video_streaming_task.cancel()
@@ -1402,25 +1420,10 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
                 pass
         video_streaming_task = None
 
-calibration_ws_manager = CalibrationConnectionManager()
-
-def calibration_status_callback(session):
-    """Callback to broadcast calibration status updates to all WebSocket clients"""
-    # Broadcast directly when session updates
-    asyncio.create_task(calibration_ws_manager.broadcast({
-        "type": "calibration_status",
-        "session": session.model_dump(mode='json'),
-        "progress": session.get_progress(),
-        "estimated_remaining_time": session.get_estimated_remaining_time()
-    }))
-
 @app.websocket("/ws/calibration")
 async def calibration_websocket(websocket: WebSocket):
     """WebSocket endpoint for real-time calibration status updates"""
-    await calibration_ws_manager.connect(websocket)
-    
-    # Set status callback (only set once globally, but safe to set again)
-    calibration_agent.set_status_callback(calibration_status_callback)
+    await ws_calibration_manager.connect(websocket)
     
     # Send current status immediately
     session = calibration_agent.get_session_status()
@@ -1441,21 +1444,7 @@ async def calibration_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Calibration WebSocket error: {e}")
     finally:
-        calibration_ws_manager.disconnect(websocket)
-
-# Initialize camera system
-camera_images_folder = os.path.join(workspace_root, "camera_images")
-pfs_file_path = os.path.join(workspace_root, "camera_settings.pfs")  # Default PFS file path
-
-# Initialize calibration agent
-calibration_agent = CalibrationAgent(arduino_comm)
-
-# Check if PFS file exists
-camera_initialized = initialize_camera_system(camera_images_folder, pfs_file_path)
-if camera_initialized:
-    logger.info(f"Camera system initialized successfully")
-else:
-    logger.warning("Camera system initialization failed - will run in simulation mode")
+        ws_calibration_manager.disconnect(websocket)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

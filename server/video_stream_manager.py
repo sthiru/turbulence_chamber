@@ -11,10 +11,11 @@ logger = logging.getLogger(__name__)
 class VideoStreamManager:
     """Manages WebSocket connections for video streaming"""
     
-    def __init__(self):
+    def __init__(self, camera_images_folder: str):
+        self.camera_images_folder = camera_images_folder
         self.active_connections: Dict[str, WebSocket] = {}
 
-    async def connect(self, websocket: WebSocket, client_id: str, camera_images_folder: str):
+    async def connect(self, websocket: WebSocket, client_id: str):
         """Accept and store new video stream connection"""
         await websocket.accept()
         self.active_connections[client_id] = websocket
@@ -22,9 +23,9 @@ class VideoStreamManager:
         
         # Add client to camera streaming
         from camera_acquisition import add_video_streaming_client
-        add_video_streaming_client(client_id, camera_images_folder)
+        add_video_streaming_client(client_id, self.camera_images_folder)
 
-    def disconnect(self, client_id: str, camera_images_folder: str):
+    def disconnect(self, client_id: str):
         """Remove video stream connection"""
         if client_id in self.active_connections:
             del self.active_connections[client_id]
@@ -32,9 +33,9 @@ class VideoStreamManager:
             
             # Remove client from camera streaming
             from camera_acquisition import remove_video_streaming_client
-            remove_video_streaming_client(client_id, camera_images_folder)
+            remove_video_streaming_client(client_id, self.camera_images_folder)
 
-    async def send_frame(self, client_id: str, frame_data: str, camera_images_folder: str):
+    async def send_frame(self, client_id: str, frame_data: str):
         """Send video frame to specific client"""
         if client_id in self.active_connections:
             try:
@@ -42,4 +43,4 @@ class VideoStreamManager:
             except Exception as e:
                 logger.warning(f"Failed to send video frame to client {client_id}: {e}")
                 # Remove disconnected client
-                self.disconnect(client_id, camera_images_folder)
+                self.disconnect(client_id)

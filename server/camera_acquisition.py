@@ -24,8 +24,8 @@ try:
     PYLON_AVAILABLE = True
     # Debug: Print Pylon version info
     try:
-        print(f"Pylon version: {pylon.pylon.Version}")
-        print(f"Pylon build: {pylon.pylon.Build}")
+        print(f"Pylon version: {pylon.PYLON_VERSIONSTRING_BUILD}")
+        print(f"Pylon git sha: {pylon.PYLON_VERSIONSTRING_GITHASH}")
     except:
         print("Could not get Pylon version info")
 except ImportError:
@@ -187,9 +187,8 @@ class BaslerCamera:
         try:
             if not PYLON_AVAILABLE:
                 logger.warning("Pylon SDK not available - using simulation mode")
-                self.is_initialized = True
-                return True
-                           
+                return False
+                    
             # Create an instant camera object
             tlFactory = pylon.TlFactory.GetInstance()
 
@@ -199,13 +198,12 @@ class BaslerCamera:
             # Try to force GigE transport layer
 
             if len(devices) == 0:
-                # Try alternative enumeration methods
+                # Disable camera stream
                 logger.error("No Basler cameras found")
-                #return False
+                return False
                 
             # Create camera object
             self.camera = pylon.InstantCamera(tlFactory.CreateFirstDevice())
-            
             # Open camera
             self.camera.Open()
             
@@ -400,13 +398,12 @@ class BaslerCamera:
             str: Filename of saved image, or None if failed
         """
         try:
-            logger.info(f"Attempting to capture image - Initialized: {self.is_initialized}, Connected: {self.is_connected}")
             timestamp = datetime.now()
             image = self.capture_image()
             
             if image is not None:
                 filename = self.save_image(image, timestamp)
-                logger.info(f"Image captured and saved: {filename}")
+                logger.debug(f"Image captured and saved: {filename}")
                 return filename
             else:
                 logger.warning("Failed to capture image - capture_image returned None")
