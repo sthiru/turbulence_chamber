@@ -18,6 +18,8 @@ import base64
 from io import BytesIO
 from PIL import Image
 
+from server.utils import get_workspace_root
+
 # Try to import pylon, provide fallback if not available
 try:
     from pypylon import pylon
@@ -234,6 +236,8 @@ class BaslerCamera:
                 
             # Create camera object
             self.camera = pylon.InstantCamera(tlFactory.CreateFirstDevice())
+            workspace_root = get_workspace_root()
+            self.load_pfs_settings(os.path.join(workspace_root, "camera_settings.pfs"))
             # Open camera
             self.camera.Open()
             
@@ -326,16 +330,6 @@ class BaslerCamera:
             if not self.is_connected:
                 if not self.connect_camera():
                     return None
-                    
-            if not PYLON_AVAILABLE:
-                # Simulate image capture for testing
-                logger.debug("Simulating camera capture")
-                # Create a random grayscale image
-                simulated_image = np.random.randint(0, 255, (480, 640), dtype=np.uint8)
-                # Add some structure to make it look more realistic
-                cv2.circle(simulated_image, (320, 240), 50, 200, -1)
-                cv2.rectangle(simulated_image, (200, 150), (440, 330), 150, -1)
-                return simulated_image
                 
             # Check if camera object is valid
             if not self.camera or not hasattr(self.camera, 'RetrieveResult'):
