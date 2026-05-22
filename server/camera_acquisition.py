@@ -381,13 +381,14 @@ class BaslerCamera:
             except:
                 return None
     
-    def save_image(self, image: np.ndarray, timestamp: Optional[datetime] = None) -> Optional[str]:
+    def save_image(self, image: np.ndarray, timestamp: Optional[datetime] = None, folder: Optional[str] = None) -> Optional[str]:
         """
         Save captured image to file
         
         Args:
             image: Image to save (numpy array)
             timestamp: Timestamp for filename (defaults to current time)
+            folder: Optional folder to save to (defaults to self.camera_images_folder)
             
         Returns:
             str: Filename of saved image, or None if failed
@@ -398,7 +399,8 @@ class BaslerCamera:
                 
             # Generate filename with timestamp
             filename = f"camera_{timestamp.strftime('%Y%m%d_%H%M%S_%f')[:-3]}.png"
-            filepath = os.path.join(self.camera_images_folder, filename)
+            save_folder = folder or self.camera_images_folder
+            filepath = os.path.join(save_folder, filename)
             
             # Save image
             success = cv2.imwrite(filepath, image)
@@ -414,9 +416,12 @@ class BaslerCamera:
             logger.error(f"Error saving image: {e}")
             return None
     
-    def capture_and_save(self) -> Optional[str]:
+    def capture_and_save(self, folder: Optional[str] = None) -> Optional[str]:
         """
         Capture and save an image in one operation
+        
+        Args:
+            folder: Optional folder to save to (defaults to self.camera_images_folder)
         
         Returns:
             str: Filename of saved image, or None if failed
@@ -426,7 +431,7 @@ class BaslerCamera:
             image = self.capture_image()
             
             if image is not None:
-                filename = self.save_image(image, timestamp)
+                filename = self.save_image(image, timestamp, folder)
                 logger.debug(f"Image captured and saved: {filename}")
                 return filename
             else:

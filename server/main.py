@@ -192,45 +192,6 @@ def create_capture_folder() -> str:
         logger.error(f"Failed to create capture folder: {e}")
         return os.path.join(workspace_root, "camera_images")  # Fallback to base folder
 
-def capture_and_save_image(capture_folder: str) -> Optional[str]:
-    """Capture and save a camera image with timestamp"""
-    try:
-        logger.debug(f"Attempting to capture and save image to: {capture_folder}")
-        
-        # Get camera instance
-        camera = get_camera_instance(camera_images_folder)
-        
-        # Capture image with the correct folder path
-        image = camera.capture_image()
-        
-        if image is not None:
-            logger.debug(f"Image captured successfully, shape: {image.shape}")
-            
-            # Generate filename with timestamp
-            timestamp = datetime.now()
-            filename = f"camera_{timestamp.strftime('%Y%m%d_%H%M%S_%f')[:-3]}.png"
-            filepath = os.path.join(capture_folder, filename)
-            
-            logger.debug(f"Saving image to: {filepath}")
-            
-            # Save image to the session-specific folder
-            success = cv2.imwrite(filepath, image)
-            
-            if success:
-                logger.info(f"Image saved successfully: {filepath}")
-                return filename
-            else:
-                logger.error(f"Failed to save image: {filepath}")
-                return None
-        else:
-            logger.warning("Failed to capture image - capture_image returned None")
-            return None
-            
-    except Exception as e:
-        logger.error(f"Error capturing and saving image: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
 
 # Background polling task
 async def background_status_polling():
@@ -278,7 +239,7 @@ async def background_status_polling():
                         try:
                             logger.debug(f"Data capture active, session: {current_capture_session['id']}")
                             logger.debug(f"Capture folder: {current_capture_session['folder']}")
-                            image_filename = capture_and_save_image(camera_images_folder)
+                            image_filename = camera.capture_and_save(current_capture_session['image_folder'])
                             
                             if image_filename:
                                 # Add image filename to status data
@@ -972,10 +933,12 @@ async def toggle_data_capture(request: DataCaptureRequest):
                         
             # Create new capture session
             capture_folder = get_calibration_data_folder()
+            image_capture_folder = create_capture_folder()
             current_capture_session = {
                 "id": request.capture_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 "start_time": datetime.now().isoformat(),
                 "folder": capture_folder,
+                "image_folder": image_capture_folder,
                 "data_points": []
             }
             
