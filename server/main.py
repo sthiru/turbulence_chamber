@@ -40,9 +40,9 @@ from calibration.models import CalibrationRequest, CalibrationControl
 from calibration.config import CalibrationConfig
 from csv_utils import init_csv_file, append_to_csv
 from utils import load_configuration, get_configuration, set_configuration, get_workspace_root, get_calibration_data_folder
-from websocket_manager import ConnectionManager
-from video_stream_manager import VideoStreamManager
-from calibration_websocket_manager import CalibrationConnectionManager
+from ws_connection_manager import ConnectionManager
+from ws_video_stream_manager import VideoStreamManager
+from ws_calibration_manager import CalibrationConnectionManager
 from arduino_comm import apply_settings_to_arduino
 
 @asynccontextmanager
