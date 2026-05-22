@@ -35,15 +35,30 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class BaslerCamera:
-    """GigE Basler camera acquisition using Pylon SDK"""
+    """GigE Basler camera acquisition using Pylon SDK (Singleton)"""
+    
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls, camera_images_folder: str = "camera_images"):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
     
     def __init__(self, camera_images_folder: str = "camera_images"):
         """
-        Initialize camera acquisition
+        Initialize camera acquisition (singleton)
         
         Args:
             camera_images_folder: Directory to save captured images
         """
+        # Only initialize once
+        if self._initialized:
+            return
+            
         self.camera_images_folder = camera_images_folder
         self.camera = None
         self.is_initialized = False
@@ -63,6 +78,21 @@ class BaslerCamera:
         
         # Camera info
         self.camera_info = {}
+        
+        self._initialized = True
+    
+    @classmethod
+    def get_instance(cls, camera_images_folder: str = "camera_images") -> 'BaslerCamera':
+        """Get or create the singleton camera instance"""
+        return cls(camera_images_folder)
+    
+    @classmethod
+    def reset_instance(cls):
+        """Reset the singleton instance (for testing)"""
+        with cls._lock:
+            if cls._instance:
+                cls._instance.cleanup()
+            cls._instance = None
         
     def load_pfs_settings(self, pfs_file_path: str) -> bool:
         """
@@ -605,233 +635,3 @@ class BaslerCamera:
             
         except Exception as e:
             logger.error(f"Error during camera cleanup: {e}")
-
-# Global camera instance
-camera_instance = None
-
-def get_camera_instance(camera_images_folder: str = "camera_images") -> BaslerCamera:
-    """Get or create global camera instance"""
-    global camera_instance
-    if camera_instance is None:
-        camera_instance = BaslerCamera(camera_images_folder)
-        if(camera_instance.initialize_camera()):
-            return camera_instance
-        else:
-            return None
-    return camera_instance
-
-def initialize_camera_system(camera_images_folder: str = "camera_images", pfs_file_path: Optional[str] = None) -> bool:
-    """Initialize the camera system with optional PFS settings
-    
-    Args:
-        camera_images_folder: Directory to save captured images
-        pfs_file_path: Optional path to PFS file for camera settings
-        
-    Returns:
-        bool: True if initialization successful, False otherwise
-    """
-    camera = get_camera_instance(camera_images_folder)
-    
-    # Load PFS settings if provided
-    if pfs_file_path and camera:
-        logger.info(f"Initializing camera system with PFS file: {pfs_file_path}")
-        if not camera.load_pfs_settings(pfs_file_path):
-            logger.warning("Failed to load PFS settings, proceeding with defaults")    
-        return True
-    return False
-
-def load_camera_pfs_settings(pfs_file_path: str, camera_images_folder: str = "camera_images") -> bool:
-    """Load PFS settings for camera
-    
-    Args:
-        pfs_file_path: Path to the PFS file
-        camera_images_folder: Directory to save captured images
-        
-    Returns:
-        bool: True if settings loaded successfully, False otherwise
-    """
-    camera = get_camera_instance(camera_images_folder)
-    return camera.load_pfs_settings(pfs_file_path)
-
-def capture_camera_image(camera_images_folder: str = "camera_images") -> Optional[str]:
-    """Capture and save an image"""
-    camera = get_camera_instance(camera_images_folder)
-    return camera.capture_and_save()
-
-def get_camera_status(camera_images_folder: str = "camera_images") -> dict:
-    """Get camera system status"""
-    camera = get_camera_instance(camera_images_folder)
-    return camera.get_camera_status()
-
-def diagnose_camera_connection():
-    """Diagnose camera connection issues"""
-    logger.info("=== Camera Connection Diagnosis ===")
-    
-    if not PYLON_AVAILABLE:
-        logger.error("Pylon SDK not available - install pypylon package")
-        return False
-    
-    try:
-        tlFactory = pylon.TlFactory.GetInstance()
-        
-        # Check transport layers
-        logger.info("Available transport layers:")
-        gige_found = False
-        for tl in tlFactory.EnumerateTls():
-            tl_name = tl.GetFriendlyName() if tl.IsFriendlyNameAvailable() else "Unknown"
-            tl_type = tl.GetTLType() if tl.IsTLTypeAvailable() else "Unknown"
-            logger.info(f"  - {tl_name} ({tl_type})")
-            if "GigE" in tl_name or "GigE" in tl_type:
-                gige_found = True
-        
-        if not gige_found:
-            logger.error("GigE transport layer not found - check Pylon installation")
-            return False
-        
-        # Enumerate devices
-        devices = tlFactory.EnumerateDevices()
-        logger.info(f"Found {len(devices)} Basler devices")
-        
-        if len(devices) == 0:
-            logger.warning("=== TROUBLESHOOTING STEPS ===")
-            logger.warning("1. Check if camera is powered on and connected")
-            logger.warning("2. Verify network cable connection")
-            logger.warning("3. Check camera IP configuration")
-            logger.warning("4. Ensure camera and PC are on same network subnet")
-            logger.warning("5. Check Windows Firewall settings")
-            logger.warning("6. Verify Basler GigE Vision Filter Driver is installed")
-            logger.warning("7. Try restarting Basler Service")
-            logger.warning("8. Check if camera IP is in the same range as PC")
-            
-            # Try to get network interface info
-            try:
-                import socket
-                hostname = socket.gethostname()
-                local_ip = socket.gethostbyname(hostname)
-                logger.info(f"PC IP Address: {local_ip}")
-                logger.info("Camera should be in the same subnet (e.g., 169.254.x.x for link-local)")
-            except:
-                pass
-            
-            return False
-        else:
-            logger.info("=== CAMERA FOUND ===")
-            for device in devices:
-                logger.info(f"Device: {device.GetModelName()}")
-                logger.info(f"  Serial: {device.GetSerialNumber()}")
-                logger.info(f"  Friendly Name: {device.GetFriendlyName()}")
-                logger.info(f"  Device Class: {device.GetDeviceClass()}")
-            return True
-        
-    except Exception as e:
-        logger.error(f"Diagnosis failed: {e}")
-        return False
-
-def cleanup_camera_system():
-    """Cleanup camera system"""
-    global camera_instance
-    if camera_instance:
-        camera_instance.cleanup()
-        camera_instance = None
-
-def start_camera_video_stream(camera_images_folder: str = "camera_images") -> bool:
-    """Start video streaming from camera
-    
-    Args:
-        camera_images_folder: Folder path for camera operations
-        
-    Returns:
-        bool: True if streaming started successfully, False otherwise
-    """
-    global camera_instance
-    
-    try:
-        # Get camera instance (will use simulation if real camera fails)
-        camera = get_camera_instance(camera_images_folder)
-        
-        if not camera:
-            logger.error("Failed to get camera instance for video streaming")
-            return False
-        
-        # Start video streaming on the camera
-        success = camera.start_video_stream()
-        
-        if success:
-            logger.info("Camera video streaming started successfully")
-            return True
-        else:
-            logger.error("Failed to start camera video streaming")
-            return False
-            
-    except Exception as e:
-        logger.error(f"Error starting camera video stream: {e}")
-        return False
-
-def stop_camera_video_stream(camera_images_folder: str = "camera_images"):
-    """Stop video streaming from camera
-    
-    Args:
-        camera_images_folder: Directory for camera operations
-    """
-    camera = get_camera_instance(camera_images_folder)
-    camera.stop_video_stream()
-
-def get_latest_video_frame(camera_images_folder: str = "camera_images") -> Optional[str]:
-    """Get latest frame from video stream
-    
-    Args:
-        camera_images_folder: Directory for camera operations
-        
-    Returns:
-        str: Base64 encoded JPEG frame, or None if no frame available
-    """
-    try:
-        camera = get_camera_instance(camera_images_folder)
-        
-        # Check if streaming is active
-        if not camera.is_streaming:
-            logger.warning("Video streaming is not active, attempting to start...")
-            camera.start_video_stream()
-        
-        frame = camera.get_latest_frame()
-        if frame:
-            logger.debug(f"Got video frame, length: {len(frame)}")
-        else:
-            logger.debug("No video frame available")
-        
-        return frame
-    except Exception as e:
-        logger.error(f"Error getting latest video frame: {e}")
-        return None
-
-def get_camera_streaming_status(camera_images_folder: str = "camera_images") -> dict:
-    """Get camera streaming status
-    
-    Args:
-        camera_images_folder: Directory for camera operations
-        
-    Returns:
-        dict: Streaming status information
-    """
-    camera = get_camera_instance(camera_images_folder)
-    return camera.get_streaming_status()
-
-def add_video_streaming_client(client_id: str, camera_images_folder: str = "camera_images"):
-    """Add a client to the video streaming
-    
-    Args:
-        client_id: Unique identifier for the client
-        camera_images_folder: Directory for camera operations
-    """
-    camera = get_camera_instance(camera_images_folder)
-    camera.add_streaming_client(client_id)
-
-def remove_video_streaming_client(client_id: str, camera_images_folder: str = "camera_images"):
-    """Remove a client from the video streaming
-    
-    Args:
-        client_id: Unique identifier for the client
-        camera_images_folder: Directory for camera operations
-    """
-    camera = get_camera_instance(camera_images_folder)
-    camera.remove_streaming_client(client_id)

@@ -27,12 +27,7 @@ from models import (
     ReconnectRequest, HotPlateToggleRequest, DataCaptureRequest, DataPointWithImage
 )
 from arduino_comm import arduino_comm
-from camera_acquisition import (
-    initialize_camera_system, capture_camera_image, get_camera_status, cleanup_camera_system,
-    start_camera_video_stream, stop_camera_video_stream, get_latest_video_frame,
-    get_camera_streaming_status, add_video_streaming_client, remove_video_streaming_client,
-    diagnose_camera_connection, get_camera_instance
-)
+from camera_acquisition import BaslerCamera, PYLON_AVAILABLE
 from cn2.cn2_optical import calculate_cn2_optical, get_cn2_status
 from cn2.cn2_thermal import calculate_cn2
 from calibration.calibration_agent import CalibrationAgent
@@ -133,18 +128,17 @@ if os.path.exists(camera_images_dir):
 camera_images_folder = os.path.join(workspace_root, "camera_images")
 pfs_file_path = os.path.join(workspace_root, "camera_settings.pfs")  # Default PFS file path
 
-# Check if PFS file exists
-camera_initialized = initialize_camera_system(camera_images_folder, pfs_file_path)
-if camera_initialized:
-    logger.info(f"Camera system initialized successfully")
-else:
-    logger.warning("Camera system initialization failed!")
+# Initialize camera (singleton)
+camera = BaslerCamera.get_instance(camera_images_folder)
+if pfs_file_path and os.path.exists(pfs_file_path):
+    camera.load_pfs_settings(pfs_file_path)
+camera.initialize_camera()
 
 # WebSocket connection manager
 ws_connection_manager = ConnectionManager()
 
 # Video websocket streaming connection manager
-ws_video_manager = VideoStreamManager(camera_images_folder)
+ws_video_manager = VideoStreamManager(camera)
 
 # Calibration Callback
 def calibration_status_callback(session):
@@ -346,7 +340,7 @@ async def background_status_polling():
                     logger.debug(f"Broadcasting data to {len(ws_connection_manager.active_connections)} clients")
                     
                     # Get camera status for streaming
-                    camera_status = get_camera_status(camera_images_folder)
+                    camera_status = camera.get_camera_status()
                     
                     # Always send current data as current_data message
                     current_data_message = {
@@ -426,7 +420,7 @@ async def video_streaming_worker():
                 logger.debug(f"Active video clients: {len(ws_video_manager.active_connections)}")
                 
                 # Get latest frame from camera
-                frame_data = get_latest_video_frame(camera_images_folder)
+                frame_data = camera.get_latest_video_frame()
                 
                 if frame_data:
                     logger.debug(f"Got video frame, length: {len(frame_data)}")
@@ -604,7 +598,7 @@ async def apply_settings():
 async def get_camera_status_endpoint():
     """Get camera system status"""
     try:
-        return get_camera_status(camera_images_folder)
+        return camera.get_camera_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -642,7 +636,7 @@ async def start_video_stream():
     """Start video streaming from camera"""
     try:
         # Check camera status before starting video streaming
-        camera_status = get_camera_status(camera_images_folder)
+        camera_status = camera.get_camera_status()
         camera_available = camera_status.get("initialized", False)
         
         if not camera_available:
@@ -651,7 +645,7 @@ async def start_video_stream():
                 "message": "Camera not connected or not available"
             }
         
-        success = start_camera_video_stream(camera_images_folder)
+        success = camera.start_video_stream()
         if success:
             return {
                 "status": "success",
@@ -669,7 +663,7 @@ async def start_video_stream():
 async def stop_video_stream():
     """Stop video streaming from camera"""
     try:
-        stop_camera_video_stream(camera_images_folder)
+        camera.stop_video_stream()
         return {
             "status": "success",
             "message": "Video streaming stopped successfully"
@@ -681,7 +675,7 @@ async def stop_video_stream():
 async def get_video_stream_status():
     """Get video streaming status"""
     try:
-        return get_camera_streaming_status(camera_images_folder)
+        return camera.get_streaming_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -689,8 +683,23 @@ async def get_video_stream_status():
 async def diagnose_camera():
     """Diagnose camera connection issues"""
     try:
-        success = diagnose_camera_connection()
-        camera_status = get_camera_status(camera_images_folder)
+        # Run diagnosis
+        if not PYLON_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Pylon SDK not available",
+                "camera_connected": False
+            }
+        
+        try:
+            from pypylon import pylon
+            tlFactory = pylon.TlFactory.GetInstance()
+            devices = tlFactory.EnumerateDevices()
+            success = len(devices) > 0
+        except Exception as e:
+            success = False
+        
+        camera_status = camera.get_camera_status()
         camera_connected = camera_status.get("connected", False) if camera_status else False
         
         return {
@@ -988,7 +997,7 @@ async def toggle_data_capture(request: DataCaptureRequest):
     
     try:
         # Check camera availability
-        camera_status = get_camera_status()
+        camera_status = camera.get_camera_status()
         camera_available = camera_status.get("initialized", False)
         
         if request.start:
@@ -1041,7 +1050,7 @@ async def toggle_data_capture(request: DataCaptureRequest):
             captured_data_points = []
             
             # Stop camera video streaming
-            stop_camera_video_stream(camera_images_folder)
+            camera.stop_video_stream()
             
             # Stop video streaming worker if no other active connections
             if len(ws_video_manager.active_connections) == 0:
@@ -1306,7 +1315,7 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
     logger.info(f"New video streaming connection attempt from client: {client_id}")
     
     # Check camera status before accepting connection
-    camera_status = get_camera_status(camera_images_folder)
+    camera_status = camera.get_camera_status()
     camera_available = camera_status.get("initialized", False)
     
     if not camera_available:
@@ -1328,13 +1337,13 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
         logger.info("Video streaming worker started for camera overlay view")
     
     # Ensure video streaming is started
-    streaming_status = get_camera_streaming_status(camera_images_folder)
+    streaming_status = camera.get_streaming_status()
     if not streaming_status.get("is_streaming", False):
         logger.info("Starting video streaming for new client connection")
-        start_camera_video_stream(camera_images_folder)
+        camera.start_video_stream()
         # Wait a moment for streaming to start
         await asyncio.sleep(1.0)
-        streaming_status = get_camera_streaming_status(camera_images_folder)
+        streaming_status = camera.get_streaming_status()
     
     # Send initial status
     await websocket.send_text(json.dumps({
@@ -1359,7 +1368,7 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
                 elif data.get("type") == "start_stream":
                     # Start video streaming if not already active
                     if not streaming_status.get("is_streaming", False):
-                        success = start_camera_video_stream(camera_images_folder)
+                        success = camera.start_video_stream()
                         await websocket.send_text(json.dumps({
                             "type": "stream_response",
                             "action": "start",
@@ -1369,7 +1378,7 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
                         }))
                 elif data.get("type") == "stop_stream":
                     # Stop video streaming
-                    stop_camera_video_stream(camera_images_folder)
+                    camera.stop_video_stream()
                     await websocket.send_text(json.dumps({
                         "type": "stream_response",
                         "action": "stop",
@@ -1379,7 +1388,7 @@ async def video_streaming_websocket(websocket: WebSocket, client_id: str):
                     }))
                 elif data.get("type") == "test_frame":
                     # Send a test frame
-                    test_frame = get_latest_video_frame(camera_images_folder)
+                    test_frame = camera.get_latest_video_frame()
                     if test_frame:
                         await websocket.send_text(json.dumps({
                             "type": "video_frame",

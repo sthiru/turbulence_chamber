@@ -11,8 +11,14 @@ logger = logging.getLogger(__name__)
 class VideoStreamManager:
     """Manages WebSocket connections for video streaming"""
     
-    def __init__(self, camera_images_folder: str):
-        self.camera_images_folder = camera_images_folder
+    def __init__(self, camera):
+        """
+        Initialize video stream manager
+        
+        Args:
+            camera: BaslerCamera instance for accessing camera
+        """
+        self.camera = camera
         self.active_connections: Dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket, client_id: str):
@@ -22,8 +28,7 @@ class VideoStreamManager:
         logger.info(f"Video stream client connected: {client_id}. Total video connections: {len(self.active_connections)}")
         
         # Add client to camera streaming
-        from camera_acquisition import add_video_streaming_client
-        add_video_streaming_client(client_id, self.camera_images_folder)
+        self.camera.add_streaming_client(client_id)
 
     def disconnect(self, client_id: str):
         """Remove video stream connection"""
@@ -32,8 +37,7 @@ class VideoStreamManager:
             logger.info(f"Video stream client disconnected: {client_id}. Total video connections: {len(self.active_connections)}")
             
             # Remove client from camera streaming
-            from camera_acquisition import remove_video_streaming_client
-            remove_video_streaming_client(client_id, self.camera_images_folder)
+            self.camera.remove_streaming_client(client_id)
 
     async def send_frame(self, client_id: str, frame_data: str):
         """Send video frame to specific client"""
