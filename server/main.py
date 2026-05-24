@@ -242,17 +242,16 @@ async def background_status_polling():
                                         "centroid_y": status_data["centroid_y"]
                                     })
                                     
-                                    # Calculate optical CN² from stored centroids
-                                    cn2_optical = cn2_calculator.calculate_cn2_from_centroids(centroid_history)
-                                    status_data["cn2_optical"] = cn2_optical
+                                    # Calculate optical CN² from stored centroids only when 30+ data points available
+                                    if len(centroid_history) >= 30:
+                                        cn2_optical = cn2_calculator.calculate_cn2_from_centroids(centroid_history)
+                                        status_data["cn2_optical"] = cn2_optical
+                                    else:
+                                        status_data["cn2_optical"] = None
                                 except Exception as e:
                                     logger.warning(f"Error calculating beam centroid or optical CN²: {e}")
-                                    status_data["centroid_x"] = None
-                                    status_data["centroid_y"] = None
                             else:
                                 logger.warning("Image capture returned None")
-                                status_data["centroid_x"] = None
-                                status_data["centroid_y"] = None
                         except Exception as e:
                             logger.warning(f"Failed to capture image during data capture: {e}")
                             import traceback
@@ -848,7 +847,7 @@ async def get_calibration_data(session_id: str = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/data-capture")
-async def toggle_data_capture(request: DataCaptureRequest):
+async def toggle_data_capture(request: DataCaptureRequest, acquisition_type: str = "data"):
     """Start or stop data capture with camera images"""
     global data_capture_active, current_capture_session, captured_data_points, video_streaming_task, cn2_calculator, centroid_history
     
@@ -862,14 +861,20 @@ async def toggle_data_capture(request: DataCaptureRequest):
             if data_capture_active:
                 return {"status": "error", "message": "Data capture already active"}
                         
-            # Create new capture session
+            # Create new capture session with acquisition_type-specific folder
             capture_folder = get_calibration_data_folder()
+            
+            # Create subfolder based on acquisition_type
+            acquisition_folder = os.path.join(capture_folder, acquisition_type)
+            os.makedirs(acquisition_folder, exist_ok=True)
+            
             image_capture_folder = create_capture_folder()
             current_capture_session = {
                 "id": request.capture_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 "start_time": datetime.now().isoformat(),
-                "folder": capture_folder,
+                "folder": acquisition_folder,
                 "image_folder": image_capture_folder,
+                "acquisition_type": acquisition_type,
                 "data_points": []
             }
             cn2_calculator = CN2OpticalCalculator(current_capture_session['image_folder'])
@@ -877,8 +882,9 @@ async def toggle_data_capture(request: DataCaptureRequest):
             # Clear centroid history for new session
             centroid_history.clear()
             
-            # Initialize CSV file for data capture
-            csv_filepath = init_csv_file(capture_folder, f"turbulance_data{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            # Initialize CSV file for data capture with acquisition_type in filename
+            csv_filename = f"{acquisition_type}_data{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            csv_filepath = init_csv_file(acquisition_folder, csv_filename)
             if csv_filepath:
                 current_capture_session["csv_filepath"] = csv_filepath
             else:

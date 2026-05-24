@@ -417,7 +417,7 @@ startBtn.addEventListener('click', async () => {
         
         // Start data capture before starting calibration
         if (typeof startDataCapture === 'function') {
-            await startDataCapture();
+            await startDataCapture('windflow_calibration');
             addLog('Data capture started', 'success');
         }
         
@@ -497,7 +497,7 @@ hotplateStartBtn.addEventListener('click', async () => {
         
         // Start data capture before starting calibration
         if (typeof startDataCapture === 'function') {
-            await startDataCapture();
+            await startDataCapture('pid_calibration');
             addLog('Data capture started', 'success');
         }
         

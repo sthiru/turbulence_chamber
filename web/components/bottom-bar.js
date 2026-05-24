@@ -67,11 +67,11 @@ async function checkCaptureStatus() {
 }
 
 // Start data capture
-async function startDataCapture() {
+async function startDataCapture(acquisitionType = 'data') {
     userActionInProgress = true;
     
     try {
-        const response = await fetch('/api/data-capture', {
+        const response = await fetch(`/api/data-capture?acquisition_type=${acquisitionType}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
