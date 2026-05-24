@@ -4,7 +4,7 @@ Server utility functions for configuration and path management
 import os
 import json
 import logging
-import datetime
+from datetime import datetime
 import cv2
 from typing import Optional, Tuple
 import numpy as np
