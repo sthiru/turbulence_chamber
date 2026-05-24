@@ -1,0 +1,27 @@
+{
+  "session_id": "windflow_calib_20260522_221600",
+  "start_time": "2026-05-22T22:16:00.346184",
+  "end_time": "2026-05-22T22:16:01.769470",
+  "status": "failed",
+  "total_steps": 49,
+  "current_step": 1,
+  "config": {
+    "fan_speed_step": 5,
+    "settling_time_ms": 1000,
+    "num_samples": 3
+  },
+  "steps": [],
+  "lookup_table": null,
+  "current_fan_id": null,
+  "current_fan_speed": 15,
+  "current_temperature": null,
+  "phase": null,
+  "phase_details": null,
+  "current_flow_rates": [],
+  "total_speed_steps": 196,
+  "current_speed_step": 1,
+  "total_data_points": 0,
+  "captured_data_points": 0,
+  "notes": "Fan-to-Windflow calibration with 5 PWM step (parallel execution)",
+  "error_message": "'CalibrationAgent' object has no attribute '_capture_sensor_data'"
+}
