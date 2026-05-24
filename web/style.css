@@ -157,3 +157,79 @@ header {
     50% { opacity: 0.5; }
     100% { opacity: 1; }
 }
+
+/* Calibration Page Styles */
+.calibration-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.progress-section {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.status-badge {
+    font-size: 1.2em;
+    padding: 10px 20px;
+}
+
+.control-section {
+    background: white;
+    border-radius: 10px;
+    padding: 25px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.calibration-log {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border-radius: 5px;
+    padding: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+.log-entry {
+    margin: 5px 0;
+    padding: 2px 0;
+}
+
+.log-info { color: #4ec9b0; }
+.log-warning { color: #dcdcaa; }
+.log-error { color: #f14c4c; }
+.log-success { color: #6a9955; }
+
+/* Connection Status Styles */
+.connection-status {
+    position: fixed !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    top: auto !important;
+    padding: 10px 20px;
+    border-radius: 25px;
+    font-weight: 600;
+    z-index: 1000;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.connection-status.connected {
+    background: #28a745;
+    color: white;
+}
+
+.connection-status.disconnected {
+    background: #dc3545;
+    color: white;
+}
+
+.connection-status.connecting {
+    background: #ffc107;
+    color: #333;
+}
+

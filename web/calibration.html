@@ -6,73 +6,8 @@
     <title>Chamber Calibration - Turbulence Controller</title>
     <link href="/assets/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/assets/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
     <script src="/assets/chart.umd.min.js"></script>
-    <style>
-        .calibration-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .progress-section {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .status-badge {
-            font-size: 1.2em;
-            padding: 10px 20px;
-        }
-        .control-section {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .calibration-log {
-            background: #1e1e1e;
-            color: #d4d4d4;
-            border-radius: 5px;
-            padding: 15px;
-            max-height: 300px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-        }
-        .log-entry {
-            margin: 5px 0;
-            padding: 2px 0;
-        }
-        .log-info { color: #4ec9b0; }
-        .log-warning { color: #dcdcaa; }
-        .log-error { color: #f14c4c; }
-        .log-success { color: #6a9955; }
-        
-        /* Connection Status Styles */
-        .connection-status {
-            position: fixed !important;
-            bottom: 20px !important;
-            right: 20px !important;
-            top: auto !important;
-            padding: 10px 20px;
-            border-radius: 25px;
-            font-weight: 600;
-            z-index: 1000;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        .connection-status.connected {
-            background: #28a745;
-            color: white;
-        }
-        .connection-status.disconnected {
-            background: #dc3545;
-            color: white;
-        }
-        .connection-status.connecting {
-            background: #ffc107;
-            color: #333;
-        }
-    </style>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -119,7 +54,7 @@
         <!-- Tab Content -->
         <div class="tab-content" id="calibrationTabContent">
 
-        <!-- PID Calibration Tab -->
+        <!-- Start PID Calibration Tab -->
         <div class="tab-pane fade show active" id="pid" role="tabpanel">
             <h5 class="mb-3">PID Parameter Calibration</h5>
             <p class="text-muted mb-4">
@@ -142,12 +77,12 @@
 
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-success btn-lg" id="startPidCalibration">
-                        <i class="fas fa-play me-2"></i>Start Calibration
+                        <i class="fas fa-play me-2"></i>Start PID Calibration
                     </button>
                     <button type="button" class="btn btn-danger btn-lg" id="stopPidCalibration" disabled>
                         <i class="fas fa-stop me-2"></i>Stop
                     </button>
-                    <button type="button" class="btn btn-outline-primary btn-lg" id="downloadPidCalibration" onclick="downloadPidCalibrationData()" style="display: none;">
+                    <button type="button" class="btn btn-outline-primary btn-lg" id="downloadPidCalibration" onclick="downloadCapturedData()" style="display: none;">
                         <i class="fas fa-download me-2"></i>Download Data
                     </button>
                 </div>
@@ -247,9 +182,10 @@
                 </div>
             </div>
         </div>
-        </div> <!-- End PID Calibration Tab -->
+        </div> 
+        <!-- End PID Calibration Tab -->
 
-        <!-- Fan-to-Windflow Calibration Tab -->
+        <!-- Start Windflow Calibration Tab -->
         <div class="tab-pane fade" id="windflow" role="tabpanel">
             <h5 class="mb-3">Fan-to-Windflow Sensor Calibration</h5>
             <p class="text-muted mb-4">
@@ -277,13 +213,13 @@
                 </div>
 
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-lg" id="startCalibration">
-                        <i class="fas fa-play me-2"></i>Start Calibration
+                    <button type="button" class="btn btn-success btn-lg" id="startWindflowCalibration">
+                        <i class="fas fa-play me-2"></i>Start Winflow Calibration
                     </button>
-                    <button type="button" class="btn btn-danger btn-lg" id="stopCalibration" disabled>
+                    <button type="button" class="btn btn-danger btn-lg" id="stopWindflowCalibration" disabled>
                         <i class="fas fa-stop me-2"></i>Stop
                     </button>
-                    <button type="button" class="btn btn-primary btn-lg" id="downloadCalibrationData">
+                    <button type="button" class="btn btn-primary btn-lg" id="downloadWindflowCalibrationBtn">
                         <i class="fas fa-download me-2"></i>Download Data
                     </button>
                 </div>
@@ -515,9 +451,10 @@
             </div>
             </div>
         </div>
-        </div> <!-- End Windflow Tab -->
+        </div> 
+        <!-- End Windflow Calibration Tab -->
 
-        <!-- Hot Plate Calibration Tab -->
+        <!-- Start 4D Calibration Tab -->
         <div class="tab-pane fade" id="hotplate" role="tabpanel">
             <h5 class="mb-3">Lookup Table 4D Calibration</h5>
             <p class="text-muted mb-4">
@@ -550,13 +487,13 @@
                 </div>
 
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-lg" id="startHotplateCalibration">
+                    <button type="button" class="btn btn-success btn-lg" id="start4DCalibration">
                         <i class="fas fa-play me-2"></i>Start 4D Calibration
                     </button>
-                    <button type="button" class="btn btn-danger btn-lg" id="stopHotplateCalibration" disabled>
+                    <button type="button" class="btn btn-danger btn-lg" id="stop4DCalibration" disabled>
                         <i class="fas fa-stop me-2"></i>Stop
                     </button>
-                    <button type="button" class="btn btn-primary btn-lg" id="downloadHotplateData">
+                    <button type="button" class="btn btn-primary btn-lg" id="download4DCalibrationBtn">
                         <i class="fas fa-download me-2"></i>Download Data
                     </button>
                 </div>
@@ -677,7 +614,8 @@
             </form>
             </div>
         </div>
-        </div> <!-- End Hot Plate Tab -->
+        </div> 
+        <!-- End 4D Calibration Tab -->
 
         </div> <!-- End Tab Content -->
 
