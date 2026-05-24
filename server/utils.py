@@ -7,6 +7,7 @@ import logging
 import datetime
 import cv2
 from typing import Optional, Tuple
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -92,20 +93,37 @@ def calculate_beam_centroid(image_path: str, threshold_value: int = 20) -> Optio
             return (0, 0)
             
         # Apply thresholding to remove noise
-        _, thresh = cv2.threshold(img, threshold_value, 255, cv2.THRESH_TOZERO)
+        #_, thresh = cv2.threshold(img, threshold_value, 255, cv2.THRESH_TOZERO)
+        thresh = cv2.adaptiveThreshold(
+        (img * 255).astype(np.uint8),
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        11, 2)
+
+        mask = thresh / 255.0
+        beam = img * mask
+        h, w = beam.shape
+        y, x = np.indices((h, w))
+
+        total_intensity = np.sum(beam) + 1e-16
+
+        # --- Centroid ---
+        cx = np.sum(x * beam) / total_intensity
+        cy = np.sum(y * beam) / total_intensity
         
         # Calculate moments for centroid
-        M = cv2.moments(thresh)
+        # M = cv2.moments(thresh)
         
-        if M["m00"] == 0:
-            logger.warning(f"No valid pixels found in image: {image_path}")
-            return (0, 0)
+        # if M["m00"] == 0:
+        #     logger.warning(f"No valid pixels found in image: {image_path}")
+        #     return (0, 0)
             
-        # Calculate centroid coordinates
-        cx = M["m10"] / M["m00"]
-        cy = M["m01"] / M["m00"]
+        # # Calculate centroid coordinates
+        # cx = M["m10"] / M["m00"]
+        # cy = M["m01"] / M["m00"]
         
-        return (cx, cy)
+        return (int(cx), int(cy))
         
     except Exception as e:
         logger.error(f"Error calculating centroid for {image_path}: {e}")
