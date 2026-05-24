@@ -74,3 +74,32 @@ class ArduinoResponse(BaseModel):
     status: str
     data: Optional[SystemStatus] = None
     msg: Optional[str] = None
+
+# Pydantic model for reconnect request
+class ReconnectRequest(BaseModel):
+    port: str = None
+
+# Pydantic model for hotplate toggle request
+class HotPlateToggleRequest(BaseModel):
+    state: bool
+
+# Pydantic model for data capture request
+class DataCaptureRequest(BaseModel):
+    start: bool
+    capture_id: Optional[str] = None
+    calibration_type: Optional[str] = None
+
+# Pydantic model for data point with image
+class DataPointWithImage(BaseModel):
+    timestamp: str
+    temperatures: List[float]
+    temperature_bmp: List[float]
+    temperature_dht: List[float]
+    target_temperatures: List[float]
+    fan_speeds: List[int]
+    hot_plate_states: List[bool]  
+    pressure: List[float]
+    humidity: List[float]
+    cn2: Optional[float] = None
+    cn2_optical: Optional[float] = None
+    image_filename: Optional[str] = None

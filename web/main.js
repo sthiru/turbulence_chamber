@@ -11,6 +11,9 @@ const CONFIG = {
     DANGER_TEMP: 80
 };
 
+// Initialize bottom bar functionality after loading
+initializeBottomBar();
+
 // Initialize WebSocket connection
 function initWebSocket() {
     try {
@@ -307,7 +310,8 @@ function updateSensorData(data) {
         // Update slider knob position based on speed (0-255 maps to -20 to 40)
         if (sliderKnob) {
             const sliderRange = 60; // From -20 to 40
-            const knobPosition = -20 + (speed / 255) * sliderRange;
+            const validSpeed = speed || 0; // Handle undefined/null/0 values
+            const knobPosition = -20 + (validSpeed / 255) * sliderRange;
             sliderKnob.setAttribute('cy', knobPosition);
         }
     });
@@ -357,11 +361,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (svgObject) {
         svgObject.addEventListener('load', function() {
             setTimeout(initFanControls, 100); // Small delay to ensure SVG is ready
+            setTimeout(initFanSliders, 100); // Initialize fan slider drag handling
         });
         
         // Also try immediately in case SVG is already loaded
         if (svgObject.contentDocument) {
             setTimeout(initFanControls, 100);
+            setTimeout(initFanSliders, 100);
         }
     } else {
         console.error('SVG object not found');
@@ -444,16 +450,24 @@ function updateSwitchVisual(switchKnob, isOn) {
 }
 
 // Send fan command to server
-function sendFanCommand(fanNumber, speed) {
-    const command = {
-        type: 'fan_control',
-        fan: fanNumber,
-        speed: speed
-    };
-    
-    // Send via WebSocket if connected
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(command));
+async function sendFanCommand(fanNumber, speed) {
+    try {
+        const response = await fetch('/api/fan/set', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fan: fanNumber,
+                speed: speed
+            })
+        });
+        
+        if (!response.ok) {
+            console.error('Failed to set fan speed:', response.statusText);
+        }
+    } catch (error) {
+        console.error('Error sending fan command:', error);
     }
 }
 
@@ -529,5 +543,101 @@ async function sendHotPlateCommand(plateNumber, isOn) {
         }
     } catch (error) {
         console.error('Error sending hot plate command:', error);
+    }
+}
+
+// Fan slider drag handling (extracted from main.svg)
+let draggingFan = null;
+let startY = 0;
+let startCy = 0;
+
+function initFanSliders() {
+    const svgObject = document.querySelector('object[data="/static/main.svg"]');
+    if (!svgObject) return;
+    
+    const svgDoc = svgObject.contentDocument || svgObject.getSVGDocument();
+    if (!svgDoc) return;
+    
+    for (let i = 1; i <= 4; i++) {
+        const slider = svgDoc.getElementById(`fan${i}-slider`);
+        const knob = svgDoc.getElementById(`fan${i}-slider-knob`);
+        
+        if (slider && knob) {
+            knob.addEventListener('mousedown', function(e) {
+                draggingFan = i;
+                startY = e.clientY;
+                startCy = parseFloat(knob.getAttribute('cy')) || 10;
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Add temporary SVG document-level listeners for drag
+                const handleMouseMove = function(moveEvent) {
+                    if (!draggingFan) return;
+                    
+                    const deltaY = moveEvent.clientY - startY;
+                    let newCy = startCy + deltaY;
+                    
+                    // Clamp to slider range (-20 to 40)
+                    if (newCy < -20) newCy = -20;
+                    if (newCy > 40) newCy = 40;
+                    
+                    knob.setAttribute('cy', newCy);
+                };
+                
+                const handleMouseUp = function() {
+                    if (draggingFan) {
+                        // Calculate final speed and send command
+                        const currentCy = parseFloat(knob.getAttribute('cy')) || 10;
+                        const speed = Math.round(((40 - currentCy) / 60) * 255);
+                        sendFanCommand(draggingFan - 1, speed);
+                        
+                        draggingFan = null;
+                    }
+                    svgDoc.removeEventListener('mousemove', handleMouseMove);
+                    svgDoc.removeEventListener('mouseup', handleMouseUp);
+                };
+                
+                svgDoc.addEventListener('mousemove', handleMouseMove);
+                svgDoc.addEventListener('mouseup', handleMouseUp);
+            });
+            
+            slider.addEventListener('mousedown', function(e) {
+                draggingFan = i;
+                startY = e.clientY;
+                startCy = parseFloat(knob.getAttribute('cy')) || 10;
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Add temporary SVG document-level listeners for drag
+                const handleMouseMove = function(moveEvent) {
+                    if (!draggingFan) return;
+                    
+                    const deltaY = moveEvent.clientY - startY;
+                    let newCy = startCy + deltaY;
+                    
+                    // Clamp to slider range (-20 to 40)
+                    if (newCy < -20) newCy = -20;
+                    if (newCy > 40) newCy = 40;
+                    
+                    knob.setAttribute('cy', newCy);
+                };
+                
+                const handleMouseUp = function() {
+                    if (draggingFan) {
+                        // Calculate final speed and send command
+                        const currentCy = parseFloat(knob.getAttribute('cy')) || 10;
+                        const speed = Math.round(((40 - currentCy) / 60) * 255);
+                        sendFanCommand(draggingFan - 1, speed);
+                        
+                        draggingFan = null;
+                    }
+                    svgDoc.removeEventListener('mousemove', handleMouseMove);
+                    svgDoc.removeEventListener('mouseup', handleMouseUp);
+                };
+                
+                svgDoc.addEventListener('mousemove', handleMouseMove);
+                svgDoc.addEventListener('mouseup', handleMouseUp);
+            });
+        }
     }
 }

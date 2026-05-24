@@ -11,6 +11,7 @@ import os
 import logging
 from typing import List, Optional, Tuple
 from datetime import datetime
+from utils import calculate_beam_centroid
 
 logger = logging.getLogger(__name__)
 
@@ -64,43 +65,6 @@ class CN2OpticalCalculator:
             logger.error(f"Error getting image list: {e}")
             return []
     
-    def calculate_beam_centroid(self, image_path: str) -> Optional[Tuple[float, float]]:
-        """
-        Calculate beam centroid from a single image
-        
-        Args:
-            image_path: Path to the image file
-            
-        Returns:
-            Tuple of (centroid_x, centroid_y) or None if calculation fails
-        """
-        try:
-            # Load image in grayscale
-            img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-            if img is None:
-                logger.warning(f"Could not load image: {image_path}")
-                return None
-                
-            # Apply thresholding to remove noise
-            _, thresh = cv2.threshold(img, self.threshold_value, 255, cv2.THRESH_TOZERO)
-            
-            # Calculate moments for centroid
-            M = cv2.moments(thresh)
-            
-            if M["m00"] == 0:
-                logger.warning(f"No valid pixels found in image: {image_path}")
-                return None
-                
-            # Calculate centroid coordinates
-            cx = M["m10"] / M["m00"]
-            cy = M["m01"] / M["m00"]
-            
-            return (cx, cy)
-            
-        except Exception as e:
-            logger.error(f"Error calculating centroid for {image_path}: {e}")
-            return None
-    
     def calculate_cn2_from_images(self, image_paths: List[str]) -> Optional[float]:
         """
         Calculate CN² from a list of image paths
@@ -123,7 +87,7 @@ class CN2OpticalCalculator:
             # Process each image
             for img_path in image_paths:
                 full_path = os.path.join(self.camera_images_folder, img_path)
-                centroid = self.calculate_beam_centroid(full_path)
+                centroid = calculate_beam_centroid(full_path, self.threshold_value)
                 
                 if centroid is not None:
                     cx, cy = centroid
@@ -155,6 +119,57 @@ class CN2OpticalCalculator:
             
         except Exception as e:
             logger.error(f"Error calculating CN²: {e}")
+            return None
+    
+    def calculate_cn2_from_centroids(self, centroid_history: List[dict]) -> Optional[float]:
+        """
+        Calculate CN² from a list of centroid values
+        
+        Args:
+            centroid_history: List of dictionaries containing centroid_x, centroid_y, and timestamp
+            
+        Returns:
+            CN² value or None if calculation fails
+        """
+        try:
+            if len(centroid_history) < 2:
+                return None
+            
+            centroids_x = []
+            centroids_y = []
+            
+            # Extract centroid values from history
+            for centroid_data in centroid_history:
+                cx = centroid_data.get("centroid_x", 0)
+                cy = centroid_data.get("centroid_y", 0)
+                
+                # Filter out zero/invalid centroids
+                if cx != 0 or cy != 0:
+                    centroids_x.append(cx)
+                    centroids_y.append(cy)
+            
+            if len(centroids_x) < 2:
+                logger.warning(f"Insufficient valid centroids: {len(centroids_x)}")
+                return None
+            
+            # Calculate spatial variance
+            variance_x = np.var(centroids_x) * (self.pixel_size ** 2)
+            variance_y = np.var(centroids_y) * (self.pixel_size ** 2)
+            total_variance = (variance_x + variance_y) / 2
+            
+            # CN² Formula for Beam Wander (Spherical Wave Approximation)
+            # σ² = 2.84 * Cn² * L³ * D^(-1/3)
+            # Rearranged: Cn² = σ² / (2.84 * L³ * D^(-1/3))
+            
+            cn2 = total_variance / (self.cn2_coefficient * (self.path_length ** 3) * (self.beam_diameter ** (-1/3)))
+            
+            logger.debug(f"CN² calculated from {len(centroids_x)} centroids: {cn2:.2e} m^(-2/3)")
+            logger.debug(f"Variance X: {variance_x:.2e}, Variance Y: {variance_y:.2e}")
+            
+            return cn2
+            
+        except Exception as e:
+            logger.error(f"Error calculating CN² from centroids: {e}")
             return None
     
     def should_calculate_cn2(self) -> bool:
@@ -223,50 +238,3 @@ class CN2OpticalCalculator:
                 "threshold_value": self.threshold_value
             }
         }
-
-# Global CN² calculator instance
-cn2_calculator = None
-
-def get_cn2_calculator(camera_images_folder: str = "camera_images") -> CN2OpticalCalculator:
-    """Get or create global CN² calculator instance"""
-    global cn2_calculator
-    if cn2_calculator is None:
-        cn2_calculator = CN2OpticalCalculator(camera_images_folder)
-    return cn2_calculator
-
-def calculate_cn2_optical(camera_images_folder: str = "camera_images") -> Optional[float]:
-    """
-    Calculate CN² from optical measurements if ready
-    
-    Args:
-        camera_images_folder: Directory containing camera images
-        
-    Returns:
-        CN² value if calculated, None otherwise
-    """
-    calculator = get_cn2_calculator(camera_images_folder)
-    return calculator.calculate_cn2_if_ready()
-
-def get_cn2_status(camera_images_folder: str = "camera_images") -> dict:
-    """
-    Get CN² calculation status
-    
-    Args:
-        camera_images_folder: Directory containing camera images
-        
-    Returns:
-        Dictionary with calculation status
-    """
-    calculator = get_cn2_calculator(camera_images_folder)
-    return calculator.get_calculation_status()
-
-def reset_cn2_calculation(camera_images_folder: str = "camera_images"):
-    """
-    Reset CN² calculation tracking
-    
-    Args:
-        camera_images_folder: Directory containing camera images
-    """
-    global cn2_calculator
-    cn2_calculator = CN2OpticalCalculator(camera_images_folder)
-    logger.info("CN² calculation tracking reset")

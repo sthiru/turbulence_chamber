@@ -21,5 +21,6 @@
     "polling_interval": 1,
     "ambient_polling_interval": 9.5,
     "history_size": 100,
-    "debug_enabled": false
+    "debug_enabled": false,
+    "max_history_size": 1000
 }

@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Turbulence Controller - Main</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="/assets/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/assets/all.min.css">
+    <script src="/assets/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/static/main.css">
 </head>
 <body>
@@ -66,7 +66,7 @@
                     <!-- Video frame -->
                     <div style="position: relative; background: #000; min-height: 400px; display: flex; align-items: center; justify-content: center;">
                         <!-- Video stream element -->
-                        <image id="svgVideoStream" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="max-height: 500px;"/>
+                        <image id="svgVideoStream" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="max-height: 500px; object-fit: contain;"/>
                         <!-- Loading indicator -->
                         <div id="videoLoadingIndicator" style="position: absolute; color: #fff; font-weight: bold; font-size: 16px;">Loading Video...</div>
                         <!-- Video status indicator -->
@@ -78,147 +78,45 @@
     </div>
     
     <!-- Load Bottom Bar Component -->
-    <div id="bottomBarContainer"></div>
+    <div id="bottomBarContainer">
+        <!-- Fixed Bottom Control Bar -->
+        <div class="container-fluid py-2 fixed-bottom bg-light border-top">
+            <div class="row justify-content-center align-items-center">
+                <div class="col-auto">
+                    <button id="startVideoBtn" class="btn btn-outline-primary btn-sm me-2" data-bs-toggle="modal" data-bs-target="#cameraOverlay">
+                        <i class="fas fa-video me-1"></i> Open Camera
+                    </button>
+                    <button id="showTemperatureGraphBtn" class="btn btn-outline-info btn-sm me-2" data-bs-toggle="modal" data-bs-target="#temperatureGraphOverlay">
+                        <i class="fas fa-chart-line me-1"></i> Temperature Trend
+                    </button>
+                    <button id="startCaptureBtn" class="btn btn-primary btn-sm me-2">
+                        <i class="fas fa-play me-1"></i> Start Data Capture
+                    </button>
+                    <button id="stopCaptureBtn" class="btn btn-danger btn-sm me-2 d-none">
+                        <i class="fas fa-stop me-1"></i> Stop Capture
+                    </button>
+                    <span class="text-muted me-2">
+                        Data: <span id="dataCounter" class="badge bg-secondary">0</span>
+                    </span>
+                    <button id="downloadIconBtn" class="btn btn-outline-success btn-sm d-none" title="Download CSV">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button id="stopVideoBtn" class="btn btn-sm btn-outline-danger me-2 d-none" style="font-size: 0.8rem;">
+                        <i class="fas fa-stop me-1"></i> Stop Stream
+                    </button>
+                    <button id="refreshCameraBtn" class="btn btn-sm btn-outline-primary d-none" style="font-size: 0.8rem;">
+                        <i class="fas fa-sync-alt me-1"></i> Refresh Camera
+                    </button>
+                </div>
+            </div>
+        </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    </div>
+    
+    <script src="/static/components/bottom-bar.js"></script>
+    <script src="/assets/bootstrap.bundle.min.js"></script>
+    <script src="/static/overlays.js"></script>
     <script src="/static/camera.js"></script>
     <script src="/static/main.js"></script>
-    <script src="/static/components/bottom-bar.js"></script>
-    <script>
-        // Load bottom bar component
-        fetch('/static/components/bottom-bar.html')
-            .then(response => response.text())
-            .then(html => {
-                document.getElementById('bottomBarContainer').innerHTML = html;
-                // Initialize bottom bar functionality after loading
-                initializeBottomBar();
-            })
-            .catch(error => console.error('Error loading bottom bar:', error));
-    </script>
-    <script>
-        // Initialize temperature graph overlay
-        document.getElementById('showTemperatureGraphBtn').addEventListener('click', function(e) {
-            e.preventDefault();
-            const modal = new bootstrap.Modal(document.getElementById('temperatureGraphOverlay'));
-            modal.show();
-            
-            // Initialize chart when modal is shown
-            document.getElementById('temperatureGraphOverlay').addEventListener('shown.bs.modal', function() {
-                initTemperatureTrendChart();
-            }, { once: true });
-        });
-
-        // Initialize camera overlay
-        document.getElementById('startVideoBtn').addEventListener('click', function(e) {
-            e.preventDefault();
-            // Initialize video WebSocket connection
-            if (typeof initVideoWebSocket === 'function') {
-                initVideoWebSocket();
-            }
-            const cameraModalElement = document.getElementById('cameraOverlay');
-            const cameraModal = new bootstrap.Modal(cameraModalElement);
-            cameraModal.show();
-        });
-
-        // Camera modal event listeners for video stream
-        const cameraModalElement = document.getElementById('cameraOverlay');
-        let cameraModalInstance = null;
-
-        if (cameraModalElement) {
-            cameraModalElement.addEventListener('show.bs.modal', function() {
-                // Get or create modal instance
-                cameraModalInstance = bootstrap.Modal.getInstance(cameraModalElement);
-                if (!cameraModalInstance) {
-                    cameraModalInstance = new bootstrap.Modal(cameraModalElement);
-                }
-                // Connect to video stream when modal opens
-                if (typeof startVideoStream === 'function') {
-                    startVideoStream();
-                }
-            });
-
-            cameraModalElement.addEventListener('hidden.bs.modal', function() {
-                // Disconnect video stream when modal closes
-                if (typeof stopVideoStream === 'function') {
-                    stopVideoStream();
-                }
-                // Dispose modal instance to remove backdrop
-                if (cameraModalInstance) {
-                    cameraModalInstance.dispose();
-                    cameraModalInstance = null;
-                }
-                // Remove any remaining backdrops
-                const backdrops = document.querySelectorAll('.modal-backdrop');
-                backdrops.forEach(backdrop => backdrop.remove());
-            });
-        }
-
-        // Temperature trend chart initialization
-        let temperatureTrendChart = null;
-        function initTemperatureTrendChart() {
-            const ctx = document.getElementById('temperatureTrendChart').getContext('2d');
-            
-            if (temperatureTrendChart) {
-                temperatureTrendChart.destroy();
-            }
-            
-            const sensorColors = [
-                'rgb(75, 192, 192)',
-                'rgb(255, 99, 132)',
-                'rgb(54, 162, 235)',
-                'rgb(153, 102, 255)',
-                'rgb(255, 159, 64)',
-                'rgb(255, 205, 86)',
-                'rgb(75, 192, 192)',
-                'rgb(199, 199, 199)',
-                'rgb(83, 102, 255)',
-                'rgb(40, 159, 64)',
-                'rgb(210, 99, 132)',
-                'rgb(255, 159, 64)'
-            ];
-            
-            const datasets = [];
-            for (let i = 0; i < 12; i++) {
-                datasets.push({
-                    label: `Sensor ${i + 1}`,
-                    data: [],
-                    borderColor: sensorColors[i],
-                    tension: 0.1
-                });
-            }
-            
-            temperatureTrendChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: datasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: false,
-                            title: {
-                                display: true,
-                                text: 'Temperature (°C)'
-                            }
-                        },
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Time'
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top'
-                        }
-                    }
-                }
-            });
-        }
-    </script>
 </body>
 </html>

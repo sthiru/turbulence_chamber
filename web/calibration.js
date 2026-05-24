@@ -15,9 +15,27 @@ const sessionId = document.getElementById('sessionId');
 const stepType = document.getElementById('stepType');
 const calibrationLog = document.getElementById('calibrationLog');
 
-// Buttons
-const startBtn = document.getElementById('startCalibration');
-const stopBtn = document.getElementById('stopCalibration');
+// Start Buttons
+const startWindflowBtn = document.getElementById('startWindflowCalibration');
+const start4DBtn = document.getElementById('start4DCalibration');
+const startPidBtn = document.getElementById('startPidCalibration');
+
+// Stop Buttons
+const stopWindflowBtn = document.getElementById('stopWindflowCalibration');
+const stop4DBtn = document.getElementById('stop4DCalibration');
+const stopPidBtn = document.getElementById('stopPidCalibration');
+
+// Download Buttons
+const downloadWindflowBtn = document.getElementById('downloadWindflowCalibrationBtn');
+const download4DBtn = document.getElementById('download4DCalibrationBtn');
+const downloadCSVBtn = document.getElementById('downloadCSV');
+const downloadPidBtn = document.getElementById('downloadPidCalibration');
+
+// Hide download buttons initially
+downloadWindflowBtn.style.display = 'none';
+download4DBtn.style.display = 'none';
+downloadCSVBtn.style.display = 'none';
+downloadPidBtn.style.display = 'none';
 
 // Load calibration data from CSV
 async function loadCalibrationData(sessionId) {
@@ -55,64 +73,31 @@ async function loadPolynomials() {
 // Load latest calibration data from root folder
 async function loadLatestCalibrationData() {
     try {
-        const response = await fetch('/api/calibration/download/fan_data');
-        
-        if (response.ok) {
-            const text = await response.text();
-            const lines = text.split('\n').filter(line => line.trim());
-            
-            if (lines.length > 1) {
-                // Parse CSV
-                const headers = lines[0].split(',');
-                const data = [];
-                
-                for (let i = 1; i < lines.length; i++) {
-                    const values = lines[i].split(',');
-                    if (values.length >= headers.length) {
-                        const row = {};
-                        headers.forEach((header, index) => {
-                            row[header.trim()] = values[index]?.trim() || '';
-                        });
-                        data.push(row);
-                    }
-                }
-                
-                calibrationData = data;
-                populateCalibrationTable(data);
-                document.getElementById('noDataMessage').style.display = 'none';
-                document.getElementById('dataTableContainer').style.display = 'block';
-                document.getElementById('downloadButtons').style.display = 'block';
+        const response = await fetch('/api/calibration/data');
+        const result = await response.json();
 
-                // Load session metadata to get session ID
-                const metadataResponse = await fetch('/api/calibration/latest-metadata');
-                const metadataResult = await metadataResponse.json();
+        if (result.status === 'success' && Array.isArray(result.data)) {
+            calibrationData = result.data;
+            populateCalibrationTable(result.data);
+            document.getElementById('noDataMessage').style.display = 'none';
+            document.getElementById('dataTableContainer').style.display = 'block';
+            document.getElementById('downloadButtons').style.display = 'block';
 
-                if (metadataResult.status === 'success' && metadataResult.metadata) {
-                    document.getElementById('resultsSummary').style.display = 'block';
-                    document.getElementById('resultsSessionId').textContent = `Session ID: ${metadataResult.metadata.session_id}`;
-                    calibrationSessionId = metadataResult.metadata.session_id;
-                    addLog('Latest calibration data loaded', 'success');
-                } else if (data.length > 0) {
-                    addLog('Calibration data loaded', 'success');
-                }
-            } else {
-                document.getElementById('noDataMessage').style.display = 'block';
-                document.getElementById('dataTableContainer').style.display = 'none';
-                document.getElementById('downloadButtons').style.display = 'none';
-                document.getElementById('resultsSummary').style.display = 'none';
+            // Load session metadata to get session ID
+            const metadataResponse = await fetch('/api/calibration/latest-metadata');
+            const metadataResult = await metadataResponse.json();
+
+            if (metadataResult.status === 'success' && metadataResult.metadata) {
+                document.getElementById('resultsSummary').style.display = 'block';
+                document.getElementById('resultsSessionId').textContent = `Session ID: ${metadataResult.metadata.session_id}`;
+                calibrationSessionId = metadataResult.metadata.session_id;
+                addLog('Latest calibration data loaded', 'success');
+            } else if (result.data.length > 0) {
+                addLog('Calibration data loaded', 'success');
             }
-        } else {
-            document.getElementById('noDataMessage').style.display = 'block';
-            document.getElementById('dataTableContainer').style.display = 'none';
-            document.getElementById('downloadButtons').style.display = 'none';
-            document.getElementById('resultsSummary').style.display = 'none';
         }
     } catch (error) {
-        document.getElementById('noDataMessage').style.display = 'block';
-        document.getElementById('dataTableContainer').style.display = 'none';
-        document.getElementById('downloadButtons').style.display = 'none';
-        document.getElementById('resultsSummary').style.display = 'none';
-        addLog('No calibration data available', 'warning');
+        addLog(`Error loading calibration data: ${error}`, 'error');
     }
 }
 
@@ -269,104 +254,6 @@ function renderFanChart(fanId, data, polynomial) {
     });
 }
 
-// Save windflow calibration data to server
-async function saveWindflowCalibrationData(sessionId) {
-    try {
-        // Download existing data capture CSV
-        const response = await fetch('/api/data-capture/download');
-        
-        if (response.ok) {
-            const blob = await response.blob();
-            const text = await blob.text();
-            
-            // Prepare metadata
-            const metadata = {
-                calibration_type: 'fan',
-                session_id: sessionId,
-                start_time: new Date().toISOString(),
-                end_time: new Date().toISOString(),
-                data_points: calibrationData.length
-            };
-            
-            // Send to server for saving
-            const saveResponse = await fetch('/api/calibration/save', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    file_type: 'fan_data',
-                    csv_data: text,
-                    metadata: metadata
-                })
-            });
-            
-            if (saveResponse.ok) {
-                console.log('Fan calibration data saved successfully');
-                addLog('Fan calibration data saved successfully', 'success');
-            } else {
-                console.error('Failed to save fan calibration data');
-                addLog('Failed to save fan calibration data', 'error');
-            }
-        } else {
-            console.error('Failed to download data capture for fan calibration');
-            addLog('Failed to download data for fan calibration', 'error');
-        }
-    } catch (e) {
-        console.error('Error saving fan calibration data:', e);
-        addLog('Error saving fan calibration data', 'error');
-    }
-}
-
-// Save hotplate calibration data to server
-async function saveHotplateCalibrationData(sessionId) {
-    try {
-        // Download existing data capture CSV
-        const response = await fetch('/api/data-capture/download');
-        
-        if (response.ok) {
-            const blob = await response.blob();
-            const text = await blob.text();
-            
-            // Prepare metadata
-            const metadata = {
-                calibration_type: 'hotplate',
-                session_id: sessionId,
-                start_time: new Date().toISOString(),
-                end_time: new Date().toISOString(),
-                data_points: calibrationData.length
-            };
-            
-            // Send to server for saving
-            const saveResponse = await fetch('/api/calibration/save', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    file_type: 'calibration_data',
-                    csv_data: text,
-                    metadata: metadata
-                })
-            });
-            
-            if (saveResponse.ok) {
-                console.log('Hotplate calibration data saved successfully');
-                addLog('Hotplate calibration data saved successfully', 'success');
-            } else {
-                console.error('Failed to save hotplate calibration data');
-                addLog('Failed to save hotplate calibration data', 'error');
-            }
-        } else {
-            console.error('Failed to download data capture for hotplate calibration');
-            addLog('Failed to download data for hotplate calibration', 'error');
-        }
-    } catch (e) {
-        console.error('Error saving hotplate calibration data:', e);
-        addLog('Error saving hotplate calibration data', 'error');
-    }
-}
-
 // Display calibration results
 async function displayCalibrationResults(sessionId) {
     calibrationSessionId = sessionId;
@@ -403,28 +290,32 @@ async function displayCalibrationResults(sessionId) {
 }
 
 // Download CSV
-document.getElementById('downloadCSV').addEventListener('click', async () => {
-    try {
-        const response = await fetch('/api/calibration/download/fan_data');
-        
-        if (response.ok) {
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'fan_data.csv';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-            addLog('Fan calibration data downloaded', 'success');
-        } else {
-            addLog('Failed to download fan calibration data', 'error');
-        }
-    } catch (e) {
-        console.error('Error downloading fan calibration data:', e);
-        addLog('Error downloading fan calibration data', 'error');
+document.getElementById('downloadCSV').addEventListener('click', () => {
+    if (!calibrationSessionId || !Array.isArray(calibrationData) || calibrationData.length === 0) {
+        addLog('No calibration data to download', 'warning');
+        return;
     }
+    
+    const csvContent = [
+        ['timestamp', 'fan_speed', 'sensor_0_avg', 'sensor_1_avg', 'sensor_2_avg', 'sensor_3_avg'],
+        ...calibrationData.map(row => [
+            row.timestamp,
+            row.fan_speed,
+            row.sensor_0_avg || '',
+            row.sensor_1_avg || '',
+            row.sensor_2_avg || '',
+            row.sensor_3_avg || ''
+        ])
+    ].map(row => row.join(',')).join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `calibration_${calibrationSessionId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('CSV downloaded', 'success');
 });
 
 // Download Polynomials
@@ -534,7 +425,7 @@ function updateHotplateStatus(status) {
 }
 
 // Start calibration
-startBtn.addEventListener('click', async () => {
+startWindflowBtn.addEventListener('click', async () => {
     const fanSpeedStep = parseInt(document.getElementById('fanSpeedStep').value) || 5;
     const settlingTime = parseInt(document.getElementById('settlingTime').value) || 1000;
     const numSamples = parseInt(document.getElementById('numSamples').value) || 3;
@@ -544,7 +435,7 @@ startBtn.addEventListener('click', async () => {
         
         // Start data capture before starting calibration
         if (typeof startDataCapture === 'function') {
-            await startDataCapture();
+            await startDataCapture('windflow_calibration');
             addLog('Data capture started', 'success');
         }
         
@@ -557,8 +448,8 @@ startBtn.addEventListener('click', async () => {
         
         if (result.status === 'success') {
             isCalibrating = true;
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
+            startWindflowBtn.disabled = true;
+            stopWindflowBtn.disabled = false;
             addLog(`Calibration started (Step: ${fanSpeedStep} PWM, Settling time: ${settlingTime}ms, Samples: ${numSamples})`, 'success');
 
             // Show status section
@@ -575,7 +466,7 @@ startBtn.addEventListener('click', async () => {
 });
 
 // Stop calibration
-stopBtn.addEventListener('click', async () => {
+stopWindflowBtn.addEventListener('click', async () => {
     try {
         const response = await fetch('/api/calibration/control', {
             method: 'POST',
@@ -586,13 +477,7 @@ stopBtn.addEventListener('click', async () => {
         const result = await response.json();
 
         if (result.status === 'success') {
-            addLog('Calibration stopped', 'warning');
-            
-            // Stop data capture after stopping calibration
-            if (typeof stopDataCapture === 'function') {
-                await stopDataCapture();
-                addLog('Data capture stopped', 'success');
-            }
+            addLog('Calibration stopped', 'info');
         } else {
             addLog(`Failed to stop calibration: ${result.message}`, 'error');
         }
@@ -601,11 +486,16 @@ stopBtn.addEventListener('click', async () => {
     }
 });
 
-// Hot plate calibration handlers
-const hotplateStartBtn = document.getElementById('startHotplateCalibration');
-const hotplateStopBtn = document.getElementById('stopHotplateCalibration');
+// Download calibration data
+downloadWindflowBtn.addEventListener('click', downloadCapturedData);
+download4DBtn.addEventListener('click', downloadCapturedData);
+downloadCSVBtn.addEventListener('click', downloadCapturedData);
+downloadPidBtn.addEventListener('click', downloadCapturedData);
 
-hotplateStartBtn.addEventListener('click', async () => {
+
+
+// Hot plate calibration handlers
+start4DBtn.addEventListener('click', async () => {
     const tempMin = parseFloat(document.getElementById('hotplateTempMin').value) || 80;
     const tempMax = parseFloat(document.getElementById('hotplateTempMax').value) || 120;
     const tempStep = parseFloat(document.getElementById('hotplateTempStep').value) || 2;
@@ -625,7 +515,7 @@ hotplateStartBtn.addEventListener('click', async () => {
         
         // Start data capture before starting calibration
         if (typeof startDataCapture === 'function') {
-            await startDataCapture();
+            await startDataCapture('pid_calibration');
             addLog('Data capture started', 'success');
         }
         
@@ -638,8 +528,8 @@ hotplateStartBtn.addEventListener('click', async () => {
 
         if (result.status === 'success') {
             isCalibrating = true;
-            hotplateStartBtn.disabled = true;
-            hotplateStopBtn.disabled = false;
+            start4DBtn.disabled = true;
+            stop4DBtn.disabled = false;
             addLog(`4D calibration started (Temp: ${tempMin}-${tempMax}°C, Fans: ${result.fan_speeds})`, 'success');
             addLog(`Estimated duration: ${result.estimated_duration}`, 'info');
 
@@ -662,7 +552,7 @@ hotplateStartBtn.addEventListener('click', async () => {
     }
 });
 
-hotplateStopBtn.addEventListener('click', async () => {
+stop4DBtn.addEventListener('click', async () => {
     try {
         const response = await fetch('/api/calibration/control', {
             method: 'POST',
@@ -680,7 +570,7 @@ hotplateStopBtn.addEventListener('click', async () => {
                 await stopDataCapture();
                 addLog('Data capture stopped', 'success');
             }
-            hotplateStopBtn.disabled = true;
+            stop4DBtn.disabled = true;
         } else {
             addLog(`Failed to stop calibration: ${result.message}`, 'error');
         }
@@ -767,12 +657,16 @@ function connectWebSocket() {
     calibrationWebSocket.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
+            console.log('Received calibration WebSocket message:', data);
             
             if (data.type === 'calibration_status') {
                 const session = data.session;
+                console.log('Session data:', session);
+                console.log('Progress:', data.progress);
                 
                 // Check if this is hot plate calibration (has temperature info)
-                const isHotplateCalibration = session.current_temperature !== undefined || session.current_fan_speed !== undefined;
+                const isHotplateCalibration = session.current_temperature !== undefined && session.current_temperature !== null;
+                console.log('Is hotplate calibration:', isHotplateCalibration);
                 
                 if (isHotplateCalibration) {
                     // Update hot plate calibration display
@@ -821,8 +715,6 @@ function connectWebSocket() {
                         
                         if (session.status === 'completed') {
                             addLog('Hot plate calibration completed successfully!', 'success');
-                            // Save calibration data to root folder
-                            saveHotplateCalibrationData(session.session_id);
                             // Display results if available
                             if (session.session_id) {
                                 displayCalibrationResults(session.session_id);
@@ -833,6 +725,7 @@ function connectWebSocket() {
                     }
                 } else {
                     // Update windflow calibration display
+                    console.log('Updating windflow calibration display');
                     sessionId.textContent = session.session_id;
                     
                     // Show data points if available, otherwise show steps
@@ -844,6 +737,7 @@ function connectWebSocket() {
                         totalSteps.textContent = session.total_steps || '0';
                     }
                     
+                    console.log('Updating progress bar to:', data.progress);
                     progressBar.style.width = `${(data.progress || 0)}%`;
                     progressPercent.textContent = `${(data.progress || 0).toFixed(1)}%`;
                     
@@ -857,13 +751,16 @@ function connectWebSocket() {
                     
                     // Check if completed or failed
                     if (session.status === 'completed' || session.status === 'failed') {
+                        // Stop data capture
+                        if (typeof stopDataCapture === 'function') {
+                            stopDataCapture().catch(e => console.error('Error stopping data capture:', e));
+                        }
+                        
                         resetUI();
                         disconnectWebSocket();
                         
                         if (session.status === 'completed') {
                             addLog('Calibration completed successfully!', 'success');
-                            // Save calibration data to root folder
-                            saveWindflowCalibrationData(session.session_id);
                             // Automatically display results
                             displayCalibrationResults(session.session_id);
                         } else {
@@ -904,8 +801,8 @@ function resetUI() {
     isCalibrating = false;
     updateStatus('idle');
 
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    startWindflowBtn.disabled = false;
+    stopWindflowBtn.disabled = true;
 
     progressBar.style.width = '0%';
     progressPercent.textContent = '0%';
@@ -922,8 +819,8 @@ function resetHotplateUI() {
     isCalibrating = false;
     updateHotplateStatus('idle');
 
-    hotplateStartBtn.disabled = false;
-    hotplateStopBtn.disabled = true;
+    start4DBtn.disabled = false;
+    stop4DBtn.disabled = true;
 
     document.getElementById('hotplateProgressBar').style.width = '0%';
     document.getElementById('hotplateProgressPercent').textContent = '0%';
@@ -1053,8 +950,10 @@ function displayExistingHotplateSession(session) {
         hotplateTab.click();
     }
     
-    // Show hot plate progress section
-    document.getElementById('hotplateStatusSection').style.display = 'block';
+    // Only show hot plate progress section if session is running
+    if (session.is_running) {
+        document.getElementById('hotplateStatusSection').style.display = 'block';
+    }
     
     // Update session info
     document.getElementById('hotplateSessionId').textContent = session.session_id || '--';
@@ -1084,12 +983,12 @@ function displayExistingHotplateSession(session) {
     
     // Update buttons based on session status
     if (session.is_running) {
-        hotplateStartBtn.disabled = true;
-        hotplateStopBtn.disabled = false;
+        start4DBtn.disabled = true;
+        stop4DBtn.disabled = false;
         isCalibrating = true;
     } else {
-        hotplateStartBtn.disabled = false;
-        hotplateStopBtn.disabled = true;
+        start4DBtn.disabled = false;
+        stop4DBtn.disabled = true;
         isCalibrating = false;
     }
     
@@ -1104,8 +1003,10 @@ function displayExistingWindflowSession(session) {
         windflowTab.click();
     }
     
-    // Show windflow progress section
-    document.getElementById('statusSection').style.display = 'block';
+    // Only show windflow progress section if session is running
+    if (session.is_running) {
+        document.getElementById('statusSection').style.display = 'block';
+    }
     
     // Update session info
     sessionId.textContent = session.session_id || '--';
@@ -1119,43 +1020,16 @@ function displayExistingWindflowSession(session) {
     
     // Update buttons based on session status
     if (session.is_running) {
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
+        startWindflowBtn.disabled = true;
+        stopWindflowBtn.disabled = false;
         isCalibrating = true;
     } else {
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
+        startWindflowBtn.disabled = false;
+        stopWindflowBtn.disabled = true;
         isCalibrating = false;
     }
     
     addLog(`Windflow calibration session restored: ${(session.progress || 0).toFixed(1)}% complete`, 'success');
-}
-
-// Clear session button functionality
-async function clearCurrentSession() {
-    if (!confirm('Are you sure you want to clear the current calibration session? This cannot be undone.')) {
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/calibration/session/clear', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            addLog('Calibration session cleared', 'success');
-            resetUI();
-            resetHotplateUI();
-            disconnectWebSocket();
-        } else {
-            addLog(`Failed to clear session: ${result.message}`, 'error');
-        }
-    } catch (error) {
-        addLog(`Error clearing session: ${error}`, 'error');
-    }
 }
 
 // Initialize connection status
@@ -1169,7 +1043,7 @@ connectSystemWebSocket();
 // PID Calibration Variables
 let pidCalibrating = false;
 let pidCalibrationData = [];
-let pidCharts = {};
+let pidCharts = {}; 
 let pidWebSocket = null;
 let pidSessionId = null;
 
@@ -1317,8 +1191,8 @@ async function startPidCalibration() {
     const now = new Date();
     pidSessionId = `pid_calibration_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
     
-    document.getElementById('startPidCalibration').disabled = true;
-    document.getElementById('stopPidCalibration').disabled = false;
+    startPidBtn.disabled = true;
+    stopPidBtn.disabled = false;
     document.getElementById('pidStatusSection').style.display = 'block';
     document.getElementById('pidCalibrationStatus').textContent = 'Running';
     document.getElementById('pidCalibrationStatus').className = 'badge bg-success status-badge';
@@ -1333,7 +1207,7 @@ async function startPidCalibration() {
     
     // Start data capture
     if (typeof startDataCapture === 'function') {
-        await startDataCapture();
+        await startDataCapture('pid_calibration');
         console.log('Data capture started for PID calibration');
     }
     
@@ -1345,18 +1219,14 @@ async function startPidCalibration() {
 async function stopPidCalibration() {
     pidCalibrating = false;
     
-    document.getElementById('startPidCalibration').disabled = false;
-    document.getElementById('stopPidCalibration').disabled = true;
+    startPidBtn.disabled = false;
+    stopPidBtn.disabled = true;
     document.getElementById('pidCalibrationStatus').textContent = 'Stopped';
     document.getElementById('pidCalibrationStatus').className = 'badge bg-warning status-badge';
     
-    // Save PID calibration data to server
-    await savePidCalibrationData();
-    
     // Show download button if data is available
-    const downloadBtn = document.getElementById('downloadPidCalibration');
-    if (downloadBtn && pidCalibrationData.length > 0) {
-        downloadBtn.style.display = 'inline-block';
+    if (downloadPidBtn && pidCalibrationData.length > 0) {
+        downloadPidBtn.style.display = 'inline-block';
     }
     
     // Stop data capture after stopping calibration
@@ -1388,98 +1258,6 @@ function clearPidCalibrationData() {
     const downloadBtn = document.getElementById('downloadPidCalibration');
     if (downloadBtn) {
         downloadBtn.style.display = 'none';
-    }
-}
-
-// Save PID calibration data to server
-async function savePidCalibrationData() {
-    if (pidCalibrationData.length === 0) {
-        console.log('No PID calibration data to save');
-        return;
-    }
-    
-    try {
-        // Get current PID parameters
-        const pidKp0 = parseFloat(document.getElementById('pid-kp-0').value);
-        const pidKi0 = parseFloat(document.getElementById('pid-ki-0').value);
-        const pidKd0 = parseFloat(document.getElementById('pid-kd-0').value);
-        const pidKp1 = parseFloat(document.getElementById('pid-kp-1').value);
-        const pidKi1 = parseFloat(document.getElementById('pid-ki-1').value);
-        const pidKd1 = parseFloat(document.getElementById('pid-kd-1').value);
-        
-        // Download existing data capture CSV
-        const response = await fetch('/api/data-capture/download');
-        
-        if (response.ok) {
-            const blob = await response.blob();
-            const text = await blob.text();
-            
-            // Prepare metadata
-            const metadata = {
-                calibration_type: 'pid',
-                session_id: pidSessionId,
-                start_time: pidCalibrationData[0].timestamp,
-                end_time: pidCalibrationData[pidCalibrationData.length - 1].timestamp,
-                data_points: pidCalibrationData.length,
-                pid_parameters: {
-                    hotplate_0: { kp: pidKp0, ki: pidKi0, kd: pidKd0 },
-                    hotplate_1: { kp: pidKp1, ki: pidKi1, kd: pidKd1 }
-                }
-            };
-            
-            // Send to server for saving
-            const saveResponse = await fetch('/api/calibration/save', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    file_type: 'pid_data',
-                    csv_data: text,
-                    metadata: metadata
-                })
-            });
-            
-            if (saveResponse.ok) {
-                console.log('PID calibration data saved successfully');
-                showPidMessage('PID calibration data saved successfully', 'success');
-            } else {
-                console.error('Failed to save PID calibration data');
-                showPidMessage('Failed to save PID calibration data', 'error');
-            }
-        } else {
-            console.error('Failed to download data capture for PID calibration');
-            showPidMessage('Failed to download data for PID calibration', 'error');
-        }
-    } catch (e) {
-        console.error('Error saving PID calibration data:', e);
-        showPidMessage('Error saving PID calibration data', 'error');
-    }
-}
-
-// Download PID calibration data
-async function downloadPidCalibrationData() {
-    try {
-        const response = await fetch('/api/calibration/download/pid_data');
-        
-        if (response.ok) {
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'pid_data.csv';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-            
-            showPidMessage('PID calibration data downloaded successfully', 'success');
-        } else {
-            showPidMessage('Failed to download PID calibration data', 'error');
-        }
-    } catch (e) {
-        console.error('Error downloading PID calibration data:', e);
-        showPidMessage('Error downloading PID calibration data', 'error');
     }
 }
 
@@ -1562,7 +1340,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initPidCharts();
     loadPidSettings();
     
-    document.getElementById('startPidCalibration').addEventListener('click', async function() {
+    startPidBtn.addEventListener('click', async function() {
         pidCalibrationStartTime = new Date();
         
         // Start data capture before starting calibration
@@ -1574,5 +1352,5 @@ document.addEventListener('DOMContentLoaded', function() {
         startPidCalibration();
     });
     
-    document.getElementById('stopPidCalibration').addEventListener('click', stopPidCalibration);
+    stopPidBtn.addEventListener('click', stopPidCalibration);
 });
