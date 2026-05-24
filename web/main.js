@@ -311,7 +311,7 @@ function updateSensorData(data) {
         if (sliderKnob) {
             const sliderRange = 60; // From -20 to 40
             const validSpeed = speed || 0; // Handle undefined/null/0 values
-            const knobPosition = -20 + (validSpeed / 255) * sliderRange;
+            const knobPosition = 40 - (validSpeed / 255) * sliderRange;
             sliderKnob.setAttribute('cy', knobPosition);
         }
     });
