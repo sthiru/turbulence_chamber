@@ -17,6 +17,15 @@ import queue
 import base64
 from io import BytesIO
 from PIL import Image
+from constants import (
+    CAMERA_IMAGES_FOLDER,
+    CAMERA_FRAME_QUEUE_SIZE,
+    CAMERA_RETRIEVE_TIMEOUT,
+    CAMERA_FILENAME_FORMAT,
+    CAMERA_VIDEO_FRAME_DELAY,
+    CAMERA_JPEG_QUALITY,
+    CAMERA_IMAGE_EXTENSION
+)
 
 # Try to import pylon, provide fallback if not available
 try:
@@ -30,7 +39,6 @@ try:
         print("Could not get Pylon version info")
 except ImportError:
     PYLON_AVAILABLE = False
-    print("Pylon SDK not available. Camera acquisition will be simulated.")
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +48,7 @@ class BaslerCamera:
     _instance = None
     _lock = threading.Lock()
     
-    def __new__(cls, camera_images_folder: str = "camera_images"):
+    def __new__(cls, camera_images_folder: str = CAMERA_IMAGES_FOLDER):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -48,7 +56,7 @@ class BaslerCamera:
                     cls._instance._initialized = False
         return cls._instance
     
-    def __init__(self, camera_images_folder: str = "camera_images"):
+    def __init__(self, camera_images_folder: str = CAMERA_IMAGES_FOLDER):
         """
         Initialize camera acquisition (singleton)
         
@@ -70,7 +78,7 @@ class BaslerCamera:
         # Video streaming variables
         self.is_streaming = False
         self.streaming_thread = None
-        self.frame_queue = queue.Queue(maxsize=10)  # Buffer for video frames
+        self.frame_queue = queue.Queue(maxsize=CAMERA_FRAME_QUEUE_SIZE)  # Buffer for video frames
         self.streaming_clients = []  # List of connected streaming clients
         
         # Ensure camera images folder exists
@@ -82,7 +90,7 @@ class BaslerCamera:
         self._initialized = True
     
     @classmethod
-    def get_instance(cls, camera_images_folder: str = "camera_images") -> 'BaslerCamera':
+    def get_instance(cls, camera_images_folder: str = CAMERA_IMAGES_FOLDER) -> 'BaslerCamera':
         """Get or create the singleton camera instance"""
         return cls(camera_images_folder)
     
@@ -216,7 +224,7 @@ class BaslerCamera:
         """Initialize the camera"""
         try:
             if not PYLON_AVAILABLE:
-                logger.warning("Pylon SDK not available - using simulation mode")
+                logger.error("Pylon SDK not available - cannot initialize camera")
                 return False
                     
             # Create an instant camera object
@@ -272,12 +280,8 @@ class BaslerCamera:
                     return False
                     
             if not PYLON_AVAILABLE:
-                self.is_connected = True
-                logger.info("Camera connected (simulation mode)")
-                return True
-                
-            logger.info(f"Camera object exists: {self.camera is not None}")
-            logger.info(f"Camera is open: {self.camera.IsOpen() if self.camera else 'N/A'}")
+                logger.error("Pylon SDK not available - cannot connect camera")
+                return False
             
             if self.camera and not self.camera.IsOpen():
                 logger.info("Opening camera...")
@@ -332,15 +336,10 @@ class BaslerCamera:
                 
             # Grab image
             try:
-                grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
+                grabResult = self.camera.RetrieveResult(CAMERA_RETRIEVE_TIMEOUT, pylon.TimeoutHandling_ThrowException)
             except Exception as e:
                 logger.error(f"Error calling RetrieveResult: {e}")
-                # Fall back to simulation mode
-                logger.debug("Falling back to simulation mode")
-                simulated_image = np.random.randint(0, 255, (480, 640), dtype=np.uint8)
-                cv2.circle(simulated_image, (320, 240), 50, 200, -1)
-                cv2.rectangle(simulated_image, (200, 150), (440, 330), 150, -1)
-                return simulated_image
+                return None
             
             if grabResult.GrabSucceeded():
                 # Convert to OpenCV format
@@ -355,7 +354,6 @@ class BaslerCamera:
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                     
                 grabResult.Release()
-                logger.debug(f"Captured image: {image.shape}")
                 return image
             else:
                 logger.error(f"Failed to grab image: {grabResult.ErrorCode} {grabResult.ErrorDescription}")
@@ -366,14 +364,7 @@ class BaslerCamera:
             logger.error(f"Error capturing image: {e}")
             import traceback
             traceback.print_exc()
-            # Fall back to simulation mode on error
-            try:
-                simulated_image = np.random.randint(0, 255, (480, 640), dtype=np.uint8)
-                cv2.circle(simulated_image, (320, 240), 50, 200, -1)
-                cv2.rectangle(simulated_image, (200, 150), (440, 330), 150, -1)
-                return simulated_image
-            except:
-                return None
+            return None
     
     def save_image(self, image: np.ndarray, timestamp: Optional[datetime] = None, folder: Optional[str] = None) -> Optional[str]:
         """
@@ -392,7 +383,7 @@ class BaslerCamera:
                 timestamp = datetime.now()
                 
             # Generate filename with timestamp
-            filename = f"camera_{timestamp.strftime('%Y%m%d_%H%M%S_%f')[:-3]}.png"
+            filename = f"camera_{timestamp.strftime(CAMERA_FILENAME_FORMAT)}{CAMERA_IMAGE_EXTENSION}"
             save_folder = folder or self.camera_images_folder
             filepath = os.path.join(save_folder, filename)
             
@@ -426,7 +417,6 @@ class BaslerCamera:
             
             if image is not None:
                 filename = self.save_image(image, timestamp, folder)
-                logger.debug(f"Image captured and saved: {filename}")
                 return filename
             else:
                 logger.warning("Failed to capture image - capture_image returned None")
@@ -473,7 +463,7 @@ class BaslerCamera:
             self.is_streaming = False
             
             if self.streaming_thread and self.streaming_thread.is_alive():
-                self.streaming_thread.join(timeout=2.0)
+                self.streaming_thread.join(timeout=CAMERA_VIDEO_FRAME_DELAY * 10)
             
             # Clear frame queue
             while not self.frame_queue.empty():
@@ -504,13 +494,11 @@ class BaslerCamera:
                         # Add frame to queue (non-blocking, drop if full)
                         try:
                             self.frame_queue.put_nowait(frame_data)
-                            logger.debug(f"Added frame to queue, size: {len(frame_data)}")
                         except queue.Full:
                             # Drop oldest frame and add new one
                             try:
                                 self.frame_queue.get_nowait()
                                 self.frame_queue.put_nowait(frame_data)
-                                logger.debug("Replaced oldest frame in queue")
                             except queue.Empty:
                                 pass
                     else:
@@ -519,7 +507,7 @@ class BaslerCamera:
                     logger.warning("Failed to capture image for streaming")
                 
                 # Small delay to control frame rate
-                time.sleep(0.033)  # ~30 FPS
+                time.sleep(CAMERA_VIDEO_FRAME_DELAY)
                 
             except Exception as e:
                 logger.error(f"Error in video streaming worker: {e}")
@@ -545,7 +533,7 @@ class BaslerCamera:
                 image_rgb = image
             
             # Encode to JPEG
-            _, buffer = cv2.imencode('.jpg', image_rgb, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            _, buffer = cv2.imencode('.jpg', image_rgb, [cv2.IMWRITE_JPEG_QUALITY, CAMERA_JPEG_QUALITY])
             
             # Convert to base64
             frame_b64 = base64.b64encode(buffer).decode('utf-8')

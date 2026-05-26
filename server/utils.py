@@ -8,6 +8,13 @@ from datetime import datetime
 import cv2
 from typing import Optional, Tuple
 import numpy as np
+from constants import (
+    CAMERA_IMAGES_FOLDER,
+    DATA_CAPTURE_FOLDER_DATE_FORMAT,
+    DATA_CAPTURE_FOLDER_TIME_FORMAT,
+    IMAGE_THRESHOLD_DEFAULT,
+    IMAGE_EPSILON
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +66,11 @@ def create_capture_folder() -> str:
     """Create a date-based folder for camera images"""
     workspace_root = get_workspace_root()
     now = datetime.now()
-    date_folder = now.strftime("%d_%b_%Y")  # e.g., "03_Apr_2026"
-    time_folder = now.strftime("%H_%M")     # e.g., "14_30"
+    date_folder = now.strftime(DATA_CAPTURE_FOLDER_DATE_FORMAT)
+    time_folder = now.strftime(DATA_CAPTURE_FOLDER_TIME_FORMAT)
     
     # Create folder structure: camera_images/DD_MMM_YYYY/HH_MM
-    base_folder = os.path.join(workspace_root, "camera_images", date_folder, time_folder)
+    base_folder = os.path.join(workspace_root, CAMERA_IMAGES_FOLDER, date_folder, time_folder)
     
     try:
         os.makedirs(base_folder, exist_ok=True)
@@ -71,10 +78,10 @@ def create_capture_folder() -> str:
         return base_folder
     except Exception as e:
         logger.error(f"Failed to create capture folder: {e}")
-        return os.path.join(workspace_root, "camera_images")  # Fallback to base folder
+        return os.path.join(workspace_root, CAMERA_IMAGES_FOLDER)  # Fallback to base folder
 
 
-def calculate_beam_centroid(image_path: str, threshold_value: int = 20) -> Optional[Tuple[float, float]]:
+def calculate_beam_centroid(image_path: str, threshold_value: int = IMAGE_THRESHOLD_DEFAULT) -> Optional[Tuple[float, float]]:
     """
     Calculate beam centroid from a single image
     
@@ -106,7 +113,7 @@ def calculate_beam_centroid(image_path: str, threshold_value: int = 20) -> Optio
         h, w = beam.shape
         y, x = np.indices((h, w))
 
-        total_intensity = np.sum(beam) + 1e-16
+        total_intensity = np.sum(beam) + IMAGE_EPSILON
 
         # --- Centroid ---
         cx = np.sum(x * beam) / total_intensity

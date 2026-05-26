@@ -94,8 +94,6 @@ class CN2OpticalCalculator:
                     centroids_x.append(cx)
                     centroids_y.append(cy)
                     valid_images += 1
-                else:
-                    logger.debug(f"Skipping invalid image: {img_path}")
             
             if len(centroids_x) < 2:
                 logger.warning(f"Insufficient valid centroids: {len(centroids_x)}")
@@ -113,7 +111,6 @@ class CN2OpticalCalculator:
             cn2 = total_variance / (self.cn2_coefficient * (self.path_length ** 3) * (self.beam_diameter ** (-1/3)))
             
             logger.info(f"CN² calculated from {valid_images} images: {cn2:.2e} m^(-2/3)")
-            logger.debug(f"Variance X: {variance_x:.2e}, Variance Y: {variance_y:.2e}")
             
             return cn2
             
@@ -162,9 +159,6 @@ class CN2OpticalCalculator:
             # Rearranged: Cn² = σ² / (2.84 * L³ * D^(-1/3))
             
             cn2 = total_variance / (self.cn2_coefficient * (self.path_length ** 3) * (self.beam_diameter ** (-1/3)))
-            
-            logger.debug(f"CN² calculated from {len(centroids_x)} centroids: {cn2:.2e} m^(-2/3)")
-            logger.debug(f"Variance X: {variance_x:.2e}, Variance Y: {variance_y:.2e}")
             
             return cn2
             

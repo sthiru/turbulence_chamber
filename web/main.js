@@ -3,14 +3,6 @@
 let ws = null;
 let reconnectInterval = null;
 
-// Configuration
-const CONFIG = {
-    WS_URL: `ws://${window.location.host}/ws/status`,
-    RECONNECT_DELAY: 3000,
-    WARNING_TEMP: 60,
-    DANGER_TEMP: 80
-};
-
 // Initialize bottom bar functionality after loading
 initializeBottomBar();
 
@@ -23,7 +15,7 @@ function initWebSocket() {
             .then(response => {
                 if (response.ok) {
                     // Server is available, connect WebSocket
-                    ws = new WebSocket(CONFIG.WS_URL);
+                    ws = new WebSocket(WEBSOCKET.STATUS_URL);
                     
                     ws.onopen = function() {
                         if (reconnectInterval) {
@@ -71,7 +63,7 @@ function scheduleReconnect() {
     if (!reconnectInterval) {
         reconnectInterval = setInterval(() => {
             initWebSocket();
-        }, CONFIG.RECONNECT_DELAY);
+        }, WEBSOCKET.RECONNECT_DELAY);
     }
 }
 
@@ -285,7 +277,7 @@ function updateSensorData(data) {
                     // Calculate rotation duration based on PWM speed (0-255)
                     // Higher speed = faster rotation = shorter duration
                     // Map: 255 -> 0.5s (fastest), 1 -> 5s (slowest)
-                    const duration = 5.0 - (speed / 255) * 4.5; // 5s to 0.5s
+                    const duration = FAN.DURATION_MAX - (speed / FAN.SPEED_MAX) * FAN.DURATION_CALCULATION_FACTOR;
 
                     // Create SVG animateTransform element
                     const animateTransform = document.createElementNS('http://www.w3.org/2000/svg', 'animateTransform');
@@ -309,9 +301,8 @@ function updateSensorData(data) {
 
         // Update slider knob position based on speed (0-255 maps to -20 to 40)
         if (sliderKnob) {
-            const sliderRange = 60; // From -20 to 40
             const validSpeed = speed || 0; // Handle undefined/null/0 values
-            const knobPosition = 40 - (validSpeed / 255) * sliderRange;
+            const knobPosition = FAN.SLIDER_CENTER - (validSpeed / FAN.SPEED_MAX) * FAN.SLIDER_RANGE;
             sliderKnob.setAttribute('cy', knobPosition);
         }
     });
@@ -577,9 +568,9 @@ function initFanSliders() {
                     const deltaY = moveEvent.clientY - startY;
                     let newCy = startCy + deltaY;
                     
-                    // Clamp to slider range (-20 to 40)
-                    if (newCy < -20) newCy = -20;
-                    if (newCy > 40) newCy = 40;
+                    // Clamp to slider range
+                    if (newCy < FAN.SLIDER_MIN) newCy = FAN.SLIDER_MIN;
+                    if (newCy > FAN.SLIDER_MAX) newCy = FAN.SLIDER_MAX;
                     
                     knob.setAttribute('cy', newCy);
                 };
@@ -588,7 +579,7 @@ function initFanSliders() {
                     if (draggingFan) {
                         // Calculate final speed and send command
                         const currentCy = parseFloat(knob.getAttribute('cy')) || 10;
-                        const speed = Math.round(((40 - currentCy) / 60) * 255);
+                        const speed = Math.round(((FAN.SLIDER_CENTER - currentCy) / FAN.SLIDER_RANGE) * FAN.SPEED_MAX);
                         sendFanCommand(draggingFan - 1, speed);
                         
                         draggingFan = null;
@@ -615,9 +606,9 @@ function initFanSliders() {
                     const deltaY = moveEvent.clientY - startY;
                     let newCy = startCy + deltaY;
                     
-                    // Clamp to slider range (-20 to 40)
-                    if (newCy < -20) newCy = -20;
-                    if (newCy > 40) newCy = 40;
+                    // Clamp to slider range
+                    if (newCy < FAN.SLIDER_MIN) newCy = FAN.SLIDER_MIN;
+                    if (newCy > FAN.SLIDER_MAX) newCy = FAN.SLIDER_MAX;
                     
                     knob.setAttribute('cy', newCy);
                 };
@@ -626,7 +617,7 @@ function initFanSliders() {
                     if (draggingFan) {
                         // Calculate final speed and send command
                         const currentCy = parseFloat(knob.getAttribute('cy')) || 10;
-                        const speed = Math.round(((40 - currentCy) / 60) * 255);
+                        const speed = Math.round(((FAN.SLIDER_CENTER - currentCy) / FAN.SLIDER_RANGE) * FAN.SPEED_MAX);
                         sendFanCommand(draggingFan - 1, speed);
                         
                         draggingFan = null;

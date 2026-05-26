@@ -22,5 +22,81 @@
     "ambient_polling_interval": 9.5,
     "history_size": 100,
     "debug_enabled": false,
-    "max_history_size": 1000
+    "max_history_size": 1000,
+    "arduino": {
+        "baudrate": 1000000,
+        "com_port_start": 4,
+        "com_port_end": 10,
+        "default_com_port": "COM4",
+        "linux_port": "/dev/ttyACM0",
+        "timeout": 2.0,
+        "write_timeout": 2.0,
+        "init_delay": 3.0,
+        "max_failures": 3,
+        "connection_check_interval": 5.0,
+        "read_timeout": 10.0
+    },
+    "camera": {
+        "images_folder": "camera_images",
+        "frame_queue_size": 10,
+        "retrieve_timeout": 5000,
+        "video_frame_delay": 0.033,
+        "jpeg_quality": 85,
+        "image_extension": ".png"
+    },
+    "websocket": {
+        "reconnect_delay": 3000,
+        "status_endpoint": "/ws/status",
+        "video_endpoint": "/ws/video"
+    },
+    "thresholds": {
+        "temperature_warning": 60,
+        "temperature_danger": 80,
+        "temperature_sensor_normal": 20,
+        "temperature_sensor_warning": 30,
+        "temperature_invalid": -100,
+        "humidity_valid": 0
+    },
+    "fan": {
+        "speed_min": 0,
+        "speed_max": 255,
+        "duration_min": 0.5,
+        "duration_max": 5.0,
+        "slider_min": -20,
+        "slider_max": 40
+    },
+    "hotplate": {
+        "id_min": 0,
+        "id_max": 1,
+        "switch_knob_off": 10,
+        "switch_knob_on": 30
+    },
+    "data_capture": {
+        "centroid_history_threshold": 30,
+        "folder_date_format": "%d_%b_%Y",
+        "folder_time_format": "%H_%M"
+    },
+    "calibration": {
+        "windflow": {
+            "fan_speed_step": 5,
+            "settling_time_ms": 1000,
+            "num_samples": 3
+        },
+        "hotplate": {
+            "temp_min": 80.0,
+            "temp_max": 120.0,
+            "temp_step": 2.0,
+            "fan_speeds": "255,191,128,64",
+            "recording_duration": 900,
+            "sampling_interval": 10
+        }
+    },
+    "image_processing": {
+        "threshold_default": 20,
+        "adaptive_threshold_block_size": 11,
+        "adaptive_threshold_c": 2
+    },
+    "ui": {
+        "notification_timeout": 5000
+    }
 }

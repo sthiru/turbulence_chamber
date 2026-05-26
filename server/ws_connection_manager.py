@@ -32,7 +32,6 @@ class ConnectionManager:
 
     async def broadcast(self, message: str):
         """Broadcast message to all connected WebSocket clients"""
-        logger.debug(f"Broadcasting message to {len(self.active_connections)} clients: {message[:100]}...")
         for connection in self.active_connections:
             try:
                 await connection.send_text(message)

@@ -6,12 +6,6 @@ let isVideoStreaming = false;
 let videoClientId = null;
 const currentVideoMode = 'video'; // Always video mode now
 
-// Configuration
-const VIDEO_CONFIG = {
-    VIDEO_WS_URL: `ws://${window.location.host}/ws/video`,
-    RECONNECT_DELAY: 3000
-};
-
 // Show notification (shared utility - defined in main.js, but defined here for camera module independence)
 // Note: If this function is already defined in main.js, this definition won't override it
 if (typeof showNotification === 'undefined') {
@@ -27,23 +21,23 @@ if (typeof showNotification === 'undefined') {
         
         document.body.appendChild(notification);
         
-        // Auto-remove after 5 seconds
+        // Auto-remove after notification timeout
         setTimeout(() => {
             if (notification.parentNode) {
                 notification.parentNode.removeChild(notification);
             }
-        }, 5000);
+        }, UI.NOTIFICATION_TIMEOUT);
     }
 }
 
 // Initialize video streaming WebSocket
 function initVideoWebSocket() {
     if (!videoClientId) {
-        videoClientId = 'client_' + Math.random().toString(36).substr(2, 9);
+        videoClientId = 'client_' + Math.random().toString(36).substr(UI.CLIENT_ID_START, UI.CLIENT_ID_SUBSTR);
     }
     
     try {
-        const videoWsUrl = `${VIDEO_CONFIG.VIDEO_WS_URL}/${videoClientId}`;
+        const videoWsUrl = `${WEBSOCKET.VIDEO_URL}/${videoClientId}`;
         
         videoWs = new WebSocket(videoWsUrl);
         
@@ -291,6 +285,6 @@ function scheduleVideoReconnect() {
             } else {
                 initVideoWebSocket();
             }
-        }, VIDEO_CONFIG.RECONNECT_DELAY);
+        }, WEBSOCKET.RECONNECT_DELAY);
     }
 }

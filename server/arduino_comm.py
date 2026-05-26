@@ -12,11 +12,24 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any
 from models import ArduinoCommand, ArduinoResponse, SystemStatus, DeviceStatus
+from constants import (
+    ARDUINO_DEFAULT_BAUDRATE,
+    ARDUINO_COM_PORT_START,
+    ARDUINO_COM_PORT_END,
+    ARDUINO_DEFAULT_COM_PORT,
+    ARDUINO_LINUX_PORT,
+    ARDUINO_TIMEOUT,
+    ARDUINO_WRITE_TIMEOUT,
+    ARDUINO_INIT_DELAY,
+    ARDUINO_READ_TIMEOUT,
+    ARDUINO_READ_SIZE_LIMIT,
+    ResponseStatus
+)
 
 logger = logging.getLogger(__name__)
 
 class ArduinoCommunicator:
-    def __init__(self, port: str = None, baudrate: int = 1000000):
+    def __init__(self, port: str = None, baudrate: int = ARDUINO_DEFAULT_BAUDRATE):
         # Try to load configuration from config file first
         self.port = self._load_config_port() or port
         self.baudrate = baudrate
@@ -29,7 +42,7 @@ class ArduinoCommunicator:
             import platform
             if platform.system() == 'Windows':
                 # Default to COM4 for Windows as requested
-                for i in range(4, 10):
+                for i in range(ARDUINO_COM_PORT_START, ARDUINO_COM_PORT_END):
                     port_name = f'COM{i}'
                     try:
                         serial.Serial(port=port_name, baudrate=self.baudrate).close()
@@ -38,9 +51,9 @@ class ArduinoCommunicator:
                     except serial.SerialException:
                         pass
                 else:
-                    self.port = 'COM4'
+                    self.port = ARDUINO_DEFAULT_COM_PORT
             else:
-                self.port = '/dev/ttyACM0'  # Linux
+                self.port = ARDUINO_LINUX_PORT
     
     def _load_config_port(self) -> Optional[str]:
         """Load Arduino port from configuration file"""
@@ -53,7 +66,6 @@ class ArduinoCommunicator:
                     for line in content.split('\n'):
                         if line.strip().startswith('ARDUINO_PORT ='):
                             port_value = line.split('=')[1].strip().strip('"\'')
-                            logger.debug(f"Loaded Arduino port from config: {port_value}")
                             return port_value
         except Exception as e:
             logger.warning(f"Failed to load Arduino config: {e}")
@@ -65,13 +77,11 @@ class ArduinoCommunicator:
             self.serial_conn = serial.Serial(
                 port=self.port,
                 baudrate=self.baudrate,
-                timeout=2.0,
-                write_timeout=2.0
+                timeout=ARDUINO_TIMEOUT,
+                write_timeout=ARDUINO_WRITE_TIMEOUT
             )
             self.is_connected = True
-            logger.debug(f"Connected to Arduino on {self.port}")
-            logger.debug("Waiting for Arduino to initialize...")
-            await asyncio.sleep(3)  # Increased from 2 to 3 seconds
+            await asyncio.sleep(ARDUINO_INIT_DELAY)
             
             # Clear any initial data
             self.serial_conn.reset_input_buffer()
@@ -88,7 +98,6 @@ class ArduinoCommunicator:
         if self.serial_conn and self.serial_conn.is_open:
             self.serial_conn.close()
             self.is_connected = False
-            logger.debug("Disconnected from Arduino")
     
     async def send_command(self, command) -> ArduinoResponse:
         """Send command to Arduino and return response"""
@@ -105,7 +114,7 @@ class ArduinoCommunicator:
                 
                 if not self.is_connected:
                     return ArduinoResponse(
-                        status="error",
+                        status=ResponseStatus.ERROR,
                         msg="Not connected to Arduino"
                     )
             
@@ -124,19 +133,9 @@ class ArduinoCommunicator:
                 # Send command
                 self.serial_conn.write((cmd_json + '\n').encode())
                 self.serial_conn.flush()
-                logger.debug(f"Command sent to Arduino on {self.port}, took {time.time() - cmd_start:.3f}s")
-                
-                # Check if data was actually written
-                bytes_written = self.serial_conn.out_waiting
-                logger.debug(f"Bytes waiting to be written: {bytes_written}")
                 
                 # Wait for response
-                read_start = time.time()
                 response_line = await self._read_line()
-                read_time = time.time() - read_start
-                logger.debug(f"Read line took {read_time:.3f}s, Raw response from Arduino: {response_line}")
-                
-                logger.debug(f"Total command time: {time.time() - total_start:.3f}s (read: {read_time:.3f}s)")
                 
                 if response_line:
                     try:
@@ -148,14 +147,14 @@ class ArduinoCommunicator:
                                 # Arduino sensor error - log it but don't disconnect
                                 logger.warning(f"Arduino sensor error: {response_data}")
                                 return ArduinoResponse(
-                                    status="error",
+                                    status=ResponseStatus.ERROR,
                                     msg=f"Arduino error: {response_data.get('message', 'Unknown error')}"
                                 )
                             elif response_data['type'] == 'safety':
                                 # Arduino safety event - log it but don't disconnect
                                 logger.warning(f"Arduino safety event: {response_data}")
                                 return ArduinoResponse(
-                                    status="ok",  # Safety events are not errors, they're notifications
+                                    status=ResponseStatus.OK,  # Safety events are not errors, they're notifications
                                     msg=f"Safety event: {response_data.get('event', 'Unknown event')}"
                                 )
                             elif response_data['type'] == 'info':
@@ -163,7 +162,7 @@ class ArduinoCommunicator:
                                 logger.info(f"Arduino info: {response_data}")
                                 # Return ok status for info messages (they're not errors)
                                 return ArduinoResponse(
-                                    status="ok",
+                                    status=ResponseStatus.OK,
                                     msg=f"Info: {response_data.get('message', 'Info message')}"
                                 )
                         
@@ -175,10 +174,8 @@ class ArduinoCommunicator:
                         
                         # Try reading additional lines to find valid JSON (up to 3 attempts)
                         for attempt in range(3):
-                            logger.warning(f"JSON decode attempt {attempt + 1}/3, trying to read next line...")
                             next_line = await self._read_line(timeout=2.0)
                             if next_line:
-                                logger.info(f"Read next line: '{next_line}'")
                                 try:
                                     response_data = json.loads(next_line)
                                     
@@ -187,29 +184,26 @@ class ArduinoCommunicator:
                                         if response_data['type'] == 'error':
                                             logger.warning(f"Arduino sensor error: {response_data}")
                                             return ArduinoResponse(
-                                                status="error",
+                                                status=ResponseStatus.ERROR,
                                                 msg=f"Arduino error: {response_data.get('message', 'Unknown error')}"
                                             )
                                         elif response_data['type'] == 'safety':
                                             logger.warning(f"Arduino safety event: {response_data}")
                                             return ArduinoResponse(
-                                                status="ok",
+                                                status=ResponseStatus.OK,
                                                 msg=f"Safety event: {response_data.get('event', 'Unknown event')}"
                                             )
                                         elif response_data['type'] == 'info':
                                             logger.info(f"Arduino info: {response_data}")
                                             return ArduinoResponse(
-                                                status="ok",
+                                                status=ResponseStatus.OK,
                                                 msg=f"Info: {response_data.get('message', 'Info message')}"
                                             )
                                     
-                                    logger.info(f"Successfully parsed JSON on attempt {attempt + 1}")
                                     return ArduinoResponse(**response_data)
                                 except json.JSONDecodeError:
-                                    logger.warning(f"Attempt {attempt + 1} failed to parse JSON")
                                     continue
                             else:
-                                logger.warning(f"No data read on attempt {attempt + 1}")
                                 continue
                         
                         # Check if this is a sensor error message (not a connection issue)
@@ -217,7 +211,7 @@ class ArduinoCommunicator:
                             # Sensor error - do not disconnect, just return error
                             logger.warning("Sensor error detected, returning error without disconnecting")
                             return ArduinoResponse(
-                                status="error",
+                                status=ResponseStatus.ERROR,
                                 msg=response_line
                             )
                         
@@ -226,7 +220,7 @@ class ArduinoCommunicator:
                         await self.disconnect()
                         
                         return ArduinoResponse(
-                            status="error",
+                            status=ResponseStatus.ERROR,
                             msg=f"JSON decode error: {e}"
                         )
                 else:
@@ -234,7 +228,7 @@ class ArduinoCommunicator:
                     # No response might mean connection lost
                     await self.disconnect()
                     return ArduinoResponse(
-                        status="error",
+                        status=ResponseStatus.ERROR,
                         msg="No response from Arduino"
                     )
                     
@@ -243,11 +237,11 @@ class ArduinoCommunicator:
                 # Mark as disconnected on any communication error
                 await self.disconnect()
                 return ArduinoResponse(
-                    status="error",
+                    status=ResponseStatus.ERROR,
                     msg=f"Communication error: {str(e)}"
                 )
     
-    async def _read_line(self, timeout: float = 10.0) -> Optional[str]:
+    async def _read_line(self, timeout: float = ARDUINO_READ_TIMEOUT) -> Optional[str]:
         """Read a line from serial port with timeout - hybrid batch/char reading"""
         import time
         if not self.serial_conn:
@@ -263,7 +257,7 @@ class ArduinoCommunicator:
                 try:
                     bytes_available = self.serial_conn.in_waiting
                     # Limit read size to avoid blocking
-                    read_size = min(bytes_available, 1024)
+                    read_size = min(bytes_available, ARDUINO_READ_SIZE_LIMIT)
                     chunk = self.serial_conn.read(read_size)
                     
                     if chunk:
@@ -276,9 +270,6 @@ class ArduinoCommunicator:
                             lines = buffer.split('\n', 1)
                             result = lines[0].strip()
                             
-                            total_time = time.time() - loop_start
-                            logger.debug(f"Read line completed in {total_time:.3f}s, {len(result)} chars, buffer size: {len(buffer)}")
-                            
                             if not result:
                                 logger.warning("Arduino sent empty response")
                                 return None
@@ -286,7 +277,6 @@ class ArduinoCommunicator:
                             return result
                         else:
                             # No newline yet, buffer the data and continue waiting
-                            logger.debug(f"Buffered {len(chunk)} bytes (total buffer: {len(buffer)})")
                             await asyncio.sleep(0.001)
                 except UnicodeDecodeError as e:
                     logger.warning(f"Unicode decode error: {e}")
@@ -295,8 +285,6 @@ class ArduinoCommunicator:
                 # No data available, short sleep
                 await asyncio.sleep(0.001)
         
-        total_time = time.time() - loop_start
-        logger.debug(f"Read line timeout after {total_time:.3f}s, buffer content: {buffer[:100]}")
         return None
         
     async def get_status(self) -> ArduinoResponse:
@@ -337,7 +325,6 @@ class ArduinoCommunicator:
                     
                     if response.status == "ok":
                         consecutive_failures = 0  # Reset on success
-                        logger.debug("Arduino connection healthy")
                     else:
                         consecutive_failures += 1
                         logger.warning(f"Arduino communication error {consecutive_failures}/{max_failures}: {response.msg}")
@@ -350,11 +337,9 @@ class ArduinoCommunicator:
                             consecutive_failures = 0
                 else:
                     # Try to reconnect
-                    logger.debug("Arduino disconnected, attempting to reconnect...")
                     await self.connect()
                     if self.is_connected:
                         consecutive_failures = 0
-                        logger.debug("Arduino reconnected successfully")
                     else:
                         consecutive_failures += 1
                         logger.warning(f"Reconnection failed {consecutive_failures}/{max_failures}")
@@ -386,7 +371,6 @@ async def apply_settings_to_arduino(arduino_comm: ArduinoCommunicator):
             "debug_enabled": settings.get("debug_enabled", False)
         }
         
-        logger.debug(f"Sending apply_settings command to Arduino: {command}")
         response = await arduino_comm.send_command(command)
         if response.status == "ok":
             logger.info("Settings applied to Arduino successfully")

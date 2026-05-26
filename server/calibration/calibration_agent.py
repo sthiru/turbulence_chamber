@@ -454,7 +454,6 @@ class CalibrationAgent:
                     avg_flow = np.mean(readings) if readings else 0.0
                     avg_flows.append(avg_flow)
                     fan_data[sensor_id].append((fan_speed, avg_flow))
-                    logger.debug(f"Sensor {sensor_id} @ {fan_speed} PWM → Flow: {avg_flow:.3f}")
                 
                 # Update session with all flow rates
                 self.current_session = self.current_session.model_copy(update={

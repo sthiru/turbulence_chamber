@@ -101,8 +101,6 @@ def calculate_cn2(temperatures, bme_temperatures, bme_pressure):
             cn2 = (7.9e-5 * (pressure / (ambient_temp_kelvin ** 2)))**2 * (dt_squared / (r ** (2/3)))
             
             cn2_results.append(cn2)
-            
-            logger.debug(f"CN² calculation pair {len(cn2_results)}: T{idx1+1}={temp1:.2f}°C, T{idx2+1}={temp2:.2f}°C, r={r}m, dt²={dt_squared:.2f}, CN²={cn2:.2e}")
         
         return cn2_results
         
