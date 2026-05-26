@@ -24,6 +24,7 @@ from .windflow_calibration import WindflowCalibrator
 from .hotplate_calibration import HotplateCalibrator, HotplateCalibrationConfig
 from .combined_calibration import CombinedCalibrator, CombinedCalibrationConfig, CombinedDataPoint
 from utils import get_calibration_data_folder
+from csv_utils import init_csv_file
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +65,11 @@ class CalibrationAgent:
         
         # Try to recover existing session on startup
         self._recover_session()
-        self.hotplate_calibration_result: Optional = None
+        self.hotplate_calibration_result: Optional[HotplateCalibrationResult] = None
 
         # Combined calibrator
         self.combined_calibrator = CombinedCalibrator()
-        self.combined_calibration_result: Optional = None
+        self.combined_calibration_result: Optional[CombinedCalibrationResult] = None
 
         # Ensure calibration data folder exists
         os.makedirs(calibration_data_folder, exist_ok=True)
@@ -139,12 +140,14 @@ class CalibrationAgent:
             return "none"
         
         session_id = self.current_session.session_id.lower()
-        if "hotplate" in session_id or "4d" in session_id:
-            return "hotplate"
+        if "pid" in session_id:
+            return "pid"
+        elif  "4d" in session_id:
+            return "4d"
         elif "windflow" in session_id:
             return "windflow"
         else:
-            return "unknown"
+            return "turbulence"
     
     def get_current_session_info(self) -> Optional[Dict]:
         """Get information about the current session"""
@@ -499,8 +502,7 @@ class CalibrationAgent:
             self.current_session.end_time = datetime.now()
             
             # Save final session status on error
-            if 'session_folder' in locals():
-                self._save_session_metadata(session_folder)
+            self._save_session_metadata(session_folder)
         
         finally:
             self.is_running = False
@@ -672,6 +674,18 @@ class CalibrationAgent:
                             # Calculate Cn² (placeholder - would use optical data)
                             cn2_value = 0.0
 
+                            # Create data point and add to all_data_points
+                            data_point = CombinedDataPoint(
+                                timestamp=timestamp,
+                                fan_speed=fan_speed,
+                                target_temperature=target_temp,
+                                chamber_temperature=chamber_temp_avg,
+                                cn2_value=cn2_value,
+                                sensor_temperatures=sensor_temps,
+                                flow_rates=sensor_data.get('flow_rates', [])
+                            )
+                            all_data_points.append(data_point)
+
                             # Notify status callback more frequently for smooth progress updates
                             if self.status_callback:
                                 self.status_callback(self.current_session)
@@ -717,8 +731,7 @@ class CalibrationAgent:
             self.current_session.error_message = str(e)
             self.current_session.end_time = datetime.now()
 
-            if 'session_folder' in locals():
-                self._save_session_metadata(session_folder)
+            self._save_session_metadata(session_folder)
 
         finally:
             self.is_running = False
@@ -735,7 +748,34 @@ class CalibrationAgent:
                 json.dump(self.current_session.model_dump(mode='json'), f, indent=2)
             logger.info(f"Session metadata saved to {metadata_file}")
         except Exception as e:
-            logger.error(f"Error saving session metadata: {e}")    
+            logger.error(f"Error saving session metadata: {e}")
+    
+    async def _capture_sensor_data(self) -> Optional[Dict]:
+        """Capture sensor data from Arduino"""
+        try:
+            status = await self.arduino_comm.get_status()
+            if status:
+                return {
+                    'temperatures': status.get('temperatures', []),
+                    'flow_rates': status.get('flow_rates', []),
+                    'temperature_bmp': status.get('temperature_bmp', []),
+                    'pressure': status.get('pressure', []),
+                    'humidity': status.get('humidity', [])
+                }
+        except Exception as e:
+            logger.error(f"Error capturing sensor data: {e}")
+        return None
+    
+    def _save_combined_calibration(self, session_folder: str):
+        """Save combined calibration result to file"""
+        try:
+            if self.combined_calibration_result:
+                result_file = os.path.join(session_folder, "combined_calibration_result.json")
+                with open(result_file, 'w') as f:
+                    json.dump(self.combined_calibration_result.model_dump(mode='json'), f, indent=2)
+                logger.info(f"Combined calibration result saved to {result_file}")
+        except Exception as e:
+            logger.error(f"Error saving combined calibration result: {e}")    
         
     async def _reset_hardware(self):
         """Reset hardware to safe state"""
