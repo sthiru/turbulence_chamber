@@ -30,8 +30,14 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP280.h>
 #include <SPI.h>
-#include <DHT22.h>
 #include <PID_v1.h>
+#include <DHT22.h>
+#include <Adafruit_MAX31865.h>
+
+// The value of the Rref resistor. Use 430.0 for PT100 and 4300.0 for PT1000
+#define RREF      430.0
+// 100.0 for PT100, 1000.0 for PT1000
+#define RNOMINAL  100.0
 
 // Pin Definitions
 #define ONE_WIRE_BUS 2
@@ -93,6 +99,11 @@ bool bmpFound[NUM_BMP280_SENSORS] = {false, false};
 DHT22 dht1(DHT_PIN_1);
 DHT22 dht2(DHT_PIN_2);
 bool dhtFound[NUM_DHT_SENSORS] = {false, false};
+
+//PT100 Sensors
+// use hardware SPI, just pass in the CS pin
+Adafruit_MAX31865 hoptplate1_temp = Adafruit_MAX31865(22);
+Adafruit_MAX31865 hoptplate2_temp = Adafruit_MAX31865(23);
 
 // System State
 float currentTemperatures[NUM_SENSORS];
@@ -175,6 +186,10 @@ void setup() {
   analogWrite(FAN_2_PWM, 255);
   analogWrite(FAN_3_PWM, 255);
   analogWrite(FAN_4_PWM, 255);
+
+  //Initialize PT100 Sensors
+  hoptplate1_temp.begin(MAX31865_3WIRE);
+  hoptplate2_temp.begin(MAX31865_3WIRE);
   
   // Initialize temperature sensors
   sensors.begin();
@@ -420,6 +435,10 @@ void updateTemperatures() {
       }
     }
   }
+
+  //Update PT sesnors
+  temp_hotplate1 = hoptplate1_temp.temperature(RNOMINAL, RREF);
+  temp_hotplate2 = hoptplate2_temp.temperature(RNOMINAL, RREF);
 
   // Update BME280 sensors
   updateBME280Sensors();
