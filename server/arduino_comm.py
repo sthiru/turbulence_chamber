@@ -71,6 +71,39 @@ class ArduinoCommunicator:
             logger.warning(f"Failed to load Arduino config: {e}")
         return None
         
+    def _command_to_scpi(self, command) -> str:
+        """Convert an ArduinoCommand or dict into an SCPI command string."""
+        payload = None
+        if hasattr(command, 'dict'):
+            payload = command.dict(exclude_none=True)
+        elif isinstance(command, dict):
+            payload = command
+        elif isinstance(command, str):
+            return command.strip()
+        else:
+            return ""
+        
+        if not payload:
+            return ""
+        
+        cmd = payload.get('cmd', '')
+        if cmd == 'get_status':
+            return "SYST:STAT?"
+        if cmd == 'ping':
+            return "*IDN?"
+        if cmd == 'set_temp':
+            return f"SOUR:TEMP {payload.get('sensor')},{payload.get('target')}"
+        if cmd == 'set_fan':
+            return f"SOUR:FAN {payload.get('fan')},{payload.get('speed')}"
+        if cmd == 'toggle_hotplate':
+            state = 1 if payload.get('state') else 0
+            return f"OUTP:HOTPL {payload.get('plate')},{state}"
+        if cmd == 'apply_settings':
+            settings_payload = {k: v for k, v in payload.items() if k != 'cmd'}
+            return f"CONF:SET '{json.dumps(settings_payload)}'"
+        
+        return ""
+    
     async def connect(self) -> bool:
         """Connect to Arduino via serial port"""
         try:
@@ -119,19 +152,15 @@ class ArduinoCommunicator:
                     )
             
             try:
-                # Convert command to JSON and send
+                # Convert command to SCPI string and send
                 cmd_start = time.time()
-                # Handle both dict and ArduinoCommand objects
-                if hasattr(command, 'dict'):
-                    cmd_json = json.dumps(command.dict(exclude_none=True))
-                else:
-                    cmd_json = json.dumps(command)
+                cmd_str = self._command_to_scpi(command)
                 
                 # Clear any pending input first
                 self.serial_conn.reset_input_buffer()
                 
                 # Send command
-                self.serial_conn.write((cmd_json + '\n').encode())
+                self.serial_conn.write((cmd_str + '\n').encode())
                 self.serial_conn.flush()
                 
                 # Wait for response

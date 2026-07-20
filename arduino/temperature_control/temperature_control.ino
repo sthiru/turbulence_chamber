@@ -33,6 +33,7 @@
 #include <PID_v1.h>
 #include <DHT22.h>
 #include <Adafruit_MAX31865.h>
+#include <SCPI_Parser.h>
 
 // The value of the Rref resistor. Use 430.0 for PT100 and 4300.0 for PT1000
 #define RREF      430.0
@@ -166,9 +167,252 @@ PID pid0(&pidInput0, &pidOutput0, &targetTemperatures[0], kp0, ki0, kd0, DIRECT)
 double pidInput1, pidOutput1;
 PID pid1(&pidInput1, &pidOutput1, &targetTemperatures[1], kp1, ki1, kd1, DIRECT);
 
+#define SCPI_INPUT_BUFFER_LENGTH 256
+#define SCPI_ERROR_QUEUE_SIZE 17
+
+size_t SCPI_Write(scpi_t * context, const char * data, size_t len) {
+  (void) context;
+  return Serial.write(data, len);
+}
+
+scpi_result_t SCPI_Flush(scpi_t * context) {
+  (void) context;
+  Serial.flush();
+  return SCPI_RES_OK;
+}
+
+int SCPI_Error(scpi_t * context, int_fast16_t err) {
+  (void) context;
+  Serial.print(R"({"status":"error","msg":""));
+  Serial.print(SCPI_ErrorTranslate(err));
+  Serial.println(R"("})"));
+  return 0;
+}
+
+scpi_result_t SCPI_Control(scpi_t * context, scpi_ctrl_name_t ctrl, scpi_reg_val_t val) {
+  (void) context;
+  (void) ctrl;
+  (void) val;
+  return SCPI_RES_OK;
+}
+
+scpi_result_t SCPI_Reset(scpi_t * context) {
+  (void) context;
+  return SCPI_RES_OK;
+}
+
+scpi_result_t IDN_q(scpi_t * context) {
+  (void) context;
+  Serial.println(R"({"status":"ok","msg":"Turbulence Chamber Controller"})"));
+  return SCPI_RES_OK;
+}
+
+scpi_result_t HELP_q(scpi_t * context) {
+  (void) context;
+  Serial.println(R"({"status":"ok","msg":"*IDN? SYST:STAT? SYST:PING? SOUR:TEMP SOUR:FAN OUTP:HOTPL CONF:SET"})"));
+  return SCPI_RES_OK;
+}
+
+scpi_result_t PING_q(scpi_t * context) {
+  (void) context;
+  Serial.println(R"({"status":"ok","msg":"pong"})"));
+  return SCPI_RES_OK;
+}
+
+scpi_result_t STAT_q(scpi_t * context) {
+  (void) context;
+  sendStatusResponse();
+  return SCPI_RES_OK;
+}
+
+scpi_result_t SOUR_TEMP(scpi_t * context) {
+  int32_t sensor;
+  double temp;
+  if (!SCPI_ParamInt(context, &sensor, TRUE) || !SCPI_ParamDouble(context, &temp, TRUE)) {
+    return SCPI_RES_ERR;
+  }
+  if (sensor >= 0 && sensor < NUM_HOT_PLATES && temp >= MIN_TEMP && temp <= MAX_TEMP) {
+    targetTemperatures[sensor] = (float)temp;
+    sendStatusResponse();
+    return SCPI_RES_OK;
+  }
+  return SCPI_RES_ERR;
+}
+
+scpi_result_t SOUR_FAN(scpi_t * context) {
+  int32_t fan;
+  int32_t speed;
+  if (!SCPI_ParamInt(context, &fan, TRUE) || !SCPI_ParamInt(context, &speed, TRUE)) {
+    return SCPI_RES_ERR;
+  }
+  if (fan >= 0 && fan < NUM_FANS && speed >= 0 && speed <= 255) {
+    fanSpeeds[fan] = speed;
+    setFanSpeed(fan, speed);
+    sendStatusResponse();
+    return SCPI_RES_OK;
+  }
+  return SCPI_RES_ERR;
+}
+
+scpi_result_t OUTP_HOTPL(scpi_t * context) {
+  int32_t plate;
+  int32_t state;
+  if (!SCPI_ParamInt(context, &plate, TRUE) || !SCPI_ParamInt(context, &state, TRUE)) {
+    return SCPI_RES_ERR;
+  }
+  if (plate >= 0 && plate < NUM_HOT_PLATES) {
+    manualHotPlateControl[plate] = true;
+    hotPlateStates[plate] = (state != 0);
+    sendStatusResponse();
+    return SCPI_RES_OK;
+  }
+  return SCPI_RES_ERR;
+}
+
+scpi_result_t CONF_SET(scpi_t * context) {
+  char args[1024];
+  size_t args_len;
+  if (!SCPI_ParamCopyText(context, args, sizeof(args), &args_len, TRUE) || args_len == 0) {
+    sendErrorResponse("empty_settings_payload");
+    return SCPI_RES_OK;
+  }
+  args[args_len] = 0;
+
+  DynamicJsonDocument doc(1024);
+  DeserializationError error = deserializeJson(doc, args);
+    
+    if (error) {
+      sendErrorResponse("settings_json_parsing_error");
+      return SCPI_RES_OK;
+    }
+    
+    if (doc.containsKey("target_temperatures") && doc["target_temperatures"].is<JsonArray>()) {
+      JsonArray targetTemps = doc["target_temperatures"].as<JsonArray>();
+      for (int i = 0; i < min((int)targetTemps.size(), NUM_HOT_PLATES); i++) {
+        targetTemperatures[i] = targetTemps[i];
+      }
+    }
+    
+    if (doc.containsKey("safety_temperature")) {
+      float safetyTemp = doc["safety_temperature"];
+      (void)safetyTemp;
+    }
+    
+    if (doc.containsKey("pid_parameters") && doc["pid_parameters"].is<JsonObject>()) {
+      JsonObject pidParams = doc["pid_parameters"].as<JsonObject>();
+      
+      if (pidParams.containsKey("hotplate_0") && pidParams["hotplate_0"].is<JsonObject>()) {
+        JsonObject hp0Params = pidParams["hotplate_0"].as<JsonObject>();
+        if (hp0Params.containsKey("kp")) {
+          kp0 = hp0Params["kp"];
+          pid0.SetTunings(kp0, ki0, kd0);
+        }
+        if (hp0Params.containsKey("ki")) {
+          ki0 = hp0Params["ki"];
+          pid0.SetTunings(kp0, ki0, kd0);
+        }
+        if (hp0Params.containsKey("kd")) {
+          kd0 = hp0Params["kd"];
+          pid0.SetTunings(kp0, ki0, kd0);
+        }
+      }
+      
+      if (pidParams.containsKey("hotplate_1") && pidParams["hotplate_1"].is<JsonObject>()) {
+        JsonObject hp1Params = pidParams["hotplate_1"].as<JsonObject>();
+        if (hp1Params.containsKey("kp")) {
+          kp1 = hp1Params["kp"];
+          pid1.SetTunings(kp1, ki1, kd1);
+        }
+        if (hp1Params.containsKey("ki")) {
+          ki1 = hp1Params["ki"];
+          pid1.SetTunings(kp1, ki1, kd1);
+        }
+        if (hp1Params.containsKey("kd")) {
+          kd1 = hp1Params["kd"];
+          pid1.SetTunings(kp1, ki1, kd1);
+        }
+      }
+      
+      if (pidParams.containsKey("kp")) {
+        kp0 = pidParams["kp"];
+        kp1 = pidParams["kp"];
+        pid0.SetTunings(kp0, ki0, kd0);
+        pid1.SetTunings(kp1, ki1, kd1);
+      }
+      if (pidParams.containsKey("ki")) {
+        ki0 = pidParams["ki"];
+        ki1 = pidParams["ki"];
+        pid0.SetTunings(kp0, ki0, kd0);
+        pid1.SetTunings(kp1, ki1, kd1);
+      }
+      if (pidParams.containsKey("kd")) {
+        kd0 = pidParams["kd"];
+        kd1 = pidParams["kd"];
+        pid0.SetTunings(kp0, ki0, kd0);
+        pid1.SetTunings(kp1, ki1, kd1);
+      }
+    }
+    
+    if (doc.containsKey("fan_start_behaviour")) {
+      String fanBehaviour = doc["fan_start_behaviour"] | "off";
+      if (fanBehaviour == "off") {
+        for (int i = 0; i < NUM_FANS; i++) {
+          fanSpeeds[i] = 0;
+          setFanSpeed(i, 0);
+        }
+      } else if (fanBehaviour == "half_speed") {
+        for (int i = 0; i < NUM_FANS; i++) {
+          fanSpeeds[i] = 127;
+          setFanSpeed(i, 127);
+        }
+      } else if (fanBehaviour == "full_speed") {
+        for (int i = 0; i < NUM_FANS; i++) {
+          fanSpeeds[i] = 255;
+          setFanSpeed(i, 255);
+        }
+      }
+    }
+    
+    if (doc.containsKey("polling_interval")) {
+      UPDATE_INTERVAL = (unsigned long)(doc["polling_interval"] | 1) * 1000;
+    }
+    if (doc.containsKey("ambient_polling_interval")) {
+      DHT_UPDATE_INTERVAL = (unsigned long)(doc["ambient_polling_interval"] | 10) * 1000;
+    }
+    
+    if (doc.containsKey("debug_enabled")) {
+      debugEnabled = doc["debug_enabled"] | false;
+    }
+    
+    sendStatusResponse();
+    return SCPI_RES_OK;
+  }
+  
+
+
+const scpi_command_t scpi_commands[] = {
+  {"*IDN?", IDN_q},
+  {"HELP?", HELP_q},
+  {"SYSTem:CMDS?", HELP_q},
+  {"SYSTem:PING?", PING_q},
+  {"SYSTem:STATus?", STAT_q},
+  {"SOURce:TEMPerature", SOUR_TEMP},
+  {"SOURce:FAN", SOUR_FAN},
+  {"OUTPut:HOTPLate", OUTP_HOTPL},
+  {"CONFigure:SET", CONF_SET},
+  SCPI_CMD_LIST_END
+};
+
+char scpi_input_buffer[SCPI_INPUT_BUFFER_LENGTH];
+scpi_error_t scpi_error_queue_data[SCPI_ERROR_QUEUE_SIZE];
+scpi_t scpi_context;
+scpi_interface_t scpi_interface = {SCPI_Error, SCPI_Write, SCPI_Control, SCPI_Flush, SCPI_Reset};
+
 void setup() {
   Serial.begin(1000000);
   while (!Serial) delay(10);
+
+  SCPI_Init(&scpi_context, scpi_commands, &scpi_interface, scpi_units_def, "UFO", "Turbulence Chamber Controller", "SN01", "1.0", scpi_input_buffer, SCPI_INPUT_BUFFER_LENGTH, scpi_error_queue_data, SCPI_ERROR_QUEUE_SIZE);
   
   // Initialize pins
   pinMode(SSR_RELAY_1, OUTPUT);
@@ -707,176 +951,15 @@ void processSerialCommands() {
   if (Serial.available()) {
     String command = Serial.readStringUntil('\n');
     command.trim();
-    
     if (command.length() > 0) {
-      processCommand(command);
+      char input[SCPI_INPUT_BUFFER_LENGTH];
+      size_t len = command.length();
+      if (len >= sizeof(input) - 1) len = sizeof(input) - 1;
+      command.toCharArray(input, len + 1);
+      input[len] = '\n';
+      input[len + 1] = 0;
+      SCPI_Input(&scpi_context, input, len + 1);
     }
-  }
-}
-
-void processCommand(String command) {
-  // Increased JSON buffer size to handle larger commands (apply_settings with nested PID parameters)
-  DynamicJsonDocument doc(1024);
-  DeserializationError error = deserializeJson(doc, command);
-  
-  if (error) {
-    if (debugEnabled) {
-      Serial.print("{\"type\":\"error\",\"message\":\"json_parsing_error\",\"error\":\"");
-      Serial.print(error.c_str());
-      Serial.println("\"}");
-    }
-    sendErrorResponse("json_parsing_error");
-    return;
-  }
-  
-  String cmd = doc["cmd"] | "";
-  
-  if (cmd == "get_status") {
-    sendStatusResponse();
-  } else if (cmd == "ping") {
-    // Simple ping response for connectivity test
-    Serial.println("{\"status\":\"ok\",\"msg\":\"pong\"}");
-  } else if (cmd == "set_temp") {
-    int sensor = doc["sensor"] | -1;
-    float temp = doc["target"] | -0.0;
-    
-    if (sensor >= 0 && sensor < NUM_HOT_PLATES && temp >= MIN_TEMP && temp <= MAX_TEMP) {
-      targetTemperatures[sensor] = temp;
-      sendStatusResponse();
-    } else {
-      sendErrorResponse("Invalid temperature parameters");
-    }
-  } else if (cmd == "set_fan") {
-    int fan = doc["fan"] | -1;
-    int speed = doc["speed"] | -1;
-    
-    if (fan >= 0 && fan < NUM_FANS && speed >= 0 && speed <= 255) {
-      fanSpeeds[fan] = speed;
-      setFanSpeed(fan, speed);
-      sendStatusResponse();
-    } else {
-      sendErrorResponse("Invalid fan parameters");
-    }
-  } else if (cmd == "toggle_hotplate") {
-    int plate = doc["plate"] | -1;
-    bool state = doc["state"] | false;
-    
-    if (plate >= 0 && plate < NUM_HOT_PLATES) {
-      manualHotPlateControl[plate] = true; // Enable manual override
-      hotPlateStates[plate] = state;
-      sendStatusResponse();
-    } else {
-      sendErrorResponse("Invalid hot plate parameters");
-    }
-  } else if (cmd == "apply_settings") {
-    // Apply settings from server (target temperatures, PID parameters, etc.)
-    if (doc.containsKey("target_temperatures") && doc["target_temperatures"].is<JsonArray>()) {
-      JsonArray targetTemps = doc["target_temperatures"].as<JsonArray>();
-      for (int i = 0; i < min((int)targetTemps.size(), NUM_HOT_PLATES); i++) {
-        targetTemperatures[i] = targetTemps[i];
-      }
-    }
-    
-    if (doc.containsKey("safety_temperature")) {
-      // Safety temperature is stored but not directly enforced by Arduino
-      // It's primarily enforced by the server side
-      float safetyTemp = doc["safety_temperature"];
-      // Could be used for additional safety checks if needed
-    }
-    
-    if (doc.containsKey("pid_parameters") && doc["pid_parameters"].is<JsonObject>()) {
-      JsonObject pidParams = doc["pid_parameters"].as<JsonObject>();
-      
-      // Handle separate PID parameters for each hotplate
-      if (pidParams.containsKey("hotplate_0") && pidParams["hotplate_0"].is<JsonObject>()) {
-        JsonObject hp0Params = pidParams["hotplate_0"].as<JsonObject>();
-        if (hp0Params.containsKey("kp")) {
-          kp0 = hp0Params["kp"];
-          pid0.SetTunings(kp0, ki0, kd0);
-        }
-        if (hp0Params.containsKey("ki")) {
-          ki0 = hp0Params["ki"];
-          pid0.SetTunings(kp0, ki0, kd0);
-        }
-        if (hp0Params.containsKey("kd")) {
-          kd0 = hp0Params["kd"];
-          pid0.SetTunings(kp0, ki0, kd0);
-        }
-      }
-      
-      if (pidParams.containsKey("hotplate_1") && pidParams["hotplate_1"].is<JsonObject>()) {
-        JsonObject hp1Params = pidParams["hotplate_1"].as<JsonObject>();
-        if (hp1Params.containsKey("kp")) {
-          kp1 = hp1Params["kp"];
-          pid1.SetTunings(kp1, ki1, kd1);
-        }
-        if (hp1Params.containsKey("ki")) {
-          ki1 = hp1Params["ki"];
-          pid1.SetTunings(kp1, ki1, kd1);
-        }
-        if (hp1Params.containsKey("kd")) {
-          kd1 = hp1Params["kd"];
-          pid1.SetTunings(kp1, ki1, kd1);
-        }
-      }
-      
-      // Fallback to old single PID parameter structure if present
-      if (pidParams.containsKey("kp")) {
-        kp0 = pidParams["kp"];
-        kp1 = pidParams["kp"];
-        pid0.SetTunings(kp0, ki0, kd0);
-        pid1.SetTunings(kp1, ki1, kd1);
-      }
-      if (pidParams.containsKey("ki")) {
-        ki0 = pidParams["ki"];
-        ki1 = pidParams["ki"];
-        pid0.SetTunings(kp0, ki0, kd0);
-        pid1.SetTunings(kp1, ki1, kd1);
-      }
-      if (pidParams.containsKey("kd")) {
-        kd0 = pidParams["kd"];
-        kd1 = pidParams["kd"];
-        pid0.SetTunings(kp0, ki0, kd0);
-        pid1.SetTunings(kp1, ki1, kd1);
-      }
-    }
-    
-    if (doc.containsKey("fan_start_behaviour")) {
-      String fanBehaviour = doc["fan_start_behaviour"] | "off";
-      if (fanBehaviour == "off") {
-        for (int i = 0; i < NUM_FANS; i++) {
-          fanSpeeds[i] = 0;
-          setFanSpeed(i, 0);
-        }
-      } else if (fanBehaviour == "half_speed") {
-        for (int i = 0; i < NUM_FANS; i++) {
-          fanSpeeds[i] = 127;
-          setFanSpeed(i, 127);
-        }
-      } else if (fanBehaviour == "full_speed") {
-        for (int i = 0; i < NUM_FANS; i++) {
-          fanSpeeds[i] = 255;
-          setFanSpeed(i, 255);
-        }
-      }
-    }
-    
-    // Polling intervals
-    if (doc.containsKey("polling_interval")) {
-      UPDATE_INTERVAL = (unsigned long)(doc["polling_interval"] | 1) * 1000;  // Convert seconds to milliseconds
-    }
-    if (doc.containsKey("ambient_polling_interval")) {
-      DHT_UPDATE_INTERVAL = (unsigned long)(doc["ambient_polling_interval"] | 10) * 1000;  // Convert seconds to milliseconds
-    }
-    
-    // Debug mode
-    if (doc.containsKey("debug_enabled")) {
-      debugEnabled = doc["debug_enabled"] | false;
-    }
-    
-    sendStatusResponse();
-  } else {
-    sendErrorResponse("Unknown command");
   }
 }
 
