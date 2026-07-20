@@ -255,7 +255,7 @@ class ArduinoCommunicator:
                 else:
                     logger.warning("No response from Arduino")
                     # No response might mean connection lost
-                    await self.disconnect()
+                    #await self.disconnect()
                     return ArduinoResponse(
                         status=ResponseStatus.ERROR,
                         msg="No response from Arduino"

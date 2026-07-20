@@ -398,6 +398,10 @@ void setup() {
   //Initialize PT100 Sensors
   hoptplate1_temp.begin(MAX31865_3WIRE);
   hoptplate2_temp.begin(MAX31865_3WIRE);
+  hoptplate1_temp.enableBias(true);
+  hoptplate1_temp.autoConvert(true);
+  hoptplate2_temp.enableBias(true);
+  hoptplate2_temp.autoConvert(true);
   
   // Initialize temperature sensors
   sensors.begin();
@@ -625,20 +629,11 @@ void updateTemperatures() {
       }
       
       // Store in separate variables for hotplate sensors, array for others
-      if (i == 12) {
-        temp_hotplate1 = 0.0;
-      } else if (i == 13) {
-        temp_hotplate2 = 0.0;
-      } else if (i < NUM_SENSORS) {
+      if (i < NUM_SENSORS) {
         currentTemperatures[i] = 0.0;
       }
     } else {
-      // Store in separate variables for hotplate sensors, array for others
-      if (i == 12) {
-        temp_hotplate1 = temp;
-      } else if (i == 13) {
-        temp_hotplate2 = temp;
-      } else if (i < NUM_SENSORS) {
+      if (i < NUM_SENSORS) {
         currentTemperatures[i] = temp;
       }
     }
@@ -647,6 +642,14 @@ void updateTemperatures() {
   //Update PT sesnors
   temp_hotplate1 = hoptplate1_temp.temperature(RNOMINAL, RREF);
   temp_hotplate2 = hoptplate2_temp.temperature(RNOMINAL, RREF);
+  if(temp_hotplate1 <0 or temp_hotplate1 > 300)
+  {
+    temp_hotplate1 = 0.0;
+  }
+  if(temp_hotplate2 <0 or temp_hotplate2 > 300)
+  {
+    temp_hotplate2 = 0.0;
+  }
 
   // Update BME280 sensors
   updateBME280Sensors();
