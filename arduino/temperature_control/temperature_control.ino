@@ -33,7 +33,7 @@
 #include <PID_v1.h>
 #include <DHT22.h>
 #include <Adafruit_MAX31865.h>
-#include <SCPI_Parser.h>
+#include <Vrekrer_scpi_parser.h>
 
 // The value of the Rref resistor. Use 430.0 for PT100 and 4300.0 for PT1000
 #define RREF      430.0
@@ -167,123 +167,93 @@ PID pid0(&pidInput0, &pidOutput0, &targetTemperatures[0], kp0, ki0, kd0, DIRECT)
 double pidInput1, pidOutput1;
 PID pid1(&pidInput1, &pidOutput1, &targetTemperatures[1], kp1, ki1, kd1, DIRECT);
 
-#define SCPI_INPUT_BUFFER_LENGTH 256
-#define SCPI_ERROR_QUEUE_SIZE 17
+SCPI_Parser my_instrument;
 
-size_t SCPI_Write(scpi_t * context, const char * data, size_t len) {
-  (void) context;
-  return Serial.write(data, len);
+void IDN_q(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  (void) parameters;
+  interface.println(F("{\"status\":\"ok\",\"msg\":\"Turbulence Chamber Controller\"}"));
 }
 
-scpi_result_t SCPI_Flush(scpi_t * context) {
-  (void) context;
-  Serial.flush();
-  return SCPI_RES_OK;
+void HELP_q(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  (void) parameters;
+  interface.println(F("{\"status\":\"ok\",\"msg\":\"*IDN? SYST:STAT? SYST:PING? SOUR:TEMP SOUR:FAN OUTP:HOTPL CONF:SET\"}"));
 }
 
-int SCPI_Error(scpi_t * context, int_fast16_t err) {
-  (void) context;
-  Serial.print(R"({"status":"error","msg":""));
-  Serial.print(SCPI_ErrorTranslate(err));
-  Serial.println(R"("})"));
-  return 0;
+void PING_q(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  (void) parameters;
+  interface.println(F("{\"status\":\"ok\",\"msg\":\"pong\"}"));
 }
 
-scpi_result_t SCPI_Control(scpi_t * context, scpi_ctrl_name_t ctrl, scpi_reg_val_t val) {
-  (void) context;
-  (void) ctrl;
-  (void) val;
-  return SCPI_RES_OK;
-}
-
-scpi_result_t SCPI_Reset(scpi_t * context) {
-  (void) context;
-  return SCPI_RES_OK;
-}
-
-scpi_result_t IDN_q(scpi_t * context) {
-  (void) context;
-  Serial.println(R"({"status":"ok","msg":"Turbulence Chamber Controller"})"));
-  return SCPI_RES_OK;
-}
-
-scpi_result_t HELP_q(scpi_t * context) {
-  (void) context;
-  Serial.println(R"({"status":"ok","msg":"*IDN? SYST:STAT? SYST:PING? SOUR:TEMP SOUR:FAN OUTP:HOTPL CONF:SET"})"));
-  return SCPI_RES_OK;
-}
-
-scpi_result_t PING_q(scpi_t * context) {
-  (void) context;
-  Serial.println(R"({"status":"ok","msg":"pong"})"));
-  return SCPI_RES_OK;
-}
-
-scpi_result_t STAT_q(scpi_t * context) {
-  (void) context;
+void STAT_q(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  (void) parameters;
   sendStatusResponse();
-  return SCPI_RES_OK;
 }
 
-scpi_result_t SOUR_TEMP(scpi_t * context) {
-  int32_t sensor;
-  double temp;
-  if (!SCPI_ParamInt(context, &sensor, TRUE) || !SCPI_ParamDouble(context, &temp, TRUE)) {
-    return SCPI_RES_ERR;
-  }
+void SOUR_TEMP(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  (void) interface;
+  if (parameters.Size() < 2) { sendErrorResponse("missing parameters"); return; }
+  int sensor = String(parameters[0]).toInt();
+  float temp = String(parameters[1]).toFloat();
   if (sensor >= 0 && sensor < NUM_HOT_PLATES && temp >= MIN_TEMP && temp <= MAX_TEMP) {
-    targetTemperatures[sensor] = (float)temp;
+    targetTemperatures[sensor] = temp;
     sendStatusResponse();
-    return SCPI_RES_OK;
+    return;
   }
-  return SCPI_RES_ERR;
+  sendErrorResponse("invalid parameters");
 }
 
-scpi_result_t SOUR_FAN(scpi_t * context) {
-  int32_t fan;
-  int32_t speed;
-  if (!SCPI_ParamInt(context, &fan, TRUE) || !SCPI_ParamInt(context, &speed, TRUE)) {
-    return SCPI_RES_ERR;
-  }
+void SOUR_FAN(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  (void) interface;
+  if (parameters.Size() < 2) { sendErrorResponse("missing parameters"); return; }
+  int fan = String(parameters[0]).toInt();
+  int speed = String(parameters[1]).toInt();
   if (fan >= 0 && fan < NUM_FANS && speed >= 0 && speed <= 255) {
     fanSpeeds[fan] = speed;
     setFanSpeed(fan, speed);
     sendStatusResponse();
-    return SCPI_RES_OK;
+    return;
   }
-  return SCPI_RES_ERR;
+  sendErrorResponse("invalid parameters");
 }
 
-scpi_result_t OUTP_HOTPL(scpi_t * context) {
-  int32_t plate;
-  int32_t state;
-  if (!SCPI_ParamInt(context, &plate, TRUE) || !SCPI_ParamInt(context, &state, TRUE)) {
-    return SCPI_RES_ERR;
-  }
+void OUTP_HOTPL(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  (void) interface;
+  if (parameters.Size() < 2) { sendErrorResponse("missing parameters"); return; }
+  int plate = String(parameters[0]).toInt();
+  int state = String(parameters[1]).toInt();
   if (plate >= 0 && plate < NUM_HOT_PLATES) {
     manualHotPlateControl[plate] = true;
     hotPlateStates[plate] = (state != 0);
     sendStatusResponse();
-    return SCPI_RES_OK;
+    return;
   }
-  return SCPI_RES_ERR;
+  sendErrorResponse("invalid parameters");
 }
 
-scpi_result_t CONF_SET(scpi_t * context) {
-  char args[1024];
-  size_t args_len;
-  if (!SCPI_ParamCopyText(context, args, sizeof(args), &args_len, TRUE) || args_len == 0) {
+void CONF_SET(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  if (parameters.Size() < 1) {
     sendErrorResponse("empty_settings_payload");
-    return SCPI_RES_OK;
+    return;
   }
-  args[args_len] = 0;
+  String args = String(parameters[0]);
+  if (args.length() >= 2 && ((args[0] == '\'' && args[args.length() - 1] == '\'') || (args[0] == '"' && args[args.length() - 1] == '"'))) {
+    args = args.substring(1, args.length() - 1);
+  }
+  args.replace(';', ',');
 
   DynamicJsonDocument doc(1024);
   DeserializationError error = deserializeJson(doc, args);
     
     if (error) {
       sendErrorResponse("settings_json_parsing_error");
-      return SCPI_RES_OK;
+      return;
     }
     
     if (doc.containsKey("target_temperatures") && doc["target_temperatures"].is<JsonArray>()) {
@@ -385,34 +355,28 @@ scpi_result_t CONF_SET(scpi_t * context) {
     }
     
     sendStatusResponse();
-    return SCPI_RES_OK;
+    return;
   }
-  
+
+void registerCommands() {
+  my_instrument.RegisterCommand(F("*IDN?"), &IDN_q);
+  my_instrument.RegisterCommand(F("HELP?"), &HELP_q);
+  my_instrument.RegisterCommand(F("SYSTem:CMDS?"), &HELP_q);
+  my_instrument.RegisterCommand(F("SYSTem:PING?"), &PING_q);
+  my_instrument.RegisterCommand(F("SYSTem:STATus?"), &STAT_q);
+  my_instrument.RegisterCommand(F("SOURce:TEMPerature"), &SOUR_TEMP);
+  my_instrument.RegisterCommand(F("SOURce:FAN"), &SOUR_FAN);
+  my_instrument.RegisterCommand(F("OUTPut:HOTPLate"), &OUTP_HOTPL);
+  my_instrument.RegisterCommand(F("CONFigure:SET"), &CONF_SET);
+}
 
 
-const scpi_command_t scpi_commands[] = {
-  {"*IDN?", IDN_q},
-  {"HELP?", HELP_q},
-  {"SYSTem:CMDS?", HELP_q},
-  {"SYSTem:PING?", PING_q},
-  {"SYSTem:STATus?", STAT_q},
-  {"SOURce:TEMPerature", SOUR_TEMP},
-  {"SOURce:FAN", SOUR_FAN},
-  {"OUTPut:HOTPLate", OUTP_HOTPL},
-  {"CONFigure:SET", CONF_SET},
-  SCPI_CMD_LIST_END
-};
-
-char scpi_input_buffer[SCPI_INPUT_BUFFER_LENGTH];
-scpi_error_t scpi_error_queue_data[SCPI_ERROR_QUEUE_SIZE];
-scpi_t scpi_context;
-scpi_interface_t scpi_interface = {SCPI_Error, SCPI_Write, SCPI_Control, SCPI_Flush, SCPI_Reset};
 
 void setup() {
   Serial.begin(1000000);
   while (!Serial) delay(10);
 
-  SCPI_Init(&scpi_context, scpi_commands, &scpi_interface, scpi_units_def, "UFO", "Turbulence Chamber Controller", "SN01", "1.0", scpi_input_buffer, SCPI_INPUT_BUFFER_LENGTH, scpi_error_queue_data, SCPI_ERROR_QUEUE_SIZE);
+  registerCommands();
   
   // Initialize pins
   pinMode(SSR_RELAY_1, OUTPUT);
@@ -948,19 +912,7 @@ void updateControl() {
 }
 
 void processSerialCommands() {
-  if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-    if (command.length() > 0) {
-      char input[SCPI_INPUT_BUFFER_LENGTH];
-      size_t len = command.length();
-      if (len >= sizeof(input) - 1) len = sizeof(input) - 1;
-      command.toCharArray(input, len + 1);
-      input[len] = '\n';
-      input[len + 1] = 0;
-      SCPI_Input(&scpi_context, input, len + 1);
-    }
-  }
+  my_instrument.ProcessInput(Serial, "\n");
 }
 
 void setFanSpeed(int fan, int speed) {

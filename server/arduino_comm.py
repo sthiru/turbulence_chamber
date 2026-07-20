@@ -100,7 +100,7 @@ class ArduinoCommunicator:
             return f"OUTP:HOTPL {payload.get('plate')},{state}"
         if cmd == 'apply_settings':
             settings_payload = {k: v for k, v in payload.items() if k != 'cmd'}
-            return f"CONF:SET '{json.dumps(settings_payload)}'"
+            return f"CONF:SET '{json.dumps(settings_payload, separators=(',', ':')).replace(',', ';')}'"
         
         return ""
     
