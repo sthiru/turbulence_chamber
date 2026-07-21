@@ -1,0 +1,14 @@
+{
+  "coefficient": 7.9e-5,
+  "r_m": 0.5,
+  "ambient_temp_c": 25.0,
+  "pressure_hpa": 1010.0,
+  "hotplate_min_c": 60.0,
+  "hotplate_max_c": 250.0,
+  "fan_min": 50,
+  "fan_max": 255,
+  "safety_margin_c": 280.0,
+  "cn2_min": 1e-16,
+  "cn2_max": 1e-7,
+  "lookup_table_path": "cn2_lookup_table.json"
+}

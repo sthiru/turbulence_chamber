@@ -113,6 +113,7 @@ int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
 bool manualHotPlateControl[NUM_HOT_PLATES] = {false, false}; // Manual override flags
 bool debugEnabled = false; // Debug mode flag for verbose logging
+float safetyTemperature = 280.0; // Safety temperature limit (°C)
 
 // Hotplate Surface Temperatures (separate variables)
 float temp_hotplate1 = 0.0;  // Surface sensor 13 (index 12)
@@ -178,7 +179,7 @@ void IDN_q(SCPI_C commands, SCPI_P parameters, Stream &interface) {
 void HELP_q(SCPI_C commands, SCPI_P parameters, Stream &interface) {
   (void) commands;
   (void) parameters;
-  interface.println(F("{\"status\":\"ok\",\"msg\":\"*IDN? SYST:STAT? SYST:PING? SOUR:TEMP SOUR:FAN OUTP:HOTPL CONF:SET\"}"));
+  interface.println(F("{\"status\":\"ok\",\"msg\":\"*IDN? HELP? SYST:STAT? SYST:PING? SOUR:TEMP SOUR:FAN OUTP:HOTPL CONF:SAFE:TEMP CONF:PID CONF:FAN:START CONF:POLL CONF:AMBI:POLL CONF:DEBUG\"}"));
 }
 
 void PING_q(SCPI_C commands, SCPI_P parameters, Stream &interface) {
@@ -237,126 +238,76 @@ void OUTP_HOTPL(SCPI_C commands, SCPI_P parameters, Stream &interface) {
   sendErrorResponse("invalid parameters");
 }
 
-void CONF_SET(SCPI_C commands, SCPI_P parameters, Stream &interface) {
-  if (parameters.Size() < 1) {
-    sendErrorResponse("empty_settings_payload");
-    return;
-  }
-  String args = String(parameters[0]);
-  if (args.length() >= 2 && ((args[0] == '\'' && args[args.length() - 1] == '\'') || (args[0] == '"' && args[args.length() - 1] == '"'))) {
-    args = args.substring(1, args.length() - 1);
-  }
-  args.replace(';', ',');
+void CONF_SAFETY_TEMP(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  if (parameters.Size() < 1) { sendErrorResponse("missing parameters"); return; }
+  safetyTemperature = String(parameters[0]).toFloat();
+  sendStatusResponse();
+}
 
-  DynamicJsonDocument doc(1024);
-  DeserializationError error = deserializeJson(doc, args);
-    
-    if (error) {
-      sendErrorResponse("settings_json_parsing_error");
-      return;
-    }
-    
-    if (doc.containsKey("target_temperatures") && doc["target_temperatures"].is<JsonArray>()) {
-      JsonArray targetTemps = doc["target_temperatures"].as<JsonArray>();
-      for (int i = 0; i < min((int)targetTemps.size(), NUM_HOT_PLATES); i++) {
-        targetTemperatures[i] = targetTemps[i];
-      }
-    }
-    
-    if (doc.containsKey("safety_temperature")) {
-      float safetyTemp = doc["safety_temperature"];
-      (void)safetyTemp;
-    }
-    
-    if (doc.containsKey("pid_parameters") && doc["pid_parameters"].is<JsonObject>()) {
-      JsonObject pidParams = doc["pid_parameters"].as<JsonObject>();
-      
-      if (pidParams.containsKey("hotplate_0") && pidParams["hotplate_0"].is<JsonObject>()) {
-        JsonObject hp0Params = pidParams["hotplate_0"].as<JsonObject>();
-        if (hp0Params.containsKey("kp")) {
-          kp0 = hp0Params["kp"];
-          pid0.SetTunings(kp0, ki0, kd0);
-        }
-        if (hp0Params.containsKey("ki")) {
-          ki0 = hp0Params["ki"];
-          pid0.SetTunings(kp0, ki0, kd0);
-        }
-        if (hp0Params.containsKey("kd")) {
-          kd0 = hp0Params["kd"];
-          pid0.SetTunings(kp0, ki0, kd0);
-        }
-      }
-      
-      if (pidParams.containsKey("hotplate_1") && pidParams["hotplate_1"].is<JsonObject>()) {
-        JsonObject hp1Params = pidParams["hotplate_1"].as<JsonObject>();
-        if (hp1Params.containsKey("kp")) {
-          kp1 = hp1Params["kp"];
-          pid1.SetTunings(kp1, ki1, kd1);
-        }
-        if (hp1Params.containsKey("ki")) {
-          ki1 = hp1Params["ki"];
-          pid1.SetTunings(kp1, ki1, kd1);
-        }
-        if (hp1Params.containsKey("kd")) {
-          kd1 = hp1Params["kd"];
-          pid1.SetTunings(kp1, ki1, kd1);
-        }
-      }
-      
-      if (pidParams.containsKey("kp")) {
-        kp0 = pidParams["kp"];
-        kp1 = pidParams["kp"];
-        pid0.SetTunings(kp0, ki0, kd0);
-        pid1.SetTunings(kp1, ki1, kd1);
-      }
-      if (pidParams.containsKey("ki")) {
-        ki0 = pidParams["ki"];
-        ki1 = pidParams["ki"];
-        pid0.SetTunings(kp0, ki0, kd0);
-        pid1.SetTunings(kp1, ki1, kd1);
-      }
-      if (pidParams.containsKey("kd")) {
-        kd0 = pidParams["kd"];
-        kd1 = pidParams["kd"];
-        pid0.SetTunings(kp0, ki0, kd0);
-        pid1.SetTunings(kp1, ki1, kd1);
-      }
-    }
-    
-    if (doc.containsKey("fan_start_behaviour")) {
-      String fanBehaviour = doc["fan_start_behaviour"] | "off";
-      if (fanBehaviour == "off") {
-        for (int i = 0; i < NUM_FANS; i++) {
-          fanSpeeds[i] = 0;
-          setFanSpeed(i, 0);
-        }
-      } else if (fanBehaviour == "half_speed") {
-        for (int i = 0; i < NUM_FANS; i++) {
-          fanSpeeds[i] = 127;
-          setFanSpeed(i, 127);
-        }
-      } else if (fanBehaviour == "full_speed") {
-        for (int i = 0; i < NUM_FANS; i++) {
-          fanSpeeds[i] = 255;
-          setFanSpeed(i, 255);
-        }
-      }
-    }
-    
-    if (doc.containsKey("polling_interval")) {
-      UPDATE_INTERVAL = (unsigned long)(doc["polling_interval"] | 1) * 1000;
-    }
-    if (doc.containsKey("ambient_polling_interval")) {
-      DHT_UPDATE_INTERVAL = (unsigned long)(doc["ambient_polling_interval"] | 10) * 1000;
-    }
-    
-    if (doc.containsKey("debug_enabled")) {
-      debugEnabled = doc["debug_enabled"] | false;
-    }
-    
+void CONF_PID(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  if (parameters.Size() < 4) { sendErrorResponse("missing parameters"); return; }
+  int plate = String(parameters[0]).toInt();
+  float kp = String(parameters[1]).toFloat();
+  float ki = String(parameters[2]).toFloat();
+  float kd = String(parameters[3]).toFloat();
+  if (plate == 0) {
+    kp0 = kp; ki0 = ki; kd0 = kd;
+    pid0.SetTunings(kp0, ki0, kd0);
     sendStatusResponse();
     return;
   }
+  if (plate == 1) {
+    kp1 = kp; ki1 = ki; kd1 = kd;
+    pid1.SetTunings(kp1, ki1, kd1);
+    sendStatusResponse();
+    return;
+  }
+  sendErrorResponse("invalid plate");
+}
+
+void CONF_FAN_START(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  if (parameters.Size() < 1) { sendErrorResponse("missing parameters"); return; }
+  String behaviour = String(parameters[0]);
+  if (behaviour == "off") {
+    for (int i = 0; i < NUM_FANS; i++) { fanSpeeds[i] = 0; setFanSpeed(i, 0); }
+  } else if (behaviour == "half_speed") {
+    for (int i = 0; i < NUM_FANS; i++) { fanSpeeds[i] = 127; setFanSpeed(i, 127); }
+  } else if (behaviour == "full_speed") {
+    for (int i = 0; i < NUM_FANS; i++) { fanSpeeds[i] = 255; setFanSpeed(i, 255); }
+  } else {
+    sendErrorResponse("invalid fan behaviour");
+    return;
+  }
+  sendStatusResponse();
+}
+
+void CONF_POLL(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  if (parameters.Size() < 1) { sendErrorResponse("missing parameters"); return; }
+  int seconds = String(parameters[0]).toInt();
+  if (seconds < 1) { sendErrorResponse("invalid polling interval"); return; }
+  UPDATE_INTERVAL = (unsigned long)seconds * 1000;
+  sendStatusResponse();
+}
+
+void CONF_AMB_POLL(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  if (parameters.Size() < 1) { sendErrorResponse("missing parameters"); return; }
+  int seconds = String(parameters[0]).toInt();
+  if (seconds < 1) { sendErrorResponse("invalid polling interval"); return; }
+  DHT_UPDATE_INTERVAL = (unsigned long)seconds * 1000;
+  sendStatusResponse();
+}
+
+void CONF_DEBUG(SCPI_C commands, SCPI_P parameters, Stream &interface) {
+  (void) commands;
+  if (parameters.Size() < 1) { sendErrorResponse("missing parameters"); return; }
+  debugEnabled = String(parameters[0]).toInt() != 0;
+  sendStatusResponse();
+}
 
 void registerCommands() {
   my_instrument.RegisterCommand(F("*IDN?"), &IDN_q);
@@ -367,7 +318,12 @@ void registerCommands() {
   my_instrument.RegisterCommand(F("SOURce:TEMPerature"), &SOUR_TEMP);
   my_instrument.RegisterCommand(F("SOURce:FAN"), &SOUR_FAN);
   my_instrument.RegisterCommand(F("OUTPut:HOTPLate"), &OUTP_HOTPL);
-  my_instrument.RegisterCommand(F("CONFigure:SET"), &CONF_SET);
+  my_instrument.RegisterCommand(F("CONFigure:SAFEty:TEMPerature"), &CONF_SAFETY_TEMP);
+  my_instrument.RegisterCommand(F("CONFigure:PID"), &CONF_PID);
+  my_instrument.RegisterCommand(F("CONFigure:FAN:START"), &CONF_FAN_START);
+  my_instrument.RegisterCommand(F("CONFigure:POLLing"), &CONF_POLL);
+  my_instrument.RegisterCommand(F("CONFigure:AMBIent:POLLing"), &CONF_AMB_POLL);
+  my_instrument.RegisterCommand(F("CONFigure:DEBUg"), &CONF_DEBUG);
 }
 
 

@@ -71,39 +71,6 @@ class ArduinoCommunicator:
             logger.warning(f"Failed to load Arduino config: {e}")
         return None
         
-    def _command_to_scpi(self, command) -> str:
-        """Convert an ArduinoCommand or dict into an SCPI command string."""
-        payload = None
-        if hasattr(command, 'dict'):
-            payload = command.dict(exclude_none=True)
-        elif isinstance(command, dict):
-            payload = command
-        elif isinstance(command, str):
-            return command.strip()
-        else:
-            return ""
-        
-        if not payload:
-            return ""
-        
-        cmd = payload.get('cmd', '')
-        if cmd == 'get_status':
-            return "SYST:STAT?"
-        if cmd == 'ping':
-            return "*IDN?"
-        if cmd == 'set_temp':
-            return f"SOUR:TEMP {payload.get('sensor')},{payload.get('target')}"
-        if cmd == 'set_fan':
-            return f"SOUR:FAN {payload.get('fan')},{payload.get('speed')}"
-        if cmd == 'toggle_hotplate':
-            state = 1 if payload.get('state') else 0
-            return f"OUTP:HOTPL {payload.get('plate')},{state}"
-        if cmd == 'apply_settings':
-            settings_payload = {k: v for k, v in payload.items() if k != 'cmd'}
-            return f"CONF:SET '{json.dumps(settings_payload, separators=(',', ':')).replace(',', ';')}'"
-        
-        return ""
-    
     async def connect(self) -> bool:
         """Connect to Arduino via serial port"""
         try:
@@ -154,7 +121,7 @@ class ArduinoCommunicator:
             try:
                 # Convert command to SCPI string and send
                 cmd_start = time.time()
-                cmd_str = self._command_to_scpi(command)
+                cmd_str = str(command).strip()
                 
                 # Clear any pending input first
                 self.serial_conn.reset_input_buffer()
@@ -318,28 +285,23 @@ class ArduinoCommunicator:
         
     async def get_status(self) -> ArduinoResponse:
         """Get current system status from Arduino"""
-        command = ArduinoCommand(cmd="get_status")
-        return await self.send_command(command)
+        return await self.send_command("SYST:STAT?")
     
     async def ping(self) -> ArduinoResponse:
         """Ping Arduino to test basic connectivity"""
-        command = ArduinoCommand(cmd="ping")
-        return await self.send_command(command)
+        return await self.send_command("*IDN?")
     
     async def set_temperature(self, sensor: int, target: float) -> ArduinoResponse:
         """Set target temperature for hot plate"""
-        command = ArduinoCommand(cmd="set_temp", sensor=sensor, target=target)
-        return await self.send_command(command)
+        return await self.send_command(f"SOUR:TEMP {sensor},{target}")
     
     async def set_fan_speed(self, fan: int, speed: int) -> ArduinoResponse:
         """Set fan speed (0-255)"""
-        command = ArduinoCommand(cmd="set_fan", fan=fan, speed=speed)
-        return await self.send_command(command)
+        return await self.send_command(f"SOUR:FAN {fan},{speed}")
     
     async def toggle_hot_plate(self, plate: int, state: bool) -> ArduinoResponse:
         """Toggle hot plate on/off"""
-        command = ArduinoCommand(cmd="toggle_hotplate", plate=plate, state=state)
-        return await self.send_command(command)
+        return await self.send_command(f"OUTP:HOTPL {plate},{1 if state else 0}")
     
     async def monitor_connection(self):
         """Monitor Arduino connection and reconnect if needed"""
@@ -381,34 +343,66 @@ class ArduinoCommunicator:
             await asyncio.sleep(5)  # Check every 5 seconds (more frequent)
 
 async def apply_settings_to_arduino(arduino_comm: ArduinoCommunicator):
-    """Apply settings from configuration file to Arduino"""
+    """Apply settings from configuration file to Arduino via individual SCPI commands."""
     from utils import load_configuration
-    settings = load_configuration()
+
     try:
-        # Send apply_settings command to Arduino
-        command = {
-            "cmd": "apply_settings",
-            "target_temperatures": settings.get("target_temperatures", [80, 80]),
-            "safety_temperature": settings.get("safety_temperature", 120),
-            "pid_parameters": settings.get("pid_parameters", {
-                "hotplate_0": {"kp": 2.0, "ki": 0.5, "kd": 1.0},
-                "hotplate_1": {"kp": 2.0, "ki": 0.5, "kd": 1.0}
-            }),
-            "fan_start_behaviour": settings.get("fan_start_behaviour", "full_speed"),
-            "polling_interval": settings.get("polling_interval", 1),
-            "ambient_polling_interval": settings.get("ambient_polling_interval", 10),
-            "debug_enabled": settings.get("debug_enabled", False)
-        }
-        
-        response = await arduino_comm.send_command(command)
-        if response.status == "ok":
-            logger.info("Settings applied to Arduino successfully")
-        else:
-            logger.warning(f"Failed to apply settings to Arduino: {response.msg}")
+        settings = load_configuration()
     except FileNotFoundError:
         logger.warning("Configuration file not found, using default values")
+        settings = {}
+
+    if not settings:
+        settings = {
+            "target_temperatures": [80, 80],
+            "safety_temperature": 120,
+            "pid_parameters": {
+                "hotplate_0": {"kp": 2.0, "ki": 0.5, "kd": 1.0},
+                "hotplate_1": {"kp": 2.0, "ki": 0.5, "kd": 1.0}
+            },
+            "fan_start_behaviour": "full_speed",
+            "polling_interval": 1,
+            "ambient_polling_interval": 10,
+            "debug_enabled": False
+        }
+
+    try:
+        results = []
+
+        target_temps = settings.get("target_temperatures", [80, 80])
+        for i, temp in enumerate(target_temps[:2]):
+            results.append(await arduino_comm.send_command(f"SOUR:TEMP {i},{temp}"))
+
+        safety = settings.get("safety_temperature", 120)
+        results.append(await arduino_comm.send_command(f"CONF:SAFE:TEMP {safety}"))
+
+        pid_params = settings.get("pid_parameters", {})
+        for plate, key in [(0, "hotplate_0"), (1, "hotplate_1")]:
+            p = pid_params.get(key, {})
+            kp = p.get("kp", 2.0)
+            ki = p.get("ki", 0.5)
+            kd = p.get("kd", 1.0)
+            results.append(await arduino_comm.send_command(f"CONF:PID {plate},{kp},{ki},{kd}"))
+
+        fan_start = settings.get("fan_start_behaviour", "full_speed")
+        results.append(await arduino_comm.send_command(f"CONF:FAN:START {fan_start}"))
+
+        polling = settings.get("polling_interval", 1)
+        results.append(await arduino_comm.send_command(f"CONF:POLL {polling}"))
+
+        ambient_polling = settings.get("ambient_polling_interval", 10)
+        results.append(await arduino_comm.send_command(f"CONF:AMBI:POLL {ambient_polling}"))
+
+        debug = 1 if settings.get("debug_enabled", False) else 0
+        results.append(await arduino_comm.send_command(f"CONF:DEBUG {debug}"))
+
+        if all(r is not None and r.status == "ok" for r in results):
+            logger.info("Settings applied to Arduino successfully")
+        else:
+            failed = [r for r in results if r is not None and r.status != "ok"]
+            messages = ", ".join(str(r.msg) for r in failed)
+            logger.warning(f"Some settings failed to apply: {messages}")
     except Exception as e:
         logger.error(f"Error applying settings to Arduino: {e}")
-
 # Global Arduino communicator instance
 arduino_comm = ArduinoCommunicator()

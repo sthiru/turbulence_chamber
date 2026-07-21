@@ -1,0 +1,11 @@
+[
+  {"dt": 0.0, "hotplate_temp": 60.0, "fan_speed": 50},
+  {"dt": 0.01, "hotplate_temp": 60.0, "fan_speed": 60},
+  {"dt": 0.1, "hotplate_temp": 62.0, "fan_speed": 80},
+  {"dt": 1.0, "hotplate_temp": 90.0, "fan_speed": 120},
+  {"dt": 10.0, "hotplate_temp": 150.0, "fan_speed": 180},
+  {"dt": 50.0, "hotplate_temp": 200.0, "fan_speed": 220},
+  {"dt": 100.0, "hotplate_temp": 250.0, "fan_speed": 255},
+  {"dt": 200.0, "hotplate_temp": 250.0, "fan_speed": 255},
+  {"dt": 300.0, "hotplate_temp": 250.0, "fan_speed": 255}
+]
