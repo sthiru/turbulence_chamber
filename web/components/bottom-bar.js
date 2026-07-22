@@ -69,7 +69,17 @@ async function checkCaptureStatus() {
 // Start data capture
 async function startDataCapture(acquisitionType = 'data') {
     userActionInProgress = true;
-    
+
+    // Apply the Cn2 target actuator setpoints before starting capture, if available.
+    if (typeof applyCn2Target === 'function') {
+        const applied = await applyCn2Target();
+        if (!applied) {
+            userActionInProgress = false;
+            showNotification('Data capture cancelled: failed to apply Cn2 target', 'error');
+            return;
+        }
+    }
+
     try {
         const response = await fetch(`/api/data-capture?acquisition_type=${acquisitionType}`, {
             method: 'POST',

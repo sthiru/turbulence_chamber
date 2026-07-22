@@ -9,6 +9,6 @@
   "fan_max": 255,
   "safety_margin_c": 280.0,
   "cn2_min": 1e-16,
-  "cn2_max": 1e-7,
+  "cn2_max": 1e-8,
   "lookup_table_path": "cn2_lookup_table.json"
 }

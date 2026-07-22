@@ -97,6 +97,12 @@ function handleWebSocketMessage(data) {
             } catch (error) {
                 console.error('Error in updateSensorData:', error);
             }
+
+            try {
+                updateTemperatureTrendChart(latestData);
+            } catch (error) {
+                // ignore chart update errors
+            }
             
             // Capture data point if data capture is active
             captureDataPoint(latestData);
@@ -363,6 +369,8 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         console.error('SVG object not found');
     }
+    
+    initCn2Bar();
 });
 
 async function captureDataPoint(data) {
@@ -630,5 +638,112 @@ function initFanSliders() {
                 svgDoc.addEventListener('mouseup', handleMouseUp);
             });
         }
+    }
+}
+
+// Initialize the Cn2 target control bar
+function initCn2Bar() {
+    const multiplierInput = document.getElementById('cn2MultiplierInput');
+    const exponentInput = document.getElementById('cn2ExponentInput');
+    const deltaT = document.getElementById('cn2DeltaT');
+
+    if (!multiplierInput || !exponentInput || !deltaT) {
+        console.error('Cn2 target elements not found');
+        return;
+    }
+
+    function getTargetCn2() {
+        const multiplier = parseFloat(multiplierInput.value);
+        const exponent = parseInt(exponentInput.value, 10);
+        if (isNaN(multiplier) || isNaN(exponent)) return null;
+        return multiplier * Math.pow(10, exponent);
+    }
+
+    async function previewDeltaT() {
+        const targetCn2 = getTargetCn2();
+        if (targetCn2 === null || targetCn2 <= 0) {
+            deltaT.textContent = '--';
+            deltaT.className = 'badge bg-info';
+            return;
+        }
+
+        try {
+            const response = await fetch(API.CN2_APPLY, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_cn2: targetCn2, dry_run: true })
+            });
+            const data = await response.json();
+
+            if (response.ok && data.dt !== undefined) {
+                deltaT.textContent = data.dt.toFixed(1) + ' °C';
+                deltaT.className = 'badge bg-info';
+            } else {
+                deltaT.textContent = '--';
+            }
+        } catch (error) {
+            deltaT.textContent = '--';
+        }
+    }
+
+    multiplierInput.addEventListener('input', previewDeltaT);
+    exponentInput.addEventListener('input', previewDeltaT);
+
+    previewDeltaT();
+}
+
+// Apply the currently entered Cn2 target to the actuators.
+// This is called by the Start Data Capture button so target setpoints are applied before capture.
+async function applyCn2Target() {
+    const multiplierInput = document.getElementById('cn2MultiplierInput');
+    const exponentInput = document.getElementById('cn2ExponentInput');
+    const deltaT = document.getElementById('cn2DeltaT');
+
+    if (!multiplierInput || !exponentInput) {
+        showNotification('Cn2 target inputs not found', 'error');
+        return false;
+    }
+
+    const multiplier = parseFloat(multiplierInput.value);
+    const exponent = parseInt(exponentInput.value, 10);
+
+    if (isNaN(multiplier) || multiplier < 0.01 || multiplier > 9.99 ||
+        isNaN(exponent) || exponent < -16 || exponent > -7) {
+        showNotification('Invalid Cn2 target. Use multiplier 0.01-9.99 and exponent -07 to -16.', 'error');
+        return false;
+    }
+
+    const targetCn2 = multiplier * Math.pow(10, exponent);
+
+    try {
+        const response = await fetch(API.CN2_APPLY, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_cn2: targetCn2, dry_run: false })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            if (data.dt !== undefined && deltaT) {
+                deltaT.textContent = data.dt.toFixed(1) + ' °C';
+                deltaT.className = 'badge bg-info';
+            }
+            showNotification(`Cn2 target applied: T=${data.hotplate_temp.toFixed(1)}°C, Fan=${data.fan_speed}`, 'success');
+            return true;
+        } else {
+            if (deltaT) {
+                deltaT.textContent = 'Err';
+                deltaT.className = 'badge bg-danger';
+            }
+            showNotification(data.detail || 'Failed to apply Cn2 target', 'error');
+            return false;
+        }
+    } catch (error) {
+        if (deltaT) {
+            deltaT.textContent = 'Err';
+            deltaT.className = 'badge bg-danger';
+        }
+        showNotification('Error applying Cn2 target', 'error');
+        return false;
     }
 }

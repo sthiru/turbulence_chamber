@@ -24,12 +24,14 @@ import cv2
 from models import (
     TemperatureCommand, FanCommand, HotPlateCommand, 
     SystemStatus, ArduinoResponse, DeviceStatus,
-    ReconnectRequest, HotPlateToggleRequest, DataCaptureRequest, DataPointWithImage
+    ReconnectRequest, HotPlateToggleRequest, DataCaptureRequest, DataPointWithImage,
+    Cn2TargetRequest
 )
 from arduino_comm import arduino_comm
 from camera_acquisition import BaslerCamera, PYLON_AVAILABLE
 from cn2.cn2_optical import CN2OpticalCalculator
 from cn2.cn2_thermal import calculate_cn2
+from cn2.cn2_controller import Cn2Controller
 from calibration.calibration_agent import CalibrationAgent
 from calibration.models import CalibrationRequest, CalibrationControl
 from calibration.config import CalibrationConfig
@@ -53,6 +55,7 @@ from constants import (
     CALIBRATION_HOTPLATE_FAN_SPEEDS_DEFAULT,
     CALIBRATION_HOTPLATE_RECORDING_DURATION_DEFAULT,
     CALIBRATION_HOTPLATE_SAMPLING_INTERVAL_DEFAULT,
+    FAN_COUNT, HOT_PLATE_COUNT,
     ResponseStatus, DeviceStatus as DeviceStatusEnum
 )
 from state_manager import state_manager
@@ -171,6 +174,9 @@ calibration_agent.set_status_callback(calibration_status_callback)
 
 # Initialize CN² optical calculator
 cn2_calculator = CN2OpticalCalculator()
+
+# Initialize CN² target controller (lookup-table based actuator setpoints)
+cn2_controller = Cn2Controller()
 
 # Data storage for Arduino status records
 state_manager.status_update_queue = asyncio.Queue()
@@ -509,7 +515,7 @@ async def save_settings(settings: dict):
         set_configuration(settings)
         
         # Apply settings to Arduino
-        await apply_settings_to_arduino()
+        await apply_settings_to_arduino(arduino_comm)
         
         return {"status": ResponseStatus.SUCCESS, "message": "Configuration saved and applied to Arduino"}
     except Exception as e:
@@ -519,10 +525,52 @@ async def save_settings(settings: dict):
 async def apply_settings():
     """Apply settings from JSON file to Arduino"""
     try:
-        await apply_settings_to_arduino()
+        await apply_settings_to_arduino(arduino_comm)
         return {"status": ResponseStatus.SUCCESS, "message": "Settings applied to Arduino"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/cn2/apply")
+async def apply_cn2_target(request: Cn2TargetRequest):
+    """Compute and apply actuator setpoints for a target Cn² value."""
+    if request.target_cn2 < cn2_controller.cn2_min or request.target_cn2 > cn2_controller.cn2_max:
+        raise HTTPException(
+            status_code=400,
+            detail=f"target_cn2 must be between {cn2_controller.cn2_min} and {cn2_controller.cn2_max}"
+        )
+
+    actuators = cn2_controller.get_actuators_for_cn2(request.target_cn2)
+    result = {
+        "status": ResponseStatus.SUCCESS,
+        "target_cn2": actuators["target_cn2"],
+        "dt": actuators["required_dt"],
+        "hotplate_temp": actuators["hotplate_temp"],
+        "fan_speed": actuators["fan_speed"],
+        "applied": False
+    }
+
+    if not request.dry_run:
+        if not arduino_comm.is_connected:
+            raise HTTPException(status_code=503, detail="Arduino not connected")
+
+        for plate in range(HOT_PLATE_COUNT):
+            temp_resp = await arduino_comm.set_temperature(plate, actuators["hotplate_temp"])
+            if temp_resp.status != "ok":
+                raise HTTPException(status_code=400, detail=f"Failed to set hotplate {plate} temp: {temp_resp.msg}")
+
+        for plate in range(HOT_PLATE_COUNT):
+            toggle_resp = await arduino_comm.toggle_hot_plate(plate, True)
+            if toggle_resp.status != "ok":
+                raise HTTPException(status_code=400, detail=f"Failed to enable hotplate {plate}: {toggle_resp.msg}")
+
+        for fan in range(FAN_COUNT):
+            fan_resp = await arduino_comm.set_fan_speed(fan, actuators["fan_speed"])
+            if fan_resp.status != "ok":
+                raise HTTPException(status_code=400, detail=f"Failed to set fan {fan} speed: {fan_resp.msg}")
+
+        result["applied"] = True
+
+    return result
 
 @app.get("/api/camera/status")
 async def get_camera_status_endpoint():

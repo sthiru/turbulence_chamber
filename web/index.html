@@ -47,8 +47,37 @@
                     <h5 class="modal-title"><i class="fas fa-chart-line me-2"></i>Temperature Trend Graph</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <canvas id="temperatureTrendChart" height="400"></canvas>
+                <div class="modal-body" style="max-height: 80vh; overflow-y: auto;">
+                    <div class="mb-3">
+                        <span class="small me-2">Groups:</span>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="temperatureGroup" value="row1_0.5" id="group_row1_0.5" checked>
+                            <label class="form-check-label small" for="group_row1_0.5">t1,t2</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="temperatureGroup" value="row1_0.3" id="group_row1_0.3">
+                            <label class="form-check-label small" for="group_row1_0.3">t3,t4</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="temperatureGroup" value="row2_0.5" id="group_row2_0.5">
+                            <label class="form-check-label small" for="group_row2_0.5">t6,t7</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="temperatureGroup" value="row2_0.3" id="group_row2_0.3">
+                            <label class="form-check-label small" for="group_row2_0.3">t8,t9</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="temperatureGroup" value="optical_axis" id="group_optical_axis">
+                            <label class="form-check-label small" for="group_optical_axis">optical</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="temperatureGroup" value="hotplate" id="group_hotplate">
+                            <label class="form-check-label small" for="group_hotplate">h1,h2</label>
+                        </div>
+                    </div>
+                    <div style="max-height: 50vh;">
+                        <canvas id="temperatureTrendChart" height="300"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -86,9 +115,14 @@
                     <button id="startVideoBtn" class="btn btn-outline-primary btn-sm me-2" data-bs-toggle="modal" data-bs-target="#cameraOverlay">
                         <i class="fas fa-video me-1"></i> Open Camera
                     </button>
-                    <button id="showTemperatureGraphBtn" class="btn btn-outline-info btn-sm me-2" data-bs-toggle="modal" data-bs-target="#temperatureGraphOverlay">
+                    <button id="showTemperatureGraphBtn" class="btn btn-outline-info btn-sm me-2">
                         <i class="fas fa-chart-line me-1"></i> Temperature Trend
                     </button>
+                    <span class="text-muted small me-1">Target Cn²</span>
+                    <input type="number" id="cn2MultiplierInput" class="form-control form-control-sm d-inline-block me-1" style="width: 70px;" min="1.0" max="9.9" step="0.1" value="1">
+                    <span class="small me-1">e</span>
+                    <input type="number" id="cn2ExponentInput" class="form-control form-control-sm d-inline-block me-2" style="width: 70px;" min="-16" max="-7" value="-14" step="1">
+                    <span class="text-muted small me-1">δT: <span id="cn2DeltaT" class="badge bg-info">--</span></span>
                     <button id="startCaptureBtn" class="btn btn-primary btn-sm me-2">
                         <i class="fas fa-play me-1"></i> Start Data Capture
                     </button>

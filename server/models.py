@@ -89,6 +89,11 @@ class DataCaptureRequest(BaseModel):
     capture_id: Optional[str] = None
     calibration_type: Optional[str] = None
 
+# Pydantic model for Cn2 target request
+class Cn2TargetRequest(BaseModel):
+    target_cn2: float
+    dry_run: bool = False
+
 # Pydantic model for data point with image
 class DataPointWithImage(BaseModel):
     timestamp: str

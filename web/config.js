@@ -19,6 +19,7 @@ const API = {
     HOTPLATE_TOGGLE: '/api/hotplate',
     SETTINGS: '/api/settings',
     SETTINGS_APPLY: '/api/settings/apply',
+    CN2_APPLY: '/api/cn2/apply',
     CAMERA_STATUS: '/api/camera/status',
     CAMERA_VIDEO_STOP: '/api/camera/video/stop',
     CALIBRATION_WINDFLOW_START: '/api/calibration/windflow/start',
