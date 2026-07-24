@@ -113,7 +113,7 @@ int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
 bool manualHotPlateControl[NUM_HOT_PLATES] = {false, false}; // Manual override flags
 bool debugEnabled = false; // Debug mode flag for verbose logging
-float safetyTemperature = 280.0; // Safety temperature limit (°C)
+float safetyTemperature = 280.0; // Safety temperature limit (ï¿½C)
 
 // Hotplate Surface Temperatures (separate variables)
 float temp_hotplate1 = 0.0;  // Surface sensor 13 (index 12)
@@ -636,12 +636,12 @@ void updateBME280Sensors() {
       if (debugEnabled) {
         Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":1,\"message\":\"read_failure\"}");
       }
-      bmpTemperature_internal = 0.0;
-      bmpPressure_internal = 0.0;
+      bmpTemperature_internal = 25.0;
+      bmpPressure_internal = 950.0;
     }
   } else {
-    bmpTemperature_internal = 0.0;
-    bmpPressure_internal = 0.0;
+    bmpTemperature_internal = 25.0;
+    bmpPressure_internal = 950.0;
   }
   
   // BME280 Sensor 2 (External)
@@ -658,12 +658,12 @@ void updateBME280Sensors() {
       if (debugEnabled) {
         Serial.print("{\"type\":\"error\",\"sensor_type\":\"bme280\",\"sensor_id\":2,\"message\":\"read_failure\"}");
       }
-      bmpTemperature_external = 0.0;
-      bmpPressure_external = 0.0;
+      bmpTemperature_external = 25.0;
+      bmpPressure_external = 950.0;
     }
   } else {
-    bmpTemperature_external = 0.0;
-    bmpPressure_external = 0.0;
+    bmpTemperature_external = 25.0;
+    bmpPressure_external = 950.0;
   }
 }
 
@@ -676,12 +676,12 @@ void updateDHTSensors() {
       if (debugEnabled) {
         Serial.print("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":1,\"message\":\"read_failure\"}");
       }
-      dhtTemperature_internal = 0.0;
-      dhtHumidity_internal = 0.0;
+      dhtTemperature_internal = 25.0;
+      dhtHumidity_internal = 71.0;
     }
   } else {
-    dhtTemperature_internal = 0.0;
-    dhtHumidity_internal = 0.0;
+    dhtTemperature_internal = 25.0;
+    dhtHumidity_internal = 71.0;
   }
   
   // DHT22 Sensor 2 (External)
@@ -692,12 +692,12 @@ void updateDHTSensors() {
       if (debugEnabled) {
         Serial.print("{\"type\":\"error\",\"sensor_type\":\"dht22\",\"sensor_id\":2,\"message\":\"read_failure\"}");
       }
-      dhtTemperature_external = 0.0;
-      dhtHumidity_external = 0.0;
+      dhtTemperature_external = 25.0;
+      dhtHumidity_external = 71.0;
     }
   } else {
-    dhtTemperature_external = 0.0;
-    dhtHumidity_external = 0.0;
+    dhtTemperature_external = 25.0;
+    dhtHumidity_external = 71.0;
   }
 }
 
