@@ -387,11 +387,11 @@ async def apply_settings_to_arduino(arduino_comm: ArduinoCommunicator):
         fan_start = settings.get("fan_start_behaviour", "full_speed")
         results.append(await arduino_comm.send_command(f"CONF:FAN:START {fan_start}"))
 
-        polling = settings.get("polling_interval", 1)
-        results.append(await arduino_comm.send_command(f"CONF:POLL {polling}"))
+        # polling = settings.get("polling_interval", 1)
+        # results.append(await arduino_comm.send_command(f"CONF:POLL {polling}"))
 
-        ambient_polling = settings.get("ambient_polling_interval", 10)
-        results.append(await arduino_comm.send_command(f"CONF:AMBI:POLL {ambient_polling}"))
+        # ambient_polling = settings.get("ambient_polling_interval", 10)
+        # results.append(await arduino_comm.send_command(f"CONF:AMBI:POLL {ambient_polling}"))
 
         debug = 1 if settings.get("debug_enabled", False) else 0
         results.append(await arduino_comm.send_command(f"CONF:DEBUG {debug}"))

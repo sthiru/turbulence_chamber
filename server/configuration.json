@@ -16,7 +16,7 @@
             "kd": 80
         }
     },
-    "fan_start_behaviour": "half_speed",
+    "fan_start_behaviour": "full_speed",
     "arduino_port": "",
     "polling_interval": 1,
     "ambient_polling_interval": 9.5,

@@ -4,3 +4,4 @@ __pycache__
 server/calibration_data/windflow_calib_*
 server/calibration_data/hotplate_*
 server/camera_images/*
+calibration_data/**/*
