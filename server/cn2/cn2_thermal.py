@@ -58,7 +58,7 @@ def calculate_cn2(temperatures, bme_temperatures, bme_pressure):
             pressure = min(bme_pressure)
             pressure = pressure if pressure > 0.0 else max(bme_pressure)
         else:
-            pressure = 1010.0  # Default to standard pressure
+            pressure = 950.0  # Default to standard pressure
         
         if ambient_temp <= 0:
             logger.warning(f"Invalid ambient temperature for CN²: {ambient_temp}")
@@ -66,7 +66,7 @@ def calculate_cn2(temperatures, bme_temperatures, bme_pressure):
         
         if pressure <= 0:
             logger.warning(f"Invalid pressure for CN²: {pressure}")
-            pressure = 1010.0  # Default to standard pressure
+            pressure = 950.0  # Default to standard pressure
 
         ambient_temp_kelvin = ambient_temp + 273.15
         

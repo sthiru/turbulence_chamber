@@ -111,9 +111,9 @@ float currentTemperatures[NUM_SENSORS];
 double targetTemperatures[NUM_HOT_PLATES] = {85.0, 85.0};
 int fanSpeeds[NUM_FANS] = {255, 255, 255, 255};
 bool hotPlateStates[NUM_HOT_PLATES] = {false, false};
-bool manualHotPlateControl[NUM_HOT_PLATES] = {false, false}; // Manual override flags
+bool heaterEnabled[NUM_HOT_PLATES] = {false, false}; // Heater armed by start/stop of data acquisition
 bool debugEnabled = false; // Debug mode flag for verbose logging
-float safetyTemperature = 280.0; // Safety temperature limit (�C)
+float safetyTemperature = 280.0; // Safety temperature limit (C)
 
 // Hotplate Surface Temperatures (separate variables)
 float temp_hotplate1 = 0.0;  // Surface sensor 13 (index 12)
@@ -230,8 +230,7 @@ void OUTP_HOTPL(SCPI_C commands, SCPI_P parameters, Stream &interface) {
   int plate = String(parameters[0]).toInt();
   int state = String(parameters[1]).toInt();
   if (plate >= 0 && plate < NUM_HOT_PLATES) {
-    manualHotPlateControl[plate] = true;
-    hotPlateStates[plate] = (state != 0);
+    heaterEnabled[plate] = (state != 0);
     sendStatusResponse();
     return;
   }
@@ -290,17 +289,14 @@ void CONF_POLL(SCPI_C commands, SCPI_P parameters, Stream &interface) {
   int seconds = String(parameters[0]).toInt();
   if (seconds < 1) { sendErrorResponse("invalid polling interval"); return; }
   UPDATE_INTERVAL = (unsigned long)seconds * 1000;
-  sendStatusResponse();
+  if (parameters.Size() >= 2) {
+    int amb_seconds = String(parameters[1]).toInt();
+    if (amb_seconds < 1) { sendErrorResponse("invalid ambient polling interval"); return; }
+    DHT_UPDATE_INTERVAL = (unsigned long)amb_seconds * 1000;
+  }
+  interface.println(F("{\"status\":\"ok\"}"));
 }
 
-void CONF_AMB_POLL(SCPI_C commands, SCPI_P parameters, Stream &interface) {
-  (void) commands;
-  if (parameters.Size() < 1) { sendErrorResponse("missing parameters"); return; }
-  int seconds = String(parameters[0]).toInt();
-  if (seconds < 1) { sendErrorResponse("invalid polling interval"); return; }
-  DHT_UPDATE_INTERVAL = (unsigned long)seconds * 1000;
-  sendStatusResponse();
-}
 
 void CONF_DEBUG(SCPI_C commands, SCPI_P parameters, Stream &interface) {
   (void) commands;
@@ -312,8 +308,6 @@ void CONF_DEBUG(SCPI_C commands, SCPI_P parameters, Stream &interface) {
 void registerCommands() {
   my_instrument.RegisterCommand(F("*IDN?"), &IDN_q);
   my_instrument.RegisterCommand(F("HELP?"), &HELP_q);
-  my_instrument.RegisterCommand(F("SYSTem:CMDS?"), &HELP_q);
-  my_instrument.RegisterCommand(F("SYSTem:PING?"), &PING_q);
   my_instrument.RegisterCommand(F("SYSTem:STATus?"), &STAT_q);
   my_instrument.RegisterCommand(F("SOURce:TEMPerature"), &SOUR_TEMP);
   my_instrument.RegisterCommand(F("SOURce:FAN"), &SOUR_FAN);
@@ -322,11 +316,8 @@ void registerCommands() {
   my_instrument.RegisterCommand(F("CONFigure:PID"), &CONF_PID);
   my_instrument.RegisterCommand(F("CONFigure:FAN:START"), &CONF_FAN_START);
   my_instrument.RegisterCommand(F("CONFigure:POLLing"), &CONF_POLL);
-  my_instrument.RegisterCommand(F("CONFigure:AMBIent:POLLing"), &CONF_AMB_POLL);
   my_instrument.RegisterCommand(F("CONFigure:DEBUg"), &CONF_DEBUG);
 }
-
-
 
 void setup() {
   Serial.begin(1000000);
@@ -737,21 +728,23 @@ void updateControl() {
   
   // Hotplate 0 Control
   {    
-    // Apply safety limits (always active, highest priority)
-    if (temp_hotplate1 > MAX_TEMP) {
+    // Safety: invalid/disconnected sensor reading (reported as 0.0) always forces the heater off
+    if (temp_hotplate1 <= 0.0) {
+      digitalWrite(SSR_RELAY_1, LOW);
+      hotPlateStates[0] = false;
+    }
+    // Safety: over-temperature limit (always active, highest priority)
+    else if (temp_hotplate1 > safetyTemperature) {
       digitalWrite(SSR_RELAY_1, LOW);
       hotPlateStates[0] = false;
       Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":1,\"temperature\":");
       Serial.print(temp_hotplate1);
       Serial.println("}");
     }
-    // Manual OFF state has highest priority (after safety)
-    else if (manualHotPlateControl[0] && !hotPlateStates[0]) {
+    // Heater not armed (data acquisition not started) -> stay off
+    else if (!heaterEnabled[0]) {
       digitalWrite(SSR_RELAY_1, LOW);
-    }
-    // Manual ON state
-    else if (manualHotPlateControl[0] && hotPlateStates[0]) {
-      digitalWrite(SSR_RELAY_1, HIGH);
+      hotPlateStates[0] = false;
     }
     // Automatic PID control mode
     else {
@@ -770,7 +763,7 @@ void updateControl() {
         if (pid0.Compute()) {
           if (pidOutput0 == WindowSize || pidOutput0 == 0) {
               // prevent integral accumulation
-              pid0.SetTunings(kp1, 0, kd1);
+              pid0.SetTunings(kp0, 0, kd0);
           } 
           
           double rate = temp_hotplate1 - last_hotplate1Temp;
@@ -804,21 +797,23 @@ void updateControl() {
   
   // Hotplate 1 Control
   {  
-    // Apply safety limits (always active, highest priority)
-    if (temp_hotplate2 > MAX_TEMP) {
+    // Safety: invalid/disconnected sensor reading (reported as 0.0) always forces the heater off
+    if (temp_hotplate2 <= 0.0) {
+      digitalWrite(SSR_RELAY_2, LOW);
+      hotPlateStates[1] = false;
+    }
+    // Safety: over-temperature limit (always active, highest priority)
+    else if (temp_hotplate2 > safetyTemperature) {
       digitalWrite(SSR_RELAY_2, LOW);
       hotPlateStates[1] = false;
       Serial.print("{\"type\":\"safety\",\"event\":\"over_temperature\",\"hotplate_id\":2,\"temperature\":");
       Serial.print(temp_hotplate2);
       Serial.println("}");
     }
-    // Manual OFF state has highest priority (after safety)
-    else if (manualHotPlateControl[1] && !hotPlateStates[1]) {
+    // Heater not armed (data acquisition not started) -> stay off
+    else if (!heaterEnabled[1]) {
       digitalWrite(SSR_RELAY_2, LOW);
-    }
-    // Manual ON state
-    else if (manualHotPlateControl[1] && hotPlateStates[1]) {
-      digitalWrite(SSR_RELAY_2, HIGH);
+      hotPlateStates[1] = false;
     }
     // Automatic PID control mode
     else {
@@ -835,9 +830,9 @@ void updateControl() {
 
         if (pid1.Compute()) {
           
-          if (pidOutput1 == WindowSize || pidOutput0 == 0) {
+          if (pidOutput1 == WindowSize || pidOutput1 == 0) {
               // prevent integral accumulation
-              pid0.SetTunings(kp1, 0, kd1);
+              pid1.SetTunings(kp1, 0, kd1);
           } 
 
           double rate = temp_hotplate2 - last_hotplate2Temp;
@@ -846,7 +841,7 @@ void updateControl() {
           // braking condition
           if (temp_hotplate2 > (targetTemperatures[1] - 5)) {
               if (rate > 0.15) {   // from your slope (~0.12–0.18)
-                  pidOutput0 *= 0.25;
+                  pidOutput1 *= 0.25;
               }
           }
 

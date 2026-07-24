@@ -906,6 +906,12 @@ async def toggle_data_capture(request: DataCaptureRequest, acquisition_type: str
             else:
                 logger.warning("Failed to initialize CSV file, data will only be stored in memory")
             
+            # Arm hotplates when starting data acquisition
+            for plate in range(HOT_PLATE_COUNT):
+                resp = await arduino_comm.toggle_hot_plate(plate, True)
+                if resp.status != "ok":
+                    raise HTTPException(status_code=400, detail=f"Failed to enable hotplate {plate}: {resp.msg}")
+            
             state_manager.data_capture_active = True
             state_manager.clear_captured_data_points()
             
@@ -935,6 +941,13 @@ async def toggle_data_capture(request: DataCaptureRequest, acquisition_type: str
             
             # Stop camera video streaming
             camera.stop_video_stream()
+            
+            # Disarm hotplates when stopping data acquisition
+            for plate in range(HOT_PLATE_COUNT):
+                try:
+                    await arduino_comm.toggle_hot_plate(plate, False)
+                except Exception as e:
+                    logger.warning(f"Failed to disable hotplate {plate}: {e}")
             
             # Stop video streaming worker if no other active connections
             if len(ws_video_manager.active_connections) == 0:
