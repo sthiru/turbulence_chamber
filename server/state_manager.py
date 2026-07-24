@@ -33,8 +33,14 @@ class StateManager:
         # Background task state
         self._background_task: Optional[asyncio.Task] = None
         self._video_streaming_task: Optional[asyncio.Task] = None
+        self._image_capture_task: Optional[asyncio.Task] = None
         self._last_broadcast_time: float = 0
         self._polling_interval: float = 1.0
+
+        # Last captured image data (updated by fast image capture task)
+        self._last_image_filename: Optional[str] = None
+        self._last_centroid_x: Optional[float] = None
+        self._last_centroid_y: Optional[float] = None
         
         # Data capture state
         self._data_capture_active: bool = False
@@ -70,6 +76,38 @@ class StateManager:
     @video_streaming_task.setter
     def video_streaming_task(self, task: Optional[asyncio.Task]):
         self._video_streaming_task = task
+
+    @property
+    def image_capture_task(self) -> Optional[asyncio.Task]:
+        return self._image_capture_task
+
+    @image_capture_task.setter
+    def image_capture_task(self, task: Optional[asyncio.Task]):
+        self._image_capture_task = task
+
+    @property
+    def last_image_filename(self) -> Optional[str]:
+        return self._last_image_filename
+
+    @last_image_filename.setter
+    def last_image_filename(self, value: Optional[str]):
+        self._last_image_filename = value
+
+    @property
+    def last_centroid_x(self) -> Optional[float]:
+        return self._last_centroid_x
+
+    @last_centroid_x.setter
+    def last_centroid_x(self, value: Optional[float]):
+        self._last_centroid_x = value
+
+    @property
+    def last_centroid_y(self) -> Optional[float]:
+        return self._last_centroid_y
+
+    @last_centroid_y.setter
+    def last_centroid_y(self, value: Optional[float]):
+        self._last_centroid_y = value
     
     @property
     def last_broadcast_time(self) -> float:
@@ -173,12 +211,16 @@ class StateManager:
         """Reset all state (for testing)"""
         self._background_task = None
         self._video_streaming_task = None
+        self._image_capture_task = None
         self._last_broadcast_time = 0
         self._polling_interval = 1.0
         self._data_capture_active = False
         self._current_capture_session = None
         self._captured_data_points = []
         self._centroid_history = []
+        self._last_image_filename = None
+        self._last_centroid_x = None
+        self._last_centroid_y = None
         self._status_history.clear()
         self._status_update_queue = None
 

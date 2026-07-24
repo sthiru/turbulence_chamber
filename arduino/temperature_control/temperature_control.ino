@@ -78,8 +78,7 @@
 #define NUM_FANS 4
 #define NUM_HOT_PLATES 2
 #define NUM_FLOW_SENSORS 4
-#define MAX_TEMP 120.0
-#define MIN_TEMP 0.0
+#define MIN_TEMP 30.0
 unsigned long UPDATE_INTERVAL = 1000;  // 1 second (default, can be modified)
 unsigned long DHT_UPDATE_INTERVAL = 10000;  // 10 seconds for DHT sensors (default, can be modified)
 
@@ -200,7 +199,7 @@ void SOUR_TEMP(SCPI_C commands, SCPI_P parameters, Stream &interface) {
   if (parameters.Size() < 2) { sendErrorResponse("missing parameters"); return; }
   int sensor = String(parameters[0]).toInt();
   float temp = String(parameters[1]).toFloat();
-  if (sensor >= 0 && sensor < NUM_HOT_PLATES && temp >= MIN_TEMP && temp <= MAX_TEMP) {
+  if (sensor >= 0 && sensor < NUM_HOT_PLATES && temp >= MIN_TEMP && temp <= safetyTemperature) {
     targetTemperatures[sensor] = temp;
     sendStatusResponse();
     return;

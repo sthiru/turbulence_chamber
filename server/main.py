@@ -204,7 +204,7 @@ async def background_status_polling():
                 status_data["arduino_port"] = arduino_comm.port if arduino_comm.is_connected else None
                 status_data["system_ready"] = True  # System is ready when Arduino responds successfully
                 status_data["timestamp"] = datetime.now().isoformat()
-                status_data["image_filename"] = CAMERA_IMAGES_FOLDER
+                status_data["image_filename"] = None
                 
                 # Calculate CN² and add to status data
                 try:
@@ -217,39 +217,26 @@ async def background_status_polling():
                 except Exception as e:
                     logger.warning(f"Error calculating CN²: {e}")
                     status_data["cn2"] = None
-                # Calculate optical CN² if we have temperature differences
-                if(camera_initialized):               
-                    if state_manager.data_capture_active and state_manager.current_capture_session:
+                # Use the latest image from the independent fast image capture task
+                if camera_initialized and state_manager.data_capture_active:
+                    last_image = state_manager.last_image_filename
+                    if last_image:
+                        status_data["image_filename"] = last_image
+
+                    if state_manager.last_centroid_x is not None and state_manager.last_centroid_y is not None:
+                        status_data["centroid_x"] = state_manager.last_centroid_x
+                        status_data["centroid_y"] = state_manager.last_centroid_y
+
+                    # Calculate optical CN² from stored centroids once enough data points are available
+                    if state_manager.get_centroid_history_length() >= CENTROID_HISTORY_THRESHOLD:
                         try:
-                            image_filename = camera.capture_and_save(state_manager.current_capture_session['image_folder'])
-                            
-                            if image_filename:
-                                # Add image filename to status data
-                                status_data["image_filename"] = image_filename
-                                
-                                # Calculate beam centroid for the captured image
-                                try:
-                                    status_data["centroid_x"], status_data["centroid_y"] = calculate_beam_centroid(image_filename)
-                                    
-                                    # Store centroid in history with timestamp
-                                    state_manager.add_centroid_to_history({
-                                        "timestamp": datetime.now(),
-                                        "centroid_x": status_data["centroid_x"],
-                                        "centroid_y": status_data["centroid_y"]
-                                    })
-                                    
-                                    # Calculate optical CN² from stored centroids only when threshold+ data points available
-                                    if state_manager.get_centroid_history_length() >= CENTROID_HISTORY_THRESHOLD:
-                                        cn2_optical = cn2_calculator.calculate_cn2_from_centroids(state_manager.centroid_history)
-                                        status_data["cn2_optical"] = cn2_optical
-                                    else:
-                                        status_data["cn2_optical"] = None
-                                except Exception as e:
-                                    logger.warning(f"Error calculating beam centroid or optical CN²: {e}")
-                            else:
-                                logger.warning("Image capture returned None")
+                            cn2_optical = cn2_calculator.calculate_cn2_from_centroids(state_manager.centroid_history)
+                            status_data["cn2_optical"] = cn2_optical
                         except Exception as e:
-                            logger.warning(f"Failed to capture image during data capture: {e}")
+                            logger.warning(f"Error calculating optical CN²: {e}")
+                            status_data["cn2_optical"] = None
+                    else:
+                        status_data["cn2_optical"] = None
                 
                 # Store in history
                 state_manager.add_to_status_history(status_data)
@@ -346,6 +333,53 @@ async def background_status_polling():
         
         # Wait for next polling interval
         await asyncio.sleep(state_manager.polling_interval)
+
+# Independent image capture worker for high-rate image acquisition
+async def image_capture_worker():
+    """Capture images as fast as possible while a data capture session is active.
+
+    The worker writes images to the current capture session folder and keeps the
+    latest filename/centroid on state_manager. The slower background_status_polling
+    loop reads these cached values instead of blocking on the camera.
+    """
+    logger.info("Image capture worker started")
+    try:
+        while state_manager.data_capture_active and state_manager.current_capture_session:
+            try:
+                session = state_manager.current_capture_session
+                folder = session.get("image_folder") if session else None
+
+                if folder and camera_initialized:
+                    image_filename = camera.capture_and_save(folder)
+                    if image_filename:
+                        state_manager.last_image_filename = image_filename
+
+                        # Offload centroid calculation to avoid blocking the event loop
+                        centroid = await asyncio.to_thread(calculate_beam_centroid, image_filename)
+                        if centroid:
+                            cx, cy = centroid
+                            state_manager.last_centroid_x = float(cx)
+                            state_manager.last_centroid_y = float(cy)
+
+                            # Only store valid (non-zero) centroids for optical CN² history
+                            if cx != 0 or cy != 0:
+                                state_manager.add_centroid_to_history({
+                                    "timestamp": datetime.now(),
+                                    "centroid_x": float(cx),
+                                    "centroid_y": float(cy)
+                                })
+                    else:
+                        logger.warning("Image capture returned None")
+
+                # Yield control so background polling and WebSockets stay responsive
+                await asyncio.sleep(0.01)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Error in image capture worker: {e}")
+                await asyncio.sleep(0.1)
+    finally:
+        logger.info("Image capture worker stopped")
 
 # Video streaming background task
 async def video_streaming_worker():
@@ -914,6 +948,25 @@ async def toggle_data_capture(request: DataCaptureRequest, acquisition_type: str
             
             state_manager.data_capture_active = True
             state_manager.clear_captured_data_points()
+
+            # Reset last captured image/centroid state
+            state_manager.last_image_filename = None
+            state_manager.last_centroid_x = None
+            state_manager.last_centroid_y = None
+
+            # Start independent fast image capture worker
+            if camera_initialized:
+                if state_manager.image_capture_task and not state_manager.image_capture_task.done():
+                    state_manager.image_capture_task.cancel()
+                    try:
+                        await state_manager.image_capture_task
+                    except asyncio.CancelledError:
+                        pass
+
+                # Stop any active video streaming so the capture worker has exclusive camera access
+                await asyncio.to_thread(camera.stop_video_stream)
+
+                state_manager.image_capture_task = asyncio.create_task(image_capture_worker())
             
             logger.info(f"Started data capture session: {state_manager.current_capture_session['id']}")
             return {
@@ -938,6 +991,18 @@ async def toggle_data_capture(request: DataCaptureRequest, acquisition_type: str
             # Reset capture state
             state_manager.data_capture_active = False
             state_manager.clear_captured_data_points()
+
+            # Stop independent image capture worker
+            if state_manager.image_capture_task and not state_manager.image_capture_task.done():
+                state_manager.image_capture_task.cancel()
+                try:
+                    await state_manager.image_capture_task
+                except asyncio.CancelledError:
+                    pass
+            state_manager.image_capture_task = None
+            state_manager.last_image_filename = None
+            state_manager.last_centroid_x = None
+            state_manager.last_centroid_y = None
             
             # Stop camera video streaming
             camera.stop_video_stream()
